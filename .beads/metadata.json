@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "perch",
+  "project_id": "18005e93-a258-4ed3-9e8e-dc99bc17adb4"
+}
