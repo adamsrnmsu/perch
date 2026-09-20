@@ -1,6 +1,6 @@
 # perch v1: what the open board means for the budget
 
-Date: 2026-09-20. Status: draft for review.
+Date: 2026-09-20. Status: approved and built (amended where the build found something better).
 
 ## Purpose
 
@@ -117,10 +117,14 @@ purpose:
     hours(person, interval) = factor(person) x sum over types of
                               rate(type) x issues closed(person, interval, type)
 
-- `rate(type)` is fitted once for the team by least squares over every
+- `rate(type)` is fitted for the team by least squares over every
   person-interval (`numpy.linalg.lstsq`; numpy arrives with Budgie, so no new
-  dependency). A type whose fitted rate comes out negative is folded into
-  `other` and the fit is run again, so no rate is ever below zero.
+  dependency). **The fit alternates:** type rates are fitted on hours divided
+  by each person's factor, the factors are recomputed, and this repeats (25
+  rounds), with rates rescaled so that a factor of 1.0 reproduces the team's
+  total hours. A single pass, as if everyone worked at the same pace, is biased
+  towards whoever closed the most of each type: on exact test data it recovers
+  1.496x and 3.10x where the truth is 1.5x and 3.0x.
 - `factor(person)` is that person's booked hours over what the team type rates
   predict for the issues they closed. 1.0 is the team's pace.
 - A person-by-type cell is `factor(person) x rate(type)`.
@@ -132,9 +136,13 @@ someone is quick on bugs and slow on features. Only hours recorded against
 issues could show that, and this team does not record them (see "Decided" at
 the end).
 
-Guards: a type with fewer than 5 closed issues in the window is folded into
-`other`. With fewer person-intervals than types + 2, the fit is refused and
-perch falls back to the per-person rate above, saying why. Every modelled
+Guards: types with fewer than 5 closed issues in the window share an `other`
+column; if `other` itself has fewer than 5 it is counted with the commonest
+type, because a column resting on a couple of issues fits noise. A column whose
+rate comes out negative is merged into `other` (or, if it is `other`, into the
+commonest type) and the fit is run again, so no rate is ever below zero. With
+fewer person-intervals than columns + 2, the fit is refused and perch falls
+back to the per-person rate above, saying why. Every modelled
 figure is labelled modelled, with the number of intervals it rests on.
 
 When type rates are available, hours per open issue use
@@ -191,8 +199,10 @@ would say nothing about that issue. They feed the by-person table instead.
 window, the hours they actually booked against the sum of the `#iid` estimates
 on issues they closed. Reports coverage (what share of their closed issues had
 an estimate) and refuses to print a ratio below 50% coverage, because a ratio
-over a minority of the work says nothing. Each person is compared with their
-own earlier window where there are enough readings, never with each other.
+over a minority of the work says nothing. The ratio is booked hours scaled to
+the covered share, over those estimates. Each week's ratio is recorded in
+`history.jsonl`; comparing a person with their own earlier weeks is the weekly
+report's job (v1.1). People are never compared with each other.
 
 ## History
 
@@ -219,12 +229,14 @@ perch/
     accuracy.py  the two accuracy tables
   cli.py         click adapter: `perch board`, `perch accuracy`
   tests/
-    data/        a small checked-in dump, estimates.csv, and a Budgie project
+    conftest.py  one hand-checkable world, built on disk per test
 ```
 
 Same rule as Budgie: everything under `core/` is UI-free, and the CLI is a thin
-adapter. Dependencies: `budgie` (editable install from the sibling checkout),
-`click`, `rich`, `pyyaml`. Python 3.10+. Dev extra: `pytest`, `ruff`.
+adapter. Dependencies: `click`, `rich`, `pyyaml`, `numpy`, and Budgie -- which
+`make venv` installs from the sibling checkout and which is deliberately NOT
+listed in `pyproject.toml`: it is not published, and whatever answers to that
+name on PyPI is not ours to trust. Python 3.10+. Dev extra: `pytest`, `ruff`.
 
 ## Errors
 
@@ -249,7 +261,8 @@ adapter. Dependencies: `budgie` (editable install from the sibling checkout),
 - `accuracy.py`: the 50% coverage refusal; modelled vs measured labelled.
 - One contract test that imports the exact `budgie.core` names perch uses, so
   a Budgie refactor that breaks perch fails loudly here first.
-- CLI tests with click's `CliRunner` against the checked-in data.
+- CLI tests with click's `CliRunner` against the world `conftest.py` builds,
+  whose docstring carries the arithmetic the expected numbers come from.
 
 ## What this is for: weekly and quarterly feedback
 

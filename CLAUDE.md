@@ -1,6 +1,59 @@
-# Project Instructions for AI Agents
+# CLAUDE.md
 
-This file provides instructions and context for AI coding agents working on this project.
+## Goal -- judge every change against this
+
+perch is the join between **gitboard** (the work) and **Budgie** (the money),
+for one lead. It owns the join and the views and nothing else. If perch needs a
+number neither tool produces, add it to the tool that owns it. perch never
+calls GitLab, never redoes budget math, never sends anything, and never ranks
+people.
+
+## Commands
+
+```bash
+make venv     # ~/Documents/tools/perch; installs Budgie from ../budgie first
+make test     # ~/Documents/tools/perch/bin/pytest
+make lint     # ruff check .
+make format   # ruff format .
+```
+
+Budgie is a library dependency installed from the sibling checkout and is
+deliberately absent from `pyproject.toml` (the PyPI name is not ours).
+`perch/tests/test_contract.py` lists every `budgie.core` name perch imports;
+when Budgie changes, that test fails first.
+
+## Architecture
+
+Same rule as Budgie: everything under `perch/core/` is UI-free (no click, no
+rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
+
+- `core/config.py` -- perch.yaml to a frozen `Config`; every error names the key.
+- `core/board.py` -- a `gitboard stats --dump` file to `Board`/`Issue`.
+  `closed_on` follows gitboard's `done_at` (closed_at, else the last move into
+  Done) so the two tools agree on what is finished. Type is the first
+  `type::` label.
+- `core/estimates.py` -- estimates.csv (`#iid` or label keys), via Budgie's csvio.
+- `core/money.py` -- everything read out of a Budgie project. With `join.rollup`
+  it is the only place that imports `budgie.core`.
+- `core/rate.py` -- reading-to-reading intervals, own and team rates, and the
+  type model. **The type fit alternates** (rates on hours / factor, then
+  factors, repeat): a single pass is biased towards whoever closed the most of
+  each type. Rare types share `other`; if `other` is itself under 5 issues it
+  is counted with the commonest type; a negative column is merged away and the
+  fit re-run; fewer intervals than columns + 2 refuses to fit.
+- `core/join.py` -- hours per issue (estimate, type model, own rate, team rate,
+  else no basis), person rows, the rollup through Budgie's `simulate()` and
+  `evaluate()`, and the trust notes.
+- `core/accuracy.py` -- by label is MODELLED, by person is measured and refuses
+  below 50% coverage. Keep those two words honest in every output.
+- `core/history.py` -- week-keyed history.jsonl; re-running replaces the week.
+
+## Testing
+
+`perch/tests/conftest.py` builds one hand-checkable world on disk (the
+docstring has the arithmetic). Assert against numbers you can work by hand from
+that docstring. Shell note: `cp`/`mv`/`rm` may be aliased to `-i` here; use
+`-f` or an agent hangs on the prompt.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker
@@ -56,22 +109,3 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 - Do not commit or push without clear authority from the active profile or the current user request.
 - If a required sync or push is blocked, stop and report the exact command and error.
 <!-- END BEADS INTEGRATION -->
-
-
-## Build & Test
-
-_Add your build and test commands here_
-
-```bash
-# Example:
-# npm install
-# npm test
-```
-
-## Architecture Overview
-
-_Add a brief overview of your project architecture_
-
-## Conventions & Patterns
-
-_Add your project-specific conventions here_
