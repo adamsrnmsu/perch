@@ -5,3 +5,15 @@
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+__pycache__/
+*.egg-info/
+build/
+.pytest_cache/
+.ruff_cache/
+.venv/
+
+# Per-person numbers and raw board dumps: real data about real people. Keep
+# them out of git unless you decide otherwise on purpose.
+history.jsonl
+dumps/
