@@ -33,8 +33,10 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   Done) so the two tools agree on what is finished. Type is the first
   `type::` label.
 - `core/estimates.py` -- estimates.csv (`#iid` or label keys), via Budgie's csvio.
-- `core/money.py` -- everything read out of a Budgie project. With `join.rollup`
-  it is the only place that imports `budgie.core`.
+- `core/money.py` -- everything read out of a Budgie project, via Budgie's
+  `load_snapshot`. Which input wins (weekly over monthly, a reading over
+  `hours_spent`, a plan over fte, a pinned budget over budget.csv) is Budgie's
+  rule in `budgie/core/project.py`; a new rule goes there, never here.
 - `core/rate.py` -- reading-to-reading intervals, own and team rates, and the
   type model. **The type fit alternates** (rates on hours / factor, then
   factors, repeat): a single pass is biased towards whoever closed the most of
