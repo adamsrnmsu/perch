@@ -52,8 +52,7 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 
 `perch/tests/conftest.py` builds one hand-checkable world on disk (the
 docstring has the arithmetic). Assert against numbers you can work by hand from
-that docstring. Shell note: `cp`/`mv`/`rm` may be aliased to `-i` here; use
-`-f` or an agent hangs on the prompt.
+that docstring.
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker
