@@ -14,9 +14,14 @@ Open: Alice #101 (estimated 10 h, 8-14), #102, #103; Bob #104, #105;
 """
 
 import json
+import os
 from datetime import date
 
 import pytest
+
+# Colour off before rich loads: CLI tests assert on rendered text, and an
+# exported FORCE_COLOR splits it with ANSI codes.
+os.environ.pop("FORCE_COLOR", None)
 
 
 def week(number: int) -> date:
