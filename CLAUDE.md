@@ -49,6 +49,9 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `core/accuracy.py` -- by label is MODELLED, by person is measured and refuses
   below 50% coverage. Keep those two words honest in every output.
 - `core/history.py` -- week-keyed history.jsonl; re-running replaces the week.
+- `core/weekly.py` -- `perch weekly`: per-person markdown from this run plus
+  history. Read-only. A trailing comparison needs 4 prior weeks that hold that
+  figure; below that it prints `not enough history: n of 8 weeks`, never a trend.
 
 ## Testing
 

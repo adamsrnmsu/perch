@@ -280,6 +280,35 @@ can carry it instead of the person getting three mails:
 
 Drafts only. Like Budgie and gitboard, perch never sends.
 
+### `perch weekly` design (v1.1)
+
+`perch weekly [--config F] [--person NAME] [--out FILE]`. Read-only: it runs the
+same join as `perch board` on the current dump and reads `history.jsonl`, but
+never writes history, calls GitLab or sends anything. Markdown to stdout, or to
+`--out`; one `## Name` block per mapped person (all of `people:`, or the one
+`--person` names). No cross-person table, ever.
+
+Each block has four parts:
+
+1. **Open board vs plan**: open issues and modelled hours (the `board` figure)
+   against planned hours left, and the gap. Current run only.
+2. **Hours per issue by type**: the person's modelled `factor x type rate` now,
+   against the mean of the same figure over their own trailing 8 weeks in
+   history (the current week is excluded from the baseline). Labelled modelled.
+3. **Estimate accuracy**: this run's measured booked/estimated ratio against the
+   mean of their own trailing ratios, with the direction (more than 10% off the
+   baseline reads "above"/"below", else "in line").
+4. **Waiting on someone else**: open issues carrying gitboard's `Blocked`
+   column label, with days since the last move into it (from the dump's
+   transitions). Board data only, so it needs no history.
+
+Degrade rules: a trailing comparison needs at least 4 prior weeks that hold the
+figure in question; with fewer the line says `not enough history: 2 of 8
+weeks` and shows only the current figure, never a trend from one or two rows.
+No fitted type model, no estimates file, or a ratio withheld for coverage each
+get a one-line reason instead of a number. Weeks are counted per figure, so a
+type that entered the model recently degrades on its own.
+
 **Quarterly, to management** (`perch quarterly`, v1.2). Thirteen weeks of
 `history.jsonl` plus Budgie's budget revisions and plan changes:
 
@@ -297,8 +326,8 @@ how much evidence a number rests on before acting on it.
 
 ## Out of scope for v1
 
-`perch weekly` and `perch quarterly` themselves (v1 only records the data they
-need).
+`perch weekly` (v1.1) and `perch quarterly` themselves (v1 only records the data
+they need).
 
 HTML page, scheduling, mail, any GitLab call, per-type rates, predictability,
 rework and wait-time metrics, budget-to-board ("what no longer fits after a

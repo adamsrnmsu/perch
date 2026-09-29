@@ -26,6 +26,7 @@ It is deliberately not listed in `pyproject.toml`; see the comment there.
 gitboard stats group/project --dump dumps/team.json    # in the gitboard repo
 perch board                                            # reads ./perch.yaml
 perch accuracy
+perch weekly [--person NAME] [--out FILE]        # markdown drafts, nothing sent
 ```
 
 `perch.yaml`:

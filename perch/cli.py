@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 from rich.console import Console
 from rich.table import Table
@@ -206,3 +208,37 @@ def accuracy(config_path):
         "estimate, over those estimates. Below 50% coverage no ratio is shown. "
         "Compare a person with their own earlier weeks, never with each other.[/dim]"
     )
+
+
+@cli.command()
+@_config_option
+@click.option("--person", default=None, help="Only this person (a name in `people:`).")
+@click.option("--out", "out_path", default=None, help="Write the markdown here.")
+def weekly(config_path, person, out_path):
+    """Per-person markdown drafts for the weekly digest. Nothing is sent."""
+    from perch.core.accuracy import by_person
+    from perch.core.history import load
+    from perch.core.join import person_rows
+    from perch.core.weekly import weekly as render
+
+    try:
+        config, the_board, money, estimates, rates = _load(config_path)
+        rows = person_rows(the_board, estimates, rates, config.people, money)
+        text = render(
+            the_board,
+            money,
+            rates,
+            rows,
+            by_person(estimates, the_board, config.people, money),
+            bool(estimates),
+            config.people,
+            load(config.history),
+            only=person,
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    if out_path:
+        Path(out_path).write_text(text)
+        console.print(f"Wrote {out_path}")
+    else:
+        click.echo(text, nl=False)

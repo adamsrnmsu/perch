@@ -13,6 +13,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 DONE = "Done"  # gitboard's name for the finished column
+BLOCKED = "Blocked"  # ...and for the column that means waiting on someone
 TYPE_SCOPE = "type::"
 UNTYPED = "untyped"
 
@@ -24,6 +25,11 @@ class Issue:
     assignee: str | None  # GitLab username
     labels: tuple[str, ...]
     closed_on: date | None
+    blocked_since: date | None = None  # last move into Blocked, if it is there
+
+    @property
+    def is_blocked(self) -> bool:
+        return self.is_open and BLOCKED in self.labels
 
     @property
     def is_open(self) -> bool:
@@ -77,6 +83,15 @@ def _closed_on(record: dict) -> date | None:
     return _day(moves[-1]) if moves else None
 
 
+def _blocked_since(record: dict) -> date | None:
+    moves = [
+        stamp
+        for stamp, action, label in record.get("transitions") or []
+        if label == BLOCKED and action == "add"
+    ]
+    return _day(moves[-1]) if moves else None
+
+
 def load_board(path: str | Path) -> Board:
     path = Path(path)
     try:
@@ -88,6 +103,7 @@ def load_board(path: str | Path) -> Board:
                 assignee=record.get("assignee") or None,
                 labels=tuple(record.get("labels") or ()),
                 closed_on=_closed_on(record),
+                blocked_since=_blocked_since(record),
             )
             for record in meta["history"]
         )

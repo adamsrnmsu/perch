@@ -1,6 +1,6 @@
 """history.jsonl: one run per week, kept so that trends have somewhere to start.
 
-Nothing in v1 reads this file. The weekly and quarterly feedback will.
+`perch board` writes it; `perch weekly` reads it. Quarterly will too.
 """
 
 from __future__ import annotations
@@ -80,3 +80,11 @@ def record(path: str | Path, day: date, rows: list[dict]) -> None:
         ]
     fresh = [json.dumps({"week": week, "date": day.isoformat(), **row}) for row in rows]
     path.write_text("\n".join(kept + fresh) + "\n")
+
+
+def load(path: str | Path) -> list[dict]:
+    """Every recorded row; a missing file is an empty history."""
+    path = Path(path)
+    if not path.is_file():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
