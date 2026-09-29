@@ -17,3 +17,5 @@ build/
 # them out of git unless you decide otherwise on purpose.
 history.jsonl
 dumps/
+weekly/
+perch.yaml
