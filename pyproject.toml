@@ -12,6 +12,7 @@ dependencies = ["click", "rich", "pyyaml", "numpy"]
 
 [project.optional-dependencies]
 dev = ["pytest>=6.2.4", "ruff"]
+docs = ["sphinx", "myst-parser", "shibuya", "sphinx-click"]
 
 [project.scripts]
 perch = "perch.cli:cli"
