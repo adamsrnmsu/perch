@@ -20,3 +20,4 @@ history.jsonl
 dumps/
 weekly/
 perch.yaml
+uv.lock
