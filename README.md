@@ -17,8 +17,29 @@ board logic stays in gitboard. perch never calls GitLab and never sends mail.
 make venv          # venv at ~/Documents/tools/perch; Budgie from ../budgie
 ```
 
-Budgie is installed from the sibling checkout (`BUDGIE=../budgie` to override).
-It is deliberately not listed in `pyproject.toml`; see the comment there.
+Budgie is installed from the sibling checkout (`BUDGIE_DIR=../budgie` to
+override). It is deliberately not listed in `pyproject.toml`; see the comment
+there.
+
+## One menu for every pi app
+
+perch is the single place you run things from. Its `Makefile` drives gitboard,
+Budgie and perch; each app still lives in its own repo with its own Makefile.
+
+```bash
+make               # the menu; `make lost` adds the Monday order
+make install       # all three tools
+make init          # perch.yaml and a Budgie project under budget/
+make doctor        # installs, tokens, config, how fresh the data is
+make hours         # paste this week's timesheet totals
+make monday        # fetch, board, weekly, digest, emails; nothing is sent
+```
+
+The other apps are looked for beside this checkout (`../budgie`,
+`../remote-gitboard`). Anywhere else: `make BUDGIE_DIR=... GB_DIR=... <target>`.
+
+A new app joins the menu with a `<APP>_DIR ?=` variable, a `##@` section and a
+line in `make lost`. Its code stays in its own repo.
 
 ## Use
 
@@ -74,7 +95,7 @@ perch never ranks people. A rate is a property of the join, not a score.
 ## Development
 
 ```bash
-make test
+make test          # perch only; make test-all runs all three suites
 make lint
 make format
 ```

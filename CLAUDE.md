@@ -8,14 +8,26 @@ number neither tool produces, add it to the tool that owns it. perch never
 calls GitLab, never redoes budget math, never sends anything, and never ranks
 people.
 
+perch is also the one entry point for every pi app: its `Makefile` is the
+single menu, run from this directory. There is no parent folder or root
+Makefile to depend on. The menu only shells out to the tool that owns each
+step, so the rules above hold: perch never absorbs another app's code. A new
+app keeps its own repo and its own dev Makefile and gets three things here: a
+`<APP>_DIR ?=` variable, a `##@` section, and a line in `make lost`.
+
 ## Commands
 
 ```bash
+make          # the menu for every app: Monday run, board changes, budget
 make venv     # ~/Documents/tools/perch; installs Budgie from ../budgie first
-make test     # ~/Documents/tools/perch/bin/pytest
+make test     # perch only: ~/Documents/tools/perch/bin/pytest
+make test-all # Budgie, perch and gitboard suites
 make lint     # ruff check .
 make format   # ruff format .
 ```
+
+The other apps are found beside this checkout (`../budgie`,
+`../remote-gitboard`); `BUDGIE_DIR=` and `GB_DIR=` override that.
 
 Budgie is a library dependency installed from the sibling checkout and is
 deliberately absent from `pyproject.toml` (the PyPI name is not ours).

@@ -19,5 +19,6 @@ docs/_build/
 history.jsonl
 dumps/
 weekly/
+budget/
 perch.yaml
 uv.lock
