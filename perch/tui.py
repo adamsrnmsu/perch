@@ -42,7 +42,12 @@ COMMANDS = {  # key -> the perch command it runs on the selected project
 def _spawn(argv: list[str], cwd: Path) -> Iterator[str]:
     """Run a command, yielding its output lines as they come; tests replace this."""
     with subprocess.Popen(
-        argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+        argv,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        errors="replace",  # an odd byte must not kill the worker, and the app
     ) as proc:
         for line in proc.stdout:
             yield line.rstrip("\n")
@@ -64,12 +69,13 @@ def _flags(config_path: Path) -> str:
 
 
 def row(home: Home, name: str) -> tuple[str, ...]:
-    """One project's cells; a config that fails to load shows its error."""
+    """One project's cells; a config or history that fails to load shows its error."""
     try:
         config = load_config(home.config_path(name), require_dump=False)
+        week = latest_week(config.history)
     except _ERRORS as exc:
         return (name, f"error: {exc}", "", "", "", "", "")
-    team = next((r for r in latest_week(config.history) if r["kind"] == "team"), {})
+    team = next((r for r in week if r["kind"] == "team"), {})
     ages = dict(freshness(home, name))
     return (
         name,
@@ -120,6 +126,7 @@ class PerchTUI(App):
         table = self.query_one(DataTable)
         at = table.cursor_row
         table.clear()
+        self.names = self.home.projects()  # a project made meanwhile shows up
         for name in self.names:
             table.add_row(*row(self.home, name), key=name)
         table.move_cursor(row=at)

@@ -236,3 +236,13 @@ def test_perch_tui_outside_a_workspace_says_how_to_start(tmp_path, monkeypatch):
     result = CliRunner().invoke(cli, ["tui"])
     assert result.exit_code == 1
     assert "perch-home.yaml" in result.output
+
+
+def test_a_corrupt_history_is_an_error_row(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    (home.projects_dir / "apollo" / "history.jsonl").write_text("{not json\n")
+
+    async def script(app, pilot):
+        assert _cells(app)[0][1].startswith("error: ")
+
+    run(tui.PerchTUI(home), script)
