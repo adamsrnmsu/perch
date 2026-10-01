@@ -27,7 +27,8 @@ flag is a prompt for a conversation, never a verdict.
 
 - `perch watch [-p NAME | --all]` prints to the terminal.
 - `perch monday` writes `projects/<name>/watch/<ISO week>.md`. `projects/` is
-  already gitignored. Monday ends with one line: "watch: N flags, run perch
+  gitignored in the perch checkout; in a separate workspace, add it to your
+  own `.gitignore`. Monday ends with one line: "watch: N flags, run perch
   watch" (or "watch: nothing out of line").
 
 ## When a signal flags
@@ -115,3 +116,38 @@ All against the hand-checkable world, with history weeks written by the test:
 - Configurable thresholds.
 - Sending the watch anywhere.
 - Using it in any report another person reads.
+
+## Changes during build
+
+- **Hours per issue is computed, not read from history.** The `rate` in
+  `history.jsonl` is the year-to-date own rate and person rows hold no closed
+  count, so they cannot give a 4-week window or its 5-issue minimum. The watch
+  takes booked hours in each window (Budgie's reading interpolation) over the
+  issues the board shows closed in it, for the 4 weeks and the 8 before.
+- **Booked hours use `budgie.core.monthly._spent_at`**, Budgie's own
+  interpolation, imported while private (listed in the contract test; bead
+  budgie-8u1 makes it public). Planned hours are `Money.pace`, Budgie's
+  `burndown(...)` per allocation with the snapshot's `plan`. A project with
+  only plan.csv (no allocations.csv) has no allocation, so hours vs plan says
+  so instead of reading.
+- **Weeks are anchored on each person's latest reading**, not today: the week
+  in progress has no reading and would book 0. The 3-of-4 rule evaluates each
+  condition as of each of the last 4 week-ends (estimates: this run and the
+  last 3 recorded weeks, each against the 8 recorded weeks before it).
+- **The history minimum** applies to hours vs plan, hours per issue and
+  estimates; the stall signal reads the current board and always shows.
+- **"A Doing-type column"** is a board list from the dump's `columns` that
+  gitboard counts as work in progress (not in its `NOT_WIP`: Backlog, Done,
+  Failed) and is not Blocked; no column label is Backlog and never stalls. An
+  issue waiting on someone else (Blocked, or an unanswered `Q:`, as `perch
+  weekly` lists it) never counts. Its age is
+  working days (Budgie's `workdays_between`) from the issue's last transition
+  to the board's fetch date; an issue with no transition has no age and is not
+  listed.
+- **A figure too thin to show cannot flag**: when the latest window has too few
+  issues, hours per issue reads "too few issues" and does not flag.
+- **Privacy is tested against the weekly draft.** The `.eml` drafts are
+  Budgie's (they never read perch files) and the quarterly report was not in
+  this branch; perch-efu should add its own check.
+- **`monday` writes the watch in-process**, after its five steps: it is
+  perch's own read of files it already has, so `steps.monday` is unchanged.

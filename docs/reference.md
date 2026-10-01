@@ -48,9 +48,15 @@ Everything under `perch.core` is UI-free; `perch.cli` is a thin adapter over it.
 .. automodule:: perch.core.history
    :members:
 
+.. automodule:: perch.core.cut
+   :members:
+
 .. automodule:: perch.core.weekly
    :members:
    :undoc-members:
+
+.. automodule:: perch.core.watch
+   :members:
 
 .. automodule:: perch.core.quarterly
    :members:

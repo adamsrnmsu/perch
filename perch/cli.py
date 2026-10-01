@@ -192,7 +192,13 @@ def board(config_path, project, seed, iterations, no_history):
         record(
             config.history,
             the_board.fetched_on,
-            rows_for(rows, rates, summary, accuracy if estimates else ()),
+            rows_for(
+                rows,
+                rates,
+                summary,
+                accuracy if estimates else (),
+                left=sum(money.left.values()),
+            ),
         )
 
 
@@ -490,7 +496,8 @@ def budget(project):
 def monday(project, all_projects):
     """Steps 1-5: fetch, board, weekly, digest, emails. Run `perch hours` first.
 
-    Nothing is ever sent: you review the drafts and send them yourself.
+    Nothing is ever sent: you review the drafts and send them yourself. Last,
+    the private watch goes to projects/NAME/watch/, never beside the drafts.
     """
     from perch.core import steps
     from perch.core.config import load_config
@@ -511,6 +518,7 @@ def monday(project, all_projects):
             config.budgie_project / "emails",
         ):
             console.print(f"  {place}", markup=False, highlight=False)
+        _write_watch(home, name, week)
 
     home = _home()
     if not all_projects:
@@ -619,6 +627,230 @@ def doctor(project):
                 ]
             )
     if failed:
+        raise click.exceptions.Exit(1)
+
+
+def _change(before, after, show) -> str:
+    return f"{show(before)} → {show(after)}"
+
+
+def _label(value: str | None) -> str:
+    return "—" if value is None else value.upper()
+
+
+@cli.command()
+@_config_option
+@_project_option
+@click.option(
+    "--budget",
+    "new_budget",
+    type=click.FloatRange(min=0, min_open=True),
+    default=None,
+    help="What-if: this budget instead of the latest.",
+)
+@click.option(
+    "--leaves",
+    multiple=True,
+    metavar="NAME:YYYY-MM-DD",
+    help="What-if: NAME is at 0 FTE from that date. Repeatable.",
+)
+@click.option(
+    "--fte",
+    multiple=True,
+    metavar="NAME:YYYY-MM-DD:FTE",
+    help="What-if: NAME is at FTE from that date. Repeatable.",
+)
+def cut(config_path, project, new_budget, leaves, fte):
+    """What no longer fits after a budget cut or plan change. Writes nothing.
+
+    With flags, today's files against today's files changed by the flags. With
+    none, the last week `perch board` recorded against today's files.
+    """
+    from perch.core import money as m
+    from perch.core.board import load_board
+    from perch.core.config import load_config
+    from perch.core.cut import compare, parse_change
+    from perch.core.estimates import load_estimates
+    from perch.core.history import latest_week
+    from perch.core.join import calibrate, notes
+
+    try:
+        config = load_config(_config_path(config_path, project))
+        the_board = load_board(config.board_dump)
+        snap = m.load_snapshot(config.budgie_project)
+        names = {p.name for p in snap.people}
+        changes = [parse_change(f, names, snap.year, leaves=True) for f in leaves]
+        changes += [parse_change(f, names, snap.year) for f in fte]
+        now = m.money_from(snap)
+        estimates = load_estimates(config.estimates) if config.estimates else {}
+        rates = calibrate(now.readings, the_board, config.people, now.year)
+        since = None
+        if changes or new_budget is not None:
+            before, after = now, m.money_from(m.what_if(snap, new_budget, changes))
+            title = "What-if: today's files, then with the change"
+        else:
+            before, after = latest_week(config.history), now
+            if not before:
+                raise click.ClickException(
+                    f"no week in {config.history} yet: run `perch board` first, "
+                    "or give --budget/--leaves/--fte for a what-if"
+                )
+            since = before[0]["week"]
+            title = f"Since {since}, the last week `perch board` recorded"
+        result = compare(
+            before, after, the_board, estimates, rates, config.people, changes
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    b, a = result.before, result.after
+    console.print(f"[bold]{escape(title)}[/bold]", highlight=False)
+    for label, old, new, show in (
+        ("Planned hours left", b.left, a.left, _hours),
+        ("Budget", b.budget, a.budget, _money),
+        ("Cost to clear (P50)", b.clear_p50, a.clear_p50, _money),
+        ("Headroom", b.headroom, a.headroom, _money),
+        ("Stoplight", b.signal, a.signal, _label),
+    ):
+        console.print(f"{label:<22}{_change(old, new, show)}", highlight=False)
+    if result.spare is not None:
+        if result.spare < 0:
+            fits = f"[bold red]short by {_hours(-result.spare)} h[/bold red]"
+        else:
+            fits = f"hours still fit: {_hours(result.spare)} h spare"
+        console.print(
+            f"Board needs {_hours(result.board_hours)} h; the team has "
+            f"{_hours(a.left)} h left after the change: {fits}",
+            highlight=False,
+            soft_wrap=True,
+        )
+    if since:
+        console.print(
+            f"[dim]Planned hours left also falls by the hours booked since {since}."
+            "[/dim]",
+            soft_wrap=True,
+        )
+    if b.old_row:
+        console.print(
+            "[yellow]![/yellow] That week was recorded before budget and hours "
+            "left were; a fresh `perch board` will record them.",
+            soft_wrap=True,
+        )
+
+    people = Table(title="People (name order)")
+    for head in ("Name", "Hours left", "Open", "Hours", "Basis"):
+        people.add_column(
+            head, justify="left" if head in ("Name", "Basis") else "right"
+        )
+    for p in result.people:
+        r = p.row
+        people.add_row(
+            p.name,
+            _change(p.left_before, p.left_after, _hours),
+            str(r.open) if r else "0",
+            _spread(r.low, r.mode, r.high) if r else "—",
+            (", ".join(r.bases) or "no basis") if r else "",
+        )
+    console.print(people)
+    for p in result.people:
+        if p.leaves is None:
+            continue
+        if p.row is None:
+            console.print(
+                f"{p.name} leaves {p.leaves}: no open issues", highlight=False
+            )
+            continue
+        issues = "1 open issue" if p.row.open == 1 else f"{p.row.open} open issues"
+        needs = "needs" if p.row.open == 1 else "need"
+        console.print(
+            f"{p.name} leaves {p.leaves}: {issues} "
+            f"({_hours(p.row.mode)} h) {needs} a new owner: "
+            + ", ".join(f"#{iid}" for iid in p.issues),
+            highlight=False,
+            soft_wrap=True,
+        )
+
+    milestones = Table(title="Milestones: open work")
+    for head in ("Milestone", "Open", "Hours", "Due"):
+        milestones.add_column(head, justify="left" if head == "Milestone" else "right")
+    for ms in result.milestones:
+        milestones.add_row(
+            ms.name or "no milestone",
+            str(ms.open),
+            _spread(ms.low, ms.mode, ms.high)
+            + (f" + {ms.no_basis} no basis" if ms.no_basis else ""),
+            str(ms.due) if ms.due else "—",
+        )
+    console.print(milestones)
+    for note in notes(
+        the_board, [p.row for p in result.people if p.row], config.people, after
+    ):
+        console.print(f"[yellow]![/yellow] {note}")
+
+
+def _watch(config_path: Path):
+    """The private watch for one perch.yaml; perch's own read, no subprocess."""
+    from perch.core.history import load
+    from perch.core.watch import watch as build
+
+    config, the_board, money, estimates, rates = _load(config_path)
+    return build(
+        the_board, money, rates, estimates, config.people, load(config.history)
+    )
+
+
+def _write_watch(home, name: str, week: str) -> None:
+    """monday's last act: projects/NAME/watch/WEEK.md, and one line."""
+    from perch.core.watch import render, summary
+
+    # The drafts are written by now: a watch that can't be read must not fail them.
+    try:
+        page = _watch(home.config_path(name))
+        path = home.watch_path(name, week)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(render(page))
+    except (OSError, TypeError, ValueError) as exc:
+        console.print(f"watch: could not be read: {exc}", markup=False, highlight=False)
+        return
+    console.print(summary(page), markup=False, highlight=False)
+
+
+@cli.command()
+@_config_option
+@_project_option
+@click.option(
+    "--all",
+    "all_projects",
+    is_flag=True,
+    help="Every project, in name order; a failure moves on to the next.",
+)
+def watch(config_path, project, all_projects):
+    """Private: anyone out of line with their own last 8 weeks. For you only."""
+    from perch.core.steps import run_projects
+    from perch.core.watch import render
+
+    if all_projects and (project or config_path):
+        raise click.UsageError("give -p/--config or --all, not both")
+    if not all_projects:
+        try:
+            page = _watch(_config_path(config_path, project))
+        except (OSError, TypeError, ValueError) as exc:
+            raise click.ClickException(str(exc)) from exc
+        click.echo(render(page), nl=False)
+        return
+    home = _home()
+    if not home.projects():
+        raise click.ClickException("no projects yet. Run: perch init <name>")
+    results = run_projects(
+        home.projects(),
+        lambda name: click.echo(render(_watch(home.config_path(name)))),
+    )
+    for name, error in results:
+        if error is not None:
+            console.print(
+                f"[red]{name} FAILED[/red]: {escape(str(error))}", highlight=False
+            )
+    if any(error for _, error in results):
         raise click.exceptions.Exit(1)
 
 

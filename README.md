@@ -35,6 +35,7 @@ perch projects                 # every project, its GitLab project, how fresh it
 perch doctor                   # tools, config, people names, freshness; FIX lines say what to run
 perch hours -p apollo          # paste this week's apollo timesheet totals
 perch monday --all             # fetch, board, weekly, digest, emails for every project
+perch watch -p apollo          # private: anyone out of line with their own last 8 weeks
 ```
 
 `-p NAME` picks a project. Without it, a `perch.yaml` in the current directory is used, then the project folder you are standing in, then the only project. Nothing is ever sent.
@@ -49,7 +50,7 @@ different amount on different work), so each Budgie project has its own
 ```
 ~/work/pi/
   perch-home.yaml      gitboard_dir: /path/to/remote-gitboard
-  projects/apollo/     perch.yaml (gitlab_project: group/apollo), history.jsonl, dumps/, weekly/
+  projects/apollo/     perch.yaml (gitlab_project: group/apollo), history.jsonl, dumps/, weekly/, watch/
   budget/apollo/       the Budgie project: people.csv, plan.csv, weekly.csv, budget.csv
 ```
 
@@ -73,8 +74,17 @@ gitboard stats group/project --dump dumps/team.json    # in the gitboard repo
 perch board [-p NAME]                                 # or --config FILE
 perch accuracy
 perch weekly [--person NAME] [--out FILE]        # markdown drafts, nothing sent
+perch cut [--budget N] [--leaves NAME:DATE]... [--fte NAME:DATE:FTE]...
 perch quarterly [-p NAME | --all] [--quarter 2026-Q3] [--out DIR]
 ```
+
+`perch cut` is the join run backwards: what no longer fits after a budget cut
+or a plan change. With flags it is a what-if (today's files, then today's
+files with the change; nothing is written). With none it compares the last
+week `perch board` recorded against today's files. It shows the team's hours
+left, budget, cost to clear, headroom and stoplight before → after, each
+person's hours left in name order, whose open issues need a new owner, and
+each milestone's open work. It never says which issues to drop.
 
 `perch quarterly` writes the funder's quarterly report as an Outlook draft,
 `projects/<name>/quarterly/<quarter>.eml`, plus a `.md` copy: budget position
@@ -123,9 +133,32 @@ epic::billing,400,320,520
   against the budget left after spend to date and planned non-labor. It is not
   a year forecast; `budgie forecast` is.
 - Every `perch board` run records the week in `history.jsonl` (ignored by git:
-  it is per-person data). Nothing reads it yet. The weekly feedback will, and a trend can only start the day you begin recording.
+  it is per-person data). `perch weekly` and `perch cut` read it, and a trend
+  can only start the day you begin recording.
 
 perch never ranks people. A rate is a property of the join, not a score.
+
+### The watch (private)
+
+`perch watch [-p NAME | --all]` prints, and `perch monday` writes
+`projects/<name>/watch/<ISO week>.md` and ends with one line (`watch: N flags,
+run perch watch`). It is for the lead only: it never goes into the weekly
+drafts, the emails or a report. Each person is compared only with their own
+figures; a signal flags only when it was out of line in 3 of the last 4 weeks,
+and each line shows the sample it rests on:
+
+- **hours vs plan**: hours booked over 4 weeks under 70% of what Budgie's
+  burn-down plans for them (plan.csv; a week at 0 FTE plans 0 hours);
+- **hours per issue**: over 4 weeks, more than 1.5x their own over the 8
+  weeks before, with 5 closed issues in each window;
+- **work in Doing**: an issue in a work-in-progress board list (not Backlog,
+  Done, Failed or Blocked) that has not moved for 10 working days; waiting on
+  an answer (`Q:`) never counts (this one reads the current board);
+- **estimates**: booked over estimate above 1.3x their own trailing ratio, at
+  50% estimate coverage or more.
+
+With under 4 weeks in `history.jsonl` the first, second and fourth read `not
+enough history: n of 8 weeks`.
 
 ## Development
 

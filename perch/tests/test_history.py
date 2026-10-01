@@ -1,7 +1,7 @@
 import json
 from datetime import date
 
-from perch.core.history import record, week_key
+from perch.core.history import latest_week, record, rows_for, week_key
 
 
 def test_rerunning_in_the_same_week_replaces_that_week(tmp_path):
@@ -21,3 +21,24 @@ def test_rerunning_in_the_same_week_replaces_that_week(tmp_path):
 def test_week_key_is_the_iso_week():
     assert week_key(date(2026, 1, 1)) == "2026-W01"
     assert week_key(date(2027, 1, 1)) == "2026-W53"  # belongs to ISO 2026
+
+
+def test_latest_week_is_the_last_recorded_week(tmp_path):
+    path = tmp_path / "history.jsonl"
+    assert latest_week(path) == []  # no file: nothing recorded yet
+    record(path, date(2026, 4, 20), [{"kind": "team", "name": "team", "left": 2}])
+    record(path, date(2026, 4, 13), [{"kind": "team", "name": "team", "left": 1}])
+    assert [(r["week"], r["left"]) for r in latest_week(path)] == [("2026-W17", 2)]
+
+
+def test_the_team_row_records_budget_left_and_signal(world):
+    from perch.cli import _load
+    from perch.core.join import person_rows, rollup
+
+    config, board, money, estimates, rates = _load(world)
+    rows = person_rows(board, estimates, rates, config.people, money)
+    out = rows_for(rows, rates, rollup(rows, money), left=sum(money.left.values()))
+    team = out[-1]
+    assert team["budget"] == 100000
+    assert team["left"] == (996 - 200) + (996 - 120)
+    assert team["signal"] == "good"

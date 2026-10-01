@@ -23,7 +23,9 @@ def rows_for(
     rates: Rates,
     rollup: Rollup,
     accuracy: list[PersonAccuracy] = (),
+    left: float | None = None,
 ) -> list[dict]:
+    """This run's rows; `left` is the team's planned hours left (for `perch cut`)."""
     out: list[dict] = [
         {
             "kind": "person",
@@ -62,6 +64,9 @@ def rows_for(
             "clear_p90": rollup.clear_p90,
             "headroom": rollup.headroom,
             "prob_over": rollup.signal.prob_over_budget if rollup.signal else None,
+            "budget": rollup.budget,
+            "left": left,
+            "signal": rollup.signal.label if rollup.signal else None,
         }
     )
     return out
@@ -88,3 +93,20 @@ def load(path: str | Path) -> list[dict]:
     if not path.is_file():
         return []
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def latest_week(path: str | Path) -> list[dict]:
+    """The rows of the last week recorded; empty when nothing is."""
+    rows = load(path)
+    last = max((r["week"] for r in rows), default=None)
+    return [r for r in rows if r["week"] == last]
+
+
+def figures(rows: list[dict], kind: str, name: str, key: str) -> dict[str, float]:
+    """One recorded figure by week (e.g. Alice's accuracy `ratio`); weeks
+    without it are left out."""
+    return {
+        r["week"]: r[key]
+        for r in rows
+        if r["kind"] == kind and r["name"] == name and r.get(key) is not None
+    }

@@ -1,6 +1,6 @@
 # perch cut: what no longer fits after a budget cut or a plan change
 
-Date: 2026-10-01. Status: design approved in conversation; spec awaiting review.
+Date: 2026-10-01. Status: design approved; built (see Changes during build).
 Bead: perch-mo4.
 
 ## Purpose
@@ -119,3 +119,31 @@ All against the hand-checkable world in `perch/tests/conftest.py`:
 - Ordering issues, or suggesting what to cut.
 - Writing changes back to `budget.csv` or `plan.csv`.
 - Cross-project moves (someone moving from apollo to gemini).
+
+## Changes during build
+
+- **Carrying the current FTE.** Budgie's `what_if` reads a planned person from
+  the plan alone, so `--leaves Bob:2026-07-01` for someone only in
+  `allocations.csv` would zero his whole year. `money.what_if` first adds a
+  Jan 1 plan row at the person's flat FTE (a restatement, not new math).
+  Follow-up bead filed for Budgie to do this itself.
+- **`compare`'s `before`** is a `Money` (what-if) or the recorded history week
+  (after the fact): a week cannot be rebuilt into a `Money`. Both become a
+  `Side` (team figures plus each person's hours left).
+- **`parse_change(flag, names, year, *, leaves=False)`**: the names and year
+  are what it validates against; `leaves` picks the two-part shape.
+- **The team history row also records `signal`** (the stoplight label), so the
+  "before" stoplight is read, not re-derived from Budgie's thresholds.
+- **Milestones**: `Issue` gains `milestone` and `milestone_due` from the dump.
+  Their hours are the sum of each issue's modelled hours with the low–high
+  range, the same figure `perch board` shows; it is not a simulated P50.
+- **Leavers** come from the flags (`--leaves`, or `--fte` at 0); after the fact
+  no one is flagged as leaving.
+- **One seed for both sides.** With no `seed:` in budgie.yaml, `compare` draws
+  one seed and uses it before and after, so simulation noise never shows as
+  part of the change. After the fact, "before" is whatever `perch board`
+  recorded, with that run's draws, so its cost to clear can differ by noise.
+- **After the fact, planned hours left** also falls by the hours booked since
+  the recorded week; the run says so.
+- **Milestones count no-basis issues** in Open and show them beside the hours
+  ("+ n no basis"), never inside them.

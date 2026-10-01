@@ -2,7 +2,7 @@
 
     ~/work/pi/
       perch-home.yaml     gitboard_dir: ~/Documents/git/pi_suite/remote-gitboard
-      projects/apollo/    perch.yaml, history.jsonl, dumps/, weekly/
+      projects/apollo/    perch.yaml, history.jsonl, dumps/, weekly/, watch/
       budget/apollo/      the Budgie project (Budgie's own budget/ container)
 
 A project is one funded piece of work: one GitLab project, one Budgie project,
@@ -75,6 +75,10 @@ class Home:
 
     def weekly_path(self, name: str, week: str) -> Path:
         return self.projects_dir / name / "weekly" / f"{week}.md"
+
+    def watch_path(self, name: str, week: str) -> Path:
+        """The private watch: under the project, never beside the drafts."""
+        return self.projects_dir / name / "watch" / f"{week}.md"
 
     def reports_dir(self, name: str) -> Path:
         return self.gitboard_dir / "reports" / name
