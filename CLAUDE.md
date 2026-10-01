@@ -78,6 +78,10 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `core/weekly.py` -- `perch weekly`: per-person markdown from this run plus
   history. Read-only. A trailing comparison needs 4 prior weeks that hold that
   figure; below that it prints `not enough history: n of 8 weeks`, never a trend.
+- `core/watch.py` -- `perch watch`: four own-baseline signals per person, each
+  flagging only when out of line 3 of the last 4 weeks. Private to the lead:
+  nothing from it goes into a draft, an email or a report, and no output uses
+  a ranking word (a test checks). `monday` writes it in-process after its steps.
 
 ## Testing
 

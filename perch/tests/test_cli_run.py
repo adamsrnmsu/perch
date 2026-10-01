@@ -1,7 +1,10 @@
+from datetime import date
+
 import pytest
 from click.testing import CliRunner
 
 from perch.cli import cli
+from perch.core import steps
 from perch.core.steps import StepFailed
 from perch.tests.conftest import build_home
 
@@ -60,6 +63,11 @@ def test_monday_runs_the_five_steps_and_says_where_to_look(tmp_path, monkeypatch
     assert result.exit_code == 0, result.output
     assert [s.name for s in ran] == ["fetch", "board", "weekly", "digest", "emails"]
     assert "Review, then send yourself" in result.output
+    # the private watch: a file under the project, and one line
+    week = steps.iso_week(date.today())  # noqa: DTZ011 -- as monday names it
+    page = home.projects_dir / "apollo" / "watch" / f"{week}.md"
+    assert page.read_text().startswith("# Watch, grp/proj Dev, 2026-W17")
+    assert result.output.rstrip().endswith("watch: nothing out of line")
 
 
 def test_monday_all_carries_on_past_a_failure_and_exits_1(tmp_path, monkeypatch):
@@ -177,3 +185,14 @@ def test_doctor_reports_a_missing_gitlab_token(tmp_path, monkeypatch):
     result = run("doctor")
     assert result.exit_code == 1
     assert "FIX" in result.output and "read token not found" in result.output
+
+
+def test_a_watch_that_cannot_be_read_does_not_fail_monday(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    (home.projects_dir / "apollo" / "history.jsonl").write_text("not json\n")
+    monkeypatch.chdir(home.root)
+    recorder(monkeypatch)
+    result = run("monday")
+    assert result.exit_code == 0, result.output
+    assert "watch: could not be read:" in result.output
+    assert "Traceback" not in result.output

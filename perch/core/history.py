@@ -100,3 +100,13 @@ def latest_week(path: str | Path) -> list[dict]:
     rows = load(path)
     last = max((r["week"] for r in rows), default=None)
     return [r for r in rows if r["week"] == last]
+
+
+def figures(rows: list[dict], kind: str, name: str, key: str) -> dict[str, float]:
+    """One recorded figure by week (e.g. Alice's accuracy `ratio`); weeks
+    without it are left out."""
+    return {
+        r["week"]: r[key]
+        for r in rows
+        if r["kind"] == kind and r["name"] == name and r.get(key) is not None
+    }

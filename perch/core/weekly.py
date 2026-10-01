@@ -12,7 +12,7 @@ from statistics import mean
 
 from perch.core.accuracy import MIN_COVERAGE, PersonAccuracy
 from perch.core.board import Board
-from perch.core.history import week_key
+from perch.core.history import figures, week_key
 from perch.core.join import PersonRow, Rates
 from perch.core.money import Money
 
@@ -93,14 +93,8 @@ def _accuracy(
             f"withheld: {acc.covered} of {acc.closed} closed issues had an "
             f"estimate, under the {MIN_COVERAGE:.0%} needed."
         )
-    before = [
-        r["ratio"]
-        for r in rows
-        if r["kind"] == "accuracy"
-        and r["name"] == name
-        and r["week"] in weeks
-        and r.get("ratio") is not None
-    ]
+    ratios = figures(rows, "accuracy", name, "ratio")
+    before = [ratios[w] for w in weeks if w in ratios]
     now = f"{acc.ratio:.2f}x now"
     if len(before) < MIN_WEEKS:
         return head + f"{now}; {_thin(len(before))}."

@@ -1,17 +1,19 @@
 """The Budgie side: everything perch reads out of a Budgie project.
 
-This module, join.rollup and cut.parse_change (a `PlanEntry`) are the only
-places that import budgie.core, so a Budgie refactor has a short list of things
-it can break here.
+This module, join.rollup, cut.parse_change (a `PlanEntry`) and watch's working-day
+count are the only places that import budgie.core, so a Budgie refactor has a
+short list of things it can break here.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
+from budgie.core.burndown import BurndownStatus, burndown
+from budgie.core.monthly import _spent_at  # private until budgie-8u1
 from budgie.core.plan import PlanEntry
 from budgie.core.project import Snapshot, load_snapshot
 
@@ -30,6 +32,8 @@ class Money:
     budget: float | None = None
     iterations: int = 10_000
     seed: int | None = None
+    # Budgie's burn-down per allocated person: its pace line follows plan.csv
+    pace: dict[str, BurndownStatus] = field(default_factory=dict)
 
     @property
     def as_of(self) -> date | None:
@@ -50,6 +54,24 @@ class Money:
             if name in self.hourly_cost
         )
 
+    def planned(self, name: str, start: date, end: date) -> float | None:
+        """Hours Budgie's pace line plans for ``name`` after ``start``, through ``end``."""
+        pace = self.pace.get(name)
+        return None if pace is None else pace.expected_on(end) - pace.expected_on(start)
+
+    def booked(self, name: str, start: date, end: date) -> float | None:
+        """Hours booked after ``start`` through ``end``, interpolated between
+        readings the way Budgie's monthly view does. None without readings."""
+        series = self.readings.get(name)
+        if not series:
+            return None
+        before_year = date(self.year, 1, 1) - timedelta(days=1)  # the curve's 0
+
+        def at(day: date) -> float:
+            return _spent_at(series, max(day, before_year), self.year)
+
+        return at(end) - at(start)
+
 
 def load_money(project: str | Path) -> Money:
     """The project as Budgie reads it: every input-precedence rule is Budgie's."""
@@ -68,6 +90,12 @@ def money_from(snap: Snapshot) -> Money:
         budget=None if snap.budget is None else snap.budget.latest,
         iterations=snap.iterations,
         seed=snap.seed,
+        pace={
+            a.name: burndown(
+                a, snap.year, observations=snap.readings.get(a.name), plan=snap.plan
+            )
+            for a in snap.allocations
+        },
     )
 
 
