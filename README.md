@@ -36,6 +36,7 @@ perch doctor                   # tools, config, people names, freshness; FIX lin
 perch hours -p apollo          # paste this week's apollo timesheet totals
 perch monday --all             # fetch, board, weekly, digest, emails for every project
 perch watch -p apollo          # private: anyone out of line with their own last 8 weeks
+perch tui                      # every project in one table; single keys run the commands
 ```
 
 `-p NAME` picks a project. Without it, a `perch.yaml` in the current directory is used, then the project folder you are standing in, then the only project. Nothing is ever sent.

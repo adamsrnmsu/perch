@@ -13,6 +13,7 @@ dependencies = [
     "rich",
     "pyyaml",
     "numpy",
+    "textual",
 ]
 
 [project.optional-dependencies]

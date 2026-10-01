@@ -82,6 +82,10 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   flagging only when out of line 3 of the last 4 weeks. Private to the lead:
   nothing from it goes into a draft, an email or a report, and no output uses
   a ranking word (a test checks). `monday` writes it in-process after its steps.
+- `tui.py` -- `perch tui` (Textual): the projects table from what is on disk
+  (the last recorded team row, `doctor.freshness`, the watch's flag count only)
+  and keys that run `perch <command> -p NAME` through `_spawn`, which tests fake.
+  Display and key handling only, like cli.py.
 
 ## Testing
 

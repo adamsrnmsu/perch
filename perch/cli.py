@@ -852,3 +852,11 @@ def watch(config_path, project, all_projects):
             )
     if any(error for _, error in results):
         raise click.exceptions.Exit(1)
+
+
+@cli.command()
+def tui():
+    """Every project in one table; single keys run perch on the selected one."""
+    from perch.tui import PerchTUI
+
+    PerchTUI(_home()).run()
