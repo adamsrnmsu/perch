@@ -6,9 +6,9 @@ requires-python = ">=3.10"
 # Budgie is not on PyPI, and whatever answers to that name there is not ours,
 # so it is pinned to its repo by URL: an explicit URL never resolves to a
 # stranger's package. `make venv` then installs ../budgie editable on top for
-# local dev.
+# local dev. The repo is private, so the install uses your SSH key.
 dependencies = [
-    "budgie @ git+https://github.com/adamsrnmsu/budgie.git",
+    "budgie @ git+ssh://git@github.com/adamsrnmsu/budgie.git",
     "click",
     "rich",
     "pyyaml",

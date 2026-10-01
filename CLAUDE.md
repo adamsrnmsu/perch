@@ -30,7 +30,8 @@ The other apps are found beside this checkout (`../budgie`,
 `../remote-gitboard`); `BUDGIE_DIR=` and `GB_DIR=` override that.
 
 Budgie is a library dependency pinned in `pyproject.toml` by git URL
-(`budgie @ git+https://github.com/adamsrnmsu/budgie.git`), never by bare name: the PyPI name is not ours.
+(`budgie @ git+ssh://git@github.com/adamsrnmsu/budgie.git`), never by bare name: the PyPI name is not ours.
+The repo is private, so the install uses your SSH key.
 `make venv` installs `../budgie` editable after perch, so the local checkout
 wins for dev.
 `perch/tests/test_contract.py` lists every `budgie.core` name perch imports;

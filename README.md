@@ -18,7 +18,8 @@ make venv          # venv at ~/Documents/tools/perch; Budgie editable from ../bu
 ```
 
 `pyproject.toml` pins Budgie to its GitHub repo by URL (never PyPI, where the
-name is not ours), so a plain `pip install` of perch works anywhere. `make venv`
+name is not ours), so `pip install` of perch works anywhere your SSH key can reach
+the private repo. `make venv`
 then installs the sibling checkout editable on top (`BUDGIE_DIR=../budgie` to
 override), so local Budgie edits show up in perch at once.
 
