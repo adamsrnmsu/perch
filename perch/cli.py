@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import click
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 console = Console()
@@ -33,7 +37,7 @@ def _rate(value: float) -> str:
     return f"{round(value * 2) / 2:g}"
 
 
-def _load(config_path):
+def _load(config_path: Path):
     from perch.core.board import load_board
     from perch.core.config import load_config
     from perch.core.estimates import load_estimates
@@ -51,10 +55,65 @@ def _load(config_path):
 _config_option = click.option(
     "--config",
     "config_path",
-    default="perch.yaml",
-    show_default=True,
-    help="The perch.yaml naming the Budgie project and the gitboard dump.",
+    default=None,
+    help="A perch.yaml to use instead of a workspace project.",
 )
+_project_option = click.option(
+    "-p",
+    "--project",
+    default=None,
+    help="Which project under projects/ (needed when there are several).",
+)
+
+
+def _bin_dir() -> Path:
+    """perch's venv: `perch` and `budgie` (installed there) sit beside python."""
+    return Path(sys.executable).parent
+
+
+def _find_home():
+    from perch.core.workspace import find_home
+
+    return find_home(Path.cwd(), os.environ)
+
+
+def _home():
+    from perch.core.workspace import WorkspaceError
+
+    try:
+        return _find_home()
+    except WorkspaceError as exc:
+        raise click.ClickException(str(exc)) from exc
+
+
+def _config_path(config_path: str | None, project: str | None) -> Path:
+    """--config wins; then -p in the workspace; outside one, ./perch.yaml."""
+    from perch.core.config import CONFIG_NAME
+    from perch.core.workspace import WorkspaceError
+
+    if config_path:
+        return Path(config_path)
+    try:
+        home = _find_home()
+    except WorkspaceError:
+        if project is None and Path(CONFIG_NAME).is_file():
+            return Path(CONFIG_NAME)
+        raise
+    return home.config_path(home.select(project))
+
+
+def _run(step) -> None:
+    """Run one step in this terminal; the tool's own output shows as it happens."""
+    from perch.core.steps import StepFailed
+
+    for directory in step.makes:
+        directory.mkdir(parents=True, exist_ok=True)
+    console.print(f"[bold]{escape(step.name)}[/bold] [dim]{escape(step.shown())}[/dim]")
+    code = subprocess.run(
+        step.argv, cwd=step.cwd, env={**os.environ, **step.env}, check=False
+    ).returncode
+    if code:
+        raise StepFailed(step, code)
 
 
 @click.group()
@@ -64,17 +123,20 @@ def cli():
 
 @cli.command()
 @_config_option
+@_project_option
 @click.option("--seed", default=None, type=int, help="Seed the simulation.")
 @click.option("--iterations", default=None, type=int, help="Simulation draws.")
 @click.option("--no-history", is_flag=True, help="Don't append to history.jsonl.")
-def board(config_path, seed, iterations, no_history):
+def board(config_path, project, seed, iterations, no_history):
     """Cost to clear the open board, against the hours and budget left."""
     from perch.core.accuracy import by_person
     from perch.core.history import record, rows_for
     from perch.core.join import notes, person_rows, rollup
 
     try:
-        config, the_board, money, estimates, rates = _load(config_path)
+        config, the_board, money, estimates, rates = _load(
+            _config_path(config_path, project)
+        )
     except (OSError, TypeError, ValueError) as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -160,12 +222,15 @@ def _print_rates(rates):
 
 @cli.command()
 @_config_option
-def accuracy(config_path):
+@_project_option
+def accuracy(config_path, project):
     """How estimates compared with what the work took."""
     from perch.core.accuracy import by_label, by_person
 
     try:
-        config, the_board, money, estimates, rates = _load(config_path)
+        config, the_board, money, estimates, rates = _load(
+            _config_path(config_path, project)
+        )
     except (OSError, TypeError, ValueError) as exc:
         raise click.ClickException(str(exc)) from exc
     if not estimates:
@@ -212,9 +277,10 @@ def accuracy(config_path):
 
 @cli.command()
 @_config_option
+@_project_option
 @click.option("--person", default=None, help="Only this person (a name in `people:`).")
 @click.option("--out", "out_path", default=None, help="Write the markdown here.")
-def weekly(config_path, person, out_path):
+def weekly(config_path, project, person, out_path):
     """Per-person markdown drafts for the weekly digest. Nothing is sent."""
     from perch.core.accuracy import by_person
     from perch.core.history import load
@@ -222,7 +288,9 @@ def weekly(config_path, person, out_path):
     from perch.core.weekly import weekly as render
 
     try:
-        config, the_board, money, estimates, rates = _load(config_path)
+        config, the_board, money, estimates, rates = _load(
+            _config_path(config_path, project)
+        )
         rows = person_rows(the_board, estimates, rates, config.people, money)
         text = render(
             the_board,
@@ -242,3 +310,90 @@ def weekly(config_path, person, out_path):
         console.print(f"Wrote {out_path}")
     else:
         click.echo(text, nl=False)
+
+
+@cli.command()
+def projects():
+    """The projects in this workspace and how fresh each one's data is."""
+    from perch.core.config import load_config
+    from perch.core.doctor import age
+
+    home = _home()
+    names = home.projects()
+    if not names:
+        console.print("No projects yet. Run: perch init <name>")
+        return
+    console.print(f"Workspace {home.root}", markup=False, highlight=False)
+    for name in names:
+        try:
+            c = load_config(home.config_path(name), require_dump=False)
+        except (OSError, TypeError, ValueError) as exc:
+            console.print(f"  {name}  [red]{escape(str(exc))}[/red]", highlight=False)
+            continue
+        gitlab = c.gitlab_project or "[red]not set[/red]"
+        budget = os.path.relpath(c.budgie_project, home.root)
+        console.print(
+            f"  [bold]{name}[/bold]  GitLab {gitlab}  Budgie {budget}", highlight=False
+        )
+        console.print(
+            f"      dump {age(c.board_dump)} · weekly.csv "
+            f"{age(c.budgie_project / 'weekly.csv')} · history {age(c.history)}",
+            highlight=False,
+        )
+
+
+@cli.command()
+@click.argument("name")
+@click.option(
+    "--home",
+    "home_dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Make this directory the workspace (writes perch-home.yaml).",
+)
+@click.option(
+    "--gitboard-dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="The remote-gitboard checkout; needed with --home the first time.",
+)
+def init(name, home_dir, gitboard_dir):
+    """Scaffold projects/NAME/perch.yaml and the Budgie project budget/NAME."""
+    from perch.core.steps import StepFailed, budgie_init
+    from perch.core.workspace import HOME_NAME, check_name, create_home, load_home
+
+    try:
+        check_name(name)
+        if home_dir is None:
+            home = _find_home()
+        elif (home_dir / HOME_NAME).is_file():
+            home = load_home(home_dir / HOME_NAME)
+        elif gitboard_dir is None:
+            raise click.ClickException(
+                f"{home_dir} has no {HOME_NAME} yet; pass --gitboard-dir "
+                "<remote-gitboard checkout> too"
+            )
+        else:
+            home = create_home(home_dir, gitboard_dir.expanduser().resolve())
+        if home.config_path(name).exists():
+            raise click.ClickException(
+                f"{home.config_path(name)} exists; edit it instead."
+            )
+        if not (home.budget_dir(name) / "budgie.yaml").is_file():
+            _run(budgie_init(_bin_dir(), home, name))
+        path = home.scaffold(name)
+    except StepFailed as exc:
+        raise click.ClickException(f"{name}: {exc}") from exc
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    budget = os.path.relpath(home.budget_dir(name), home.root)
+    console.print(f"Wrote {path}. Fill in:", markup=False, highlight=False)
+    console.print(
+        f"  gitlab_project:  the GitLab path, e.g. group/{name}", markup=False
+    )
+    console.print(
+        f"  people:          GitLab username -> name in {budget}/people.csv",
+        markup=False,
+    )
+    console.print(f"  {budget}/  the Budgie inputs: budgie guide", markup=False)
+    console.print(f"Then: perch doctor -p {name}", markup=False)
