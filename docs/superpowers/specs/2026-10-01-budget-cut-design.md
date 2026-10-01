@@ -1,6 +1,6 @@
 # perch cut: what no longer fits after a budget cut or a plan change
 
-Date: 2026-10-01. Status: design approved in conversation; spec awaiting review.
+Date: 2026-10-01. Status: design approved; built (see Changes during build).
 Bead: perch-mo4.
 
 ## Purpose
@@ -139,3 +139,11 @@ All against the hand-checkable world in `perch/tests/conftest.py`:
   range, the same figure `perch board` shows; it is not a simulated P50.
 - **Leavers** come from the flags (`--leaves`, or `--fte` at 0); after the fact
   no one is flagged as leaving.
+- **One seed for both sides.** With no `seed:` in budgie.yaml, `compare` draws
+  one seed and uses it before and after, so simulation noise never shows as
+  part of the change. After the fact, "before" is whatever `perch board`
+  recorded, with that run's draws, so its cost to clear can differ by noise.
+- **After the fact, planned hours left** also falls by the hours booked since
+  the recorded week; the run says so.
+- **Milestones count no-basis issues** in Open and show them beside the hours
+  ("+ n no basis"), never inside them.

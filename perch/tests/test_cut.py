@@ -153,3 +153,30 @@ def test_fte_flag(world):
     assert parse_change("Alice:2026-11-01:0.5", NAMES, 2026) == PlanEntry(
         "Alice", date(2026, 11, 1), 0.5
     )
+
+
+def test_without_a_seed_both_sides_share_the_draws(world):
+    """No `seed:` in budgie.yaml: a budget-only cut must not move the P50."""
+    (world.parent / "fy26" / "budgie.yaml").write_text("year: 2026\nbudget: 100000\n")
+    config, board, estimates, rates, snap = _load(world)
+    assert snap.seed is None
+    cut = compare(
+        money_from(snap),
+        money_from(what_if(snap, budget=40000)),
+        board,
+        estimates,
+        rates,
+        config.people,
+    )
+    assert cut.before.clear_p50 == cut.after.clear_p50
+
+
+def test_a_milestone_counts_the_issues_with_no_basis(world):
+    from perch.core.join import Rates
+
+    config, board, _, _, snap = _load(world)
+    money = money_from(snap)
+    nothing = Rates(people={}, team=None, types=None)  # no estimates, no rates
+    cut = compare(money, money, board, {}, nothing, config.people)
+    (rest,) = cut.milestones
+    assert (rest.open, rest.mode, rest.no_basis) == (7, 0, 7)

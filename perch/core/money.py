@@ -79,6 +79,7 @@ def what_if(
     Budgie reads a planned person from the plan alone, so `Bob leaves in July`
     for someone only in allocations.csv would zero his whole year. Restating
     his flat FTE as a Jan 1 row first keeps January to June as it was.
+    Remove the seeding (and its contract asserts) when perch-22d lands in Budgie.
     """
     planned = set(snap.plan.names) if snap.plan else set()
     flat = {a.name: a.fte for a in snap.allocations}

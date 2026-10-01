@@ -682,6 +682,7 @@ def cut(config_path, project, new_budget, leaves, fte):
         now = m.money_from(snap)
         estimates = load_estimates(config.estimates) if config.estimates else {}
         rates = calibrate(now.readings, the_board, config.people, now.year)
+        since = None
         if changes or new_budget is not None:
             before, after = now, m.money_from(m.what_if(snap, new_budget, changes))
             title = "What-if: today's files, then with the change"
@@ -692,7 +693,8 @@ def cut(config_path, project, new_budget, leaves, fte):
                     f"no week in {config.history} yet: run `perch board` first, "
                     "or give --budget/--leaves/--fte for a what-if"
                 )
-            title = f"Since {before[0]['week']}, the last week `perch board` recorded"
+            since = before[0]["week"]
+            title = f"Since {since}, the last week `perch board` recorded"
         result = compare(
             before, after, the_board, estimates, rates, config.people, changes
         )
@@ -713,11 +715,17 @@ def cut(config_path, project, new_budget, leaves, fte):
         if result.spare < 0:
             fits = f"[bold red]short by {_hours(-result.spare)} h[/bold red]"
         else:
-            fits = f"still fits with {_hours(result.spare)} h spare"
+            fits = f"hours still fit: {_hours(result.spare)} h spare"
         console.print(
             f"Board needs {_hours(result.board_hours)} h; the team has "
             f"{_hours(a.left)} h left after the change: {fits}",
             highlight=False,
+            soft_wrap=True,
+        )
+    if since:
+        console.print(
+            f"[dim]Planned hours left also falls by the hours booked since {since}."
+            "[/dim]",
             soft_wrap=True,
         )
     if b.old_row:
@@ -750,9 +758,11 @@ def cut(config_path, project, new_budget, leaves, fte):
                 f"{p.name} leaves {p.leaves}: no open issues", highlight=False
             )
             continue
+        issues = "1 open issue" if p.row.open == 1 else f"{p.row.open} open issues"
+        needs = "needs" if p.row.open == 1 else "need"
         console.print(
-            f"{p.name} leaves {p.leaves}: {p.row.open} open issues "
-            f"({_hours(p.row.mode)} h) need a new owner: "
+            f"{p.name} leaves {p.leaves}: {issues} "
+            f"({_hours(p.row.mode)} h) {needs} a new owner: "
             + ", ".join(f"#{iid}" for iid in p.issues),
             highlight=False,
             soft_wrap=True,
@@ -765,7 +775,8 @@ def cut(config_path, project, new_budget, leaves, fte):
         milestones.add_row(
             ms.name or "no milestone",
             str(ms.open),
-            _spread(ms.low, ms.mode, ms.high),
+            _spread(ms.low, ms.mode, ms.high)
+            + (f" + {ms.no_basis} no basis" if ms.no_basis else ""),
             str(ms.due) if ms.due else "—",
         )
     console.print(milestones)

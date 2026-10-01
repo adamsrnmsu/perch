@@ -63,3 +63,20 @@ def test_what_if_bob_leaves_on_july_1(world):
 def test_what_if_budget_replaces_the_budget(world):
     snap = load_snapshot(world.parent / "fy26")
     assert money_from(what_if(snap, budget=40000)).budget == 40000
+
+
+def test_what_if_adds_no_jan_1_row_for_someone_already_planned(world):
+    """Bob is 0.5 FTE to Feb 28 (39 working days: Jan 1 and Jan 19, Feb 16 off),
+    then 0.25 to Jun 30 (85), then leaves: (39 x 0.5 + 85 x 0.25) x 7.968."""
+    project = world.parent / "fy26"
+    (project / "plan.csv").write_text(
+        "name,effective_date,fte\nBob,2026-01-01,0.5\nBob,2026-03-01,0.25\n"
+    )
+    snap = load_snapshot(project)
+    after = what_if(snap, changes=[PlanEntry("Bob", date(2026, 7, 1), 0)])
+    assert money_from(after).allocated["Bob"] == pytest.approx(324.696)
+    assert after.plan.entries == (
+        PlanEntry("Bob", date(2026, 1, 1), 0.5),
+        PlanEntry("Bob", date(2026, 3, 1), 0.25),
+        PlanEntry("Bob", date(2026, 7, 1), 0),
+    )

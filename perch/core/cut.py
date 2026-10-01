@@ -6,6 +6,7 @@ suggests what to drop. The allocation math is Budgie's (`money.what_if`).
 
 from __future__ import annotations
 
+import random
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
@@ -121,6 +122,7 @@ class Milestone:
     low: float
     mode: float
     high: float
+    no_basis: int = 0  # counted in `open`, left out of the hours
 
 
 @dataclass(frozen=True)
@@ -148,7 +150,13 @@ def compare(
     iterations: int | None = None,
     seed: int | None = None,
 ) -> Cut:
-    """Before (a Money, or a recorded history week) against after, on this board."""
+    """Before (a Money, or a recorded history week) against after, on this board.
+
+    Both sides share one seed, so a project with no `seed:` does not show
+    simulation noise as part of the change.
+    """
+    if seed is None:
+        seed = after.seed if after.seed is not None else random.randrange(2**32)
     rows = person_rows(board, estimates, rates, people, after)
     if isinstance(before, Money):
         old = person_rows(board, estimates, rates, people, before)
@@ -201,6 +209,7 @@ def _milestones(board, estimates, rates, people) -> list[Milestone]:
                 low=sum(h.low for h in known),
                 mode=sum(h.mode for h in known),
                 high=sum(h.high for h in known),
+                no_basis=len(found) - len(known),
             )
         )
     return sorted(out, key=lambda m: (m.name is None, m.due or date.max, m.name or ""))
