@@ -63,7 +63,9 @@ def test_hours_under_plan_3_of_4_weeks_flags(world):
     result = world_watch(world, history(13))
     alice = signal(result, "Alice", "hours vs plan")
     assert alice.flagged
-    assert "booked 40 h vs 76 h planned over the 4 weeks to 2026-04-19" in alice.text
+    assert alice.text.startswith(
+        "booked 40 h vs 76 h planned over the 4 weeks to 2026-04-19 (1 reading(s));"
+    )
     assert "out of line 3 of the last 4 weeks" in alice.text
     bob = signal(result, "Bob", "hours vs plan")
     assert bob.flagged and "booked 20 h vs 76 h" in bob.text

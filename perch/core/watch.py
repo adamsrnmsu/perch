@@ -95,12 +95,14 @@ def _plan(money: Money, name: str) -> Signal:
     # A week at 0 FTE plans 0 hours, so leave and departures are never out of line.
     flagged, tally = _tally([0 < p and b < PLAN_SHARE * p for b, p in figures])
     booked, planned = figures[0]
+    # between readings the hours are interpolated, so say how many there were
+    read = sum(anchors[0] - span < day <= anchors[0] for day, _ in money.readings[name])
     return Signal(
         PLAN,
         flagged,
         f"booked {_h(booked)} h vs {_h(planned)} h planned over the {RECENT} weeks "
-        f"to {anchors[0]}; {tally}",
-        RECENT,
+        f"to {anchors[0]} ({read} reading(s)); {tally}",
+        read,
     )
 
 
