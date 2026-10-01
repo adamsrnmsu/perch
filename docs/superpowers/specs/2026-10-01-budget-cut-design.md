@@ -119,3 +119,23 @@ All against the hand-checkable world in `perch/tests/conftest.py`:
 - Ordering issues, or suggesting what to cut.
 - Writing changes back to `budget.csv` or `plan.csv`.
 - Cross-project moves (someone moving from apollo to gemini).
+
+## Changes during build
+
+- **Carrying the current FTE.** Budgie's `what_if` reads a planned person from
+  the plan alone, so `--leaves Bob:2026-07-01` for someone only in
+  `allocations.csv` would zero his whole year. `money.what_if` first adds a
+  Jan 1 plan row at the person's flat FTE (a restatement, not new math).
+  Follow-up bead filed for Budgie to do this itself.
+- **`compare`'s `before`** is a `Money` (what-if) or the recorded history week
+  (after the fact): a week cannot be rebuilt into a `Money`. Both become a
+  `Side` (team figures plus each person's hours left).
+- **`parse_change(flag, names, year, *, leaves=False)`**: the names and year
+  are what it validates against; `leaves` picks the two-part shape.
+- **The team history row also records `signal`** (the stoplight label), so the
+  "before" stoplight is read, not re-derived from Budgie's thresholds.
+- **Milestones**: `Issue` gains `milestone` and `milestone_due` from the dump.
+  Their hours are the sum of each issue's modelled hours with the low–high
+  range, the same figure `perch board` shows; it is not a simulated P50.
+- **Leavers** come from the flags (`--leaves`, or `--fte` at 0); after the fact
+  no one is flagged as leaving.

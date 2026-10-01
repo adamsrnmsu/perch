@@ -73,7 +73,16 @@ gitboard stats group/project --dump dumps/team.json    # in the gitboard repo
 perch board [-p NAME]                                 # or --config FILE
 perch accuracy
 perch weekly [--person NAME] [--out FILE]        # markdown drafts, nothing sent
+perch cut [--budget N] [--leaves NAME:DATE]... [--fte NAME:DATE:FTE]...
 ```
+
+`perch cut` is the join run backwards: what no longer fits after a budget cut
+or a plan change. With flags it is a what-if (today's files, then today's
+files with the change; nothing is written). With none it compares the last
+week `perch board` recorded against today's files. It shows the team's hours
+left, budget, cost to clear, headroom and stoplight before → after, each
+person's hours left in name order, whose open issues need a new owner, and
+each milestone's open work. It never says which issues to drop.
 
 `perch.yaml`:
 

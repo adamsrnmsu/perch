@@ -1,8 +1,9 @@
 from datetime import date
 
 import pytest
+from budgie.core.plan import PlanEntry
 
-from perch.core.money import load_money
+from perch.core.money import load_money, load_snapshot, money_from, what_if
 
 
 def test_the_budgie_side(world):
@@ -42,3 +43,23 @@ def test_a_project_without_a_year_is_refused(world):
     (world.parent / "fy26" / "budgie.yaml").write_text("budget: 1\n")
     with pytest.raises(ValueError, match="`year` is not set"):
         load_money(world.parent / "fy26")
+
+
+def test_what_if_bob_leaves_on_july_1(world):
+    """1,992 h over 2026's 250 working days is 7.968 h/day. Jan 1 - Jun 30 has
+    129 weekdays less 5 holidays (Jan 1, Jan 19, Feb 16, May 25, Jun 19) = 124,
+    so Bob at 0.5 FTE until July buys 0.5 x 124 x 7.968 = 494.016 h. He is only
+    in allocations.csv, so his 0.5 FTE is carried from Jan 1 first; without
+    that the plan would zero his whole year.
+    """
+    snap = load_snapshot(world.parent / "fy26")
+    after = money_from(what_if(snap, changes=[PlanEntry("Bob", date(2026, 7, 1), 0)]))
+    assert after.allocated["Bob"] == pytest.approx(494.016)
+    assert after.left["Bob"] == pytest.approx(494.016 - 120)
+    assert after.allocated["Alice"] == 996
+    assert money_from(snap) == load_money(world.parent / "fy26")
+
+
+def test_what_if_budget_replaces_the_budget(world):
+    snap = load_snapshot(world.parent / "fy26")
+    assert money_from(what_if(snap, budget=40000)).budget == 40000

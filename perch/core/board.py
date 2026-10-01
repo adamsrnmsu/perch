@@ -27,6 +27,8 @@ class Issue:
     closed_on: date | None
     blocked_since: date | None = None  # last move into Blocked, if it is there
     questions: tuple[str, ...] = ()  # unanswered `Q:` notes, as gitboard exports
+    milestone: str | None = None
+    milestone_due: date | None = None
 
     @property
     def is_blocked(self) -> bool:
@@ -97,6 +99,10 @@ def _blocked_since(record: dict) -> date | None:
     return _day(moves[-1]) if moves else None
 
 
+def _due(day: str | None) -> date | None:
+    return date.fromisoformat(day) if day else None
+
+
 def load_board(path: str | Path) -> Board:
     path = Path(path)
     try:
@@ -111,6 +117,8 @@ def load_board(path: str | Path) -> Board:
                 blocked_since=_blocked_since(record),
                 # absent in dumps from before gitboard's gb-b23: no questions
                 questions=tuple(q["text"] for q in record.get("questions") or ()),
+                milestone=record.get("milestone") or None,
+                milestone_due=_due(record.get("milestone_due")),
             )
             for record in meta["history"]
         )

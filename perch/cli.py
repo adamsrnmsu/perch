@@ -192,7 +192,13 @@ def board(config_path, project, seed, iterations, no_history):
         record(
             config.history,
             the_board.fetched_on,
-            rows_for(rows, rates, summary, accuracy if estimates else ()),
+            rows_for(
+                rows,
+                rates,
+                summary,
+                accuracy if estimates else (),
+                left=sum(money.left.values()),
+            ),
         )
 
 
@@ -620,3 +626,150 @@ def doctor(project):
             )
     if failed:
         raise click.exceptions.Exit(1)
+
+
+def _change(before, after, show) -> str:
+    return f"{show(before)} → {show(after)}"
+
+
+def _label(value: str | None) -> str:
+    return "—" if value is None else value.upper()
+
+
+@cli.command()
+@_config_option
+@_project_option
+@click.option(
+    "--budget",
+    "new_budget",
+    type=click.FloatRange(min=0, min_open=True),
+    default=None,
+    help="What-if: this budget instead of the latest.",
+)
+@click.option(
+    "--leaves",
+    multiple=True,
+    metavar="NAME:YYYY-MM-DD",
+    help="What-if: NAME is at 0 FTE from that date. Repeatable.",
+)
+@click.option(
+    "--fte",
+    multiple=True,
+    metavar="NAME:YYYY-MM-DD:FTE",
+    help="What-if: NAME is at FTE from that date. Repeatable.",
+)
+def cut(config_path, project, new_budget, leaves, fte):
+    """What no longer fits after a budget cut or plan change. Writes nothing.
+
+    With flags, today's files against today's files changed by the flags. With
+    none, the last week `perch board` recorded against today's files.
+    """
+    from perch.core import money as m
+    from perch.core.board import load_board
+    from perch.core.config import load_config
+    from perch.core.cut import compare, parse_change
+    from perch.core.estimates import load_estimates
+    from perch.core.history import latest_week
+    from perch.core.join import calibrate, notes
+
+    try:
+        config = load_config(_config_path(config_path, project))
+        the_board = load_board(config.board_dump)
+        snap = m.load_snapshot(config.budgie_project)
+        names = {p.name for p in snap.people}
+        changes = [parse_change(f, names, snap.year, leaves=True) for f in leaves]
+        changes += [parse_change(f, names, snap.year) for f in fte]
+        now = m.money_from(snap)
+        estimates = load_estimates(config.estimates) if config.estimates else {}
+        rates = calibrate(now.readings, the_board, config.people, now.year)
+        if changes or new_budget is not None:
+            before, after = now, m.money_from(m.what_if(snap, new_budget, changes))
+            title = "What-if: today's files, then with the change"
+        else:
+            before, after = latest_week(config.history), now
+            if not before:
+                raise click.ClickException(
+                    f"no week in {config.history} yet: run `perch board` first, "
+                    "or give --budget/--leaves/--fte for a what-if"
+                )
+            title = f"Since {before[0]['week']}, the last week `perch board` recorded"
+        result = compare(
+            before, after, the_board, estimates, rates, config.people, changes
+        )
+    except (OSError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    b, a = result.before, result.after
+    console.print(f"[bold]{escape(title)}[/bold]", highlight=False)
+    for label, old, new, show in (
+        ("Planned hours left", b.left, a.left, _hours),
+        ("Budget", b.budget, a.budget, _money),
+        ("Cost to clear (P50)", b.clear_p50, a.clear_p50, _money),
+        ("Headroom", b.headroom, a.headroom, _money),
+        ("Stoplight", b.signal, a.signal, _label),
+    ):
+        console.print(f"{label:<22}{_change(old, new, show)}", highlight=False)
+    if result.spare is not None:
+        if result.spare < 0:
+            fits = f"[bold red]short by {_hours(-result.spare)} h[/bold red]"
+        else:
+            fits = f"still fits with {_hours(result.spare)} h spare"
+        console.print(
+            f"Board needs {_hours(result.board_hours)} h; the team has "
+            f"{_hours(a.left)} h left after the change: {fits}",
+            highlight=False,
+            soft_wrap=True,
+        )
+    if b.old_row:
+        console.print(
+            "[yellow]![/yellow] That week was recorded before budget and hours "
+            "left were; a fresh `perch board` will record them.",
+            soft_wrap=True,
+        )
+
+    people = Table(title="People (name order)")
+    for head in ("Name", "Hours left", "Open", "Hours", "Basis"):
+        people.add_column(
+            head, justify="left" if head in ("Name", "Basis") else "right"
+        )
+    for p in result.people:
+        r = p.row
+        people.add_row(
+            p.name,
+            _change(p.left_before, p.left_after, _hours),
+            str(r.open) if r else "0",
+            _spread(r.low, r.mode, r.high) if r else "—",
+            (", ".join(r.bases) or "no basis") if r else "",
+        )
+    console.print(people)
+    for p in result.people:
+        if p.leaves is None:
+            continue
+        if p.row is None:
+            console.print(
+                f"{p.name} leaves {p.leaves}: no open issues", highlight=False
+            )
+            continue
+        console.print(
+            f"{p.name} leaves {p.leaves}: {p.row.open} open issues "
+            f"({_hours(p.row.mode)} h) need a new owner: "
+            + ", ".join(f"#{iid}" for iid in p.issues),
+            highlight=False,
+            soft_wrap=True,
+        )
+
+    milestones = Table(title="Milestones: open work")
+    for head in ("Milestone", "Open", "Hours", "Due"):
+        milestones.add_column(head, justify="left" if head == "Milestone" else "right")
+    for ms in result.milestones:
+        milestones.add_row(
+            ms.name or "no milestone",
+            str(ms.open),
+            _spread(ms.low, ms.mode, ms.high),
+            str(ms.due) if ms.due else "—",
+        )
+    console.print(milestones)
+    for note in notes(
+        the_board, [p.row for p in result.people if p.row], config.people, after
+    ):
+        console.print(f"[yellow]![/yellow] {note}")

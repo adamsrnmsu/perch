@@ -1,16 +1,19 @@
 """The Budgie side: everything perch reads out of a Budgie project.
 
-This module and join.rollup are the only places that import budgie.core, so a
-Budgie refactor has a short list of things it can break here.
+This module, join.rollup and cut.parse_change (a `PlanEntry`) are the only
+places that import budgie.core, so a Budgie refactor has a short list of things
+it can break here.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
-from budgie.core.project import load_snapshot
+from budgie.core.plan import PlanEntry
+from budgie.core.project import Snapshot, load_snapshot
 
 # (reading date, cumulative hours through that date)
 Reading = tuple[date, float]
@@ -50,7 +53,11 @@ class Money:
 
 def load_money(project: str | Path) -> Money:
     """The project as Budgie reads it: every input-precedence rule is Budgie's."""
-    snap = load_snapshot(project)
+    return money_from(load_snapshot(project))
+
+
+def money_from(snap: Snapshot) -> Money:
+    """Money from an already-loaded (or what-if) Budgie snapshot."""
     return Money(
         year=snap.year,
         hourly_cost={p.name: p.hourly_cost for p in snap.people},
@@ -62,3 +69,22 @@ def load_money(project: str | Path) -> Money:
         iterations=snap.iterations,
         seed=snap.seed,
     )
+
+
+def what_if(
+    snap: Snapshot, budget: float | None = None, changes: Sequence[PlanEntry] = ()
+) -> Snapshot:
+    """Budgie's what-if, with each changed person's current FTE carried from Jan 1.
+
+    Budgie reads a planned person from the plan alone, so `Bob leaves in July`
+    for someone only in allocations.csv would zero his whole year. Restating
+    his flat FTE as a Jan 1 row first keeps January to June as it was.
+    """
+    planned = set(snap.plan.names) if snap.plan else set()
+    flat = {a.name: a.fte for a in snap.allocations}
+    seeds = [
+        PlanEntry(name, date(snap.year, 1, 1), flat[name])
+        for name in dict.fromkeys(c.name for c in changes)
+        if name not in planned and name in flat
+    ]
+    return snap.what_if(budget=budget, plan_entries=[*seeds, *changes])
