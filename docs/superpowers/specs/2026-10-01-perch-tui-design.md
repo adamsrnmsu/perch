@@ -91,3 +91,23 @@ world:
 - Editing board YAML (gitboard's TUI does that).
 - Budgie's own screens (`budgie tui`).
 - Mouse-only features.
+
+## Changes during build
+
+- `a` runs `perch monday --all` with no `-p`: the CLI refuses `-p` with
+  `--all`. Its output lines are prefixed `all:`.
+- The flag count shows "—" when the watch raises (no dump, a bad config) and
+  when it has under 4 weeks of history (every signal then reads "not enough
+  history"); otherwise the count, 0 included.
+- The ages are `doctor.freshness`'s last-written times, as `perch doctor`
+  prints them.
+- `?` opens Textual's built-in key help panel.
+- `c` with an empty line runs `perch cut -p NAME` (since the last recorded
+  week).
+- Escape closes the `cut` input without running anything.
+- A row catches any exception, not only the config errors: the table is a
+  display boundary, so one bad project shows `error: <type>: <message>`.
+- `perch.core.watch.Watch` carries `weeks` (the prior weeks behind it) and
+  `thin`, which the flag column reads.
+- The tests are plain functions running `App.run_test()` under
+  `asyncio.run`, so perch needs no pytest-asyncio.
