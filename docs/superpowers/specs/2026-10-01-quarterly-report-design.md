@@ -178,3 +178,30 @@ What they cover:
 - Fiscal quarters other than the calendar quarter.
 - Rolling 13-week windows.
 - Sending mail.
+
+## Changes during build
+
+- **The forecast's non-labor is its fixed total.** `budgie forecast` passes the
+  cost lines to `simulate`; `Snapshot` carries only `non_labor`, and perch does
+  not re-read costs.csv. The two agree unless costs.csv gives a line `low`/
+  `high`. Follow-up: Budgie's `Snapshot` to carry the cost lines.
+- **The forecast is as of the report's last day.** Readings after the quarter
+  are left out (`at_completion(as_of=...)`, as `budgie forecast --as-of`), and
+  the signal tests the budget in force at the quarter's end, the same figure
+  the subject line quotes. `budgie forecast` itself tests `latest`.
+- **No previous-quarter column.** The dump does not record how far back it
+  reaches, so perch takes gitboard's 90 days from `fetched_at`; under that, a
+  previous quarter is never wholly covered once the next one has started.
+  Follow-up: gitboard to write its window (`since`) into the dump.
+- **`build` takes `today` and the project name.** Whether a quarter is still
+  running depends on the date; the name is the project folder's.
+- **A quarter still running** stops at the latest reading. A finished one runs
+  to its last day, but a week past the latest reading shows no hours (unknown,
+  not zero) and Blocked time stops at the dump's fetch.
+- **Jan 1 plan rows are the starting team,** not joins.
+- **Reopens are moves out of Done.** The dump holds only board-column label
+  moves, so a reopen without a Done label is not seen.
+- **Estimate misses drop labels with no issue closed in the quarter.** A label
+  estimate covers the whole label, so the row compares that whole estimate
+  with the hours modelled for the quarter's slice; the report says so.
+- **`--out` with `--all`** writes one folder per project under the directory.

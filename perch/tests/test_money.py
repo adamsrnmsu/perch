@@ -42,3 +42,17 @@ def test_a_project_without_a_year_is_refused(world):
     (world.parent / "fy26" / "budgie.yaml").write_text("budget: 1\n")
     with pytest.raises(ValueError, match="`year` is not set"):
         load_money(world.parent / "fy26")
+
+
+def test_the_dated_budget_and_plan_pass_through(quarter_world):
+    money = load_money(quarter_world.parent / "fy26")
+    assert money.budget_revisions.amount_on(date(2026, 4, 14)) == 100000
+    assert money.budget == 120000
+    assert money.plan.fte_on("Bob", date(2026, 5, 1)) == 0.25
+    assert [p.name for p in money.people] == ["Alice", "Bob"]
+    assert money.pto == 0
+
+
+def test_a_pinned_budget_has_no_revisions(world):
+    money = load_money(world.parent / "fy26")
+    assert money.budget_revisions is None and money.plan is None

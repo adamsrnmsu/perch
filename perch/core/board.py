@@ -27,6 +27,8 @@ class Issue:
     closed_on: date | None
     blocked_since: date | None = None  # last move into Blocked, if it is there
     questions: tuple[str, ...] = ()  # unanswered `Q:` notes, as gitboard exports
+    # (date, "add" | "remove", column label): the card's moves across the board
+    transitions: tuple[tuple[date, str, str], ...] = ()
 
     @property
     def is_blocked(self) -> bool:
@@ -111,6 +113,10 @@ def load_board(path: str | Path) -> Board:
                 blocked_since=_blocked_since(record),
                 # absent in dumps from before gitboard's gb-b23: no questions
                 questions=tuple(q["text"] for q in record.get("questions") or ()),
+                transitions=tuple(
+                    (_day(stamp), action, label)
+                    for stamp, action, label in record.get("transitions") or ()
+                ),
             )
             for record in meta["history"]
         )

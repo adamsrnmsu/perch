@@ -73,7 +73,17 @@ gitboard stats group/project --dump dumps/team.json    # in the gitboard repo
 perch board [-p NAME]                                 # or --config FILE
 perch accuracy
 perch weekly [--person NAME] [--out FILE]        # markdown drafts, nothing sent
+perch quarterly [-p NAME | --all] [--quarter 2026-Q3] [--out DIR]
 ```
+
+`perch quarterly` writes the funder's quarterly report as an Outlook draft,
+`projects/<name>/quarterly/<quarter>.eml`, plus a `.md` copy: budget position
+and Budgie's forecast at completion, estimate misses in dollars (MODELLED),
+issues closed and hours booked per ISO week, blocked issue-days, and the
+quarter's `plan.csv` changes. The default is the last complete quarter of the
+Budgie year. It is rebuilt from the readings, budget.csv, plan.csv and the
+board dump, so a source that does not cover the quarter says so in the report.
+Team level only; nothing is sent.
 
 `perch.yaml`:
 
@@ -113,8 +123,7 @@ epic::billing,400,320,520
   against the budget left after spend to date and planned non-labor. It is not
   a year forecast; `budgie forecast` is.
 - Every `perch board` run records the week in `history.jsonl` (ignored by git:
-  it is per-person data). Nothing reads it yet. The weekly and quarterly
-  feedback will, and a trend can only start the day you begin recording.
+  it is per-person data). Nothing reads it yet. The weekly feedback will, and a trend can only start the day you begin recording.
 
 perch never ranks people. A rate is a property of the join, not a score.
 

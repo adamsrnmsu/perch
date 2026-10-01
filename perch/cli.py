@@ -620,3 +620,97 @@ def doctor(project):
             )
     if failed:
         raise click.exceptions.Exit(1)
+
+
+def _write_quarterly(config_path: Path, quarter: str | None, out: Path | None):
+    """Load one project, build its quarter, write the .eml and .md beside it."""
+    from perch.core.board import load_board
+    from perch.core.config import load_config
+    from perch.core.estimates import load_estimates
+    from perch.core.join import calibrate
+    from perch.core.money import load_money
+    from perch.core.quarterly import build, last_complete_quarter
+    from perch.core.report_mail import render_eml, render_md
+
+    config = load_config(config_path, require_dump=False)
+    board = load_board(config.board_dump) if config.board_dump.is_file() else None
+    money = load_money(config.budgie_project)
+    estimates = load_estimates(config.estimates) if config.estimates else {}
+    rates = (
+        calibrate(money.readings, board, config.people, money.year) if board else None
+    )
+    today = date.today()  # noqa: DTZ011 -- the lead's local date
+    report = build(
+        board,
+        money,
+        estimates,
+        rates,
+        config.people,
+        quarter or last_complete_quarter(money.year, today),
+        today,
+        config.root.name,
+    )
+    folder = out or config.root / "quarterly"
+    folder.mkdir(parents=True, exist_ok=True)
+    eml = folder / f"{report.name}.eml"
+    eml.write_bytes(bytes(render_eml(report)))
+    md = eml.with_suffix(".md")
+    md.write_text(render_md(report))
+    for path in (eml, md):
+        click.echo(f"Wrote {path}")
+
+
+@cli.command()
+@_config_option
+@_project_option
+@click.option(
+    "--all",
+    "all_projects",
+    is_flag=True,
+    help="Every project, in name order; a failure moves on to the next.",
+)
+@click.option(
+    "--quarter", default=None, help="e.g. 2026-Q3; default the last complete one."
+)
+@click.option(
+    "--out",
+    "out_dir",
+    default=None,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Write here instead of projects/<name>/quarterly/ (--all: one folder each).",
+)
+def quarterly(config_path, project, all_projects, quarter, out_dir):
+    """The quarter's money for the funder: an Outlook draft (.eml) and a .md.
+
+    Nothing is sent: open the draft in Outlook, review it, send it yourself.
+    """
+    from perch.core import steps
+
+    if all_projects and (project or config_path):
+        raise click.UsageError("give -p or --all, not both")
+    if not all_projects:
+        try:
+            _write_quarterly(_config_path(config_path, project), quarter, out_dir)
+        except (OSError, TypeError, ValueError) as exc:
+            raise click.ClickException(str(exc)) from exc
+        return
+    home = _home()
+    names = home.projects()
+    if not names:
+        raise click.ClickException("no projects yet. Run: perch init <name>")
+    results = steps.run_projects(
+        names,
+        lambda name: _write_quarterly(
+            home.config_path(name), quarter, out_dir / name if out_dir else None
+        ),
+    )
+    console.print("\n[bold]quarterly --all[/bold]")
+    for name, error in results:
+        if error is None:
+            console.print(f"  {name} ok", highlight=False)
+        else:
+            console.print(
+                f"  [red]{name} FAILED[/red]: {escape(str(error))}", highlight=False
+            )
+    if any(error for _, error in results):
+        raise click.exceptions.Exit(1)

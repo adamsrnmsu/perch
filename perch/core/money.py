@@ -10,6 +10,9 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from budgie.core.budget import Budget
+from budgie.core.person import Person
+from budgie.core.plan import AllocationPlan
 from budgie.core.project import load_snapshot
 
 # (reading date, cumulative hours through that date)
@@ -27,6 +30,11 @@ class Money:
     budget: float | None = None
     iterations: int = 10_000
     seed: int | None = None
+    # Passed through from Budgie for `perch quarterly`; perch never re-reads them.
+    people: list[Person] = field(default_factory=list)
+    pto: float = 0.0
+    budget_revisions: Budget | None = None  # budget.csv; None for a pinned number
+    plan: AllocationPlan | None = None  # the project's plan.csv
 
     @property
     def as_of(self) -> date | None:
@@ -61,4 +69,8 @@ def load_money(project: str | Path) -> Money:
         budget=None if snap.budget is None else snap.budget.latest,
         iterations=snap.iterations,
         seed=snap.seed,
+        people=snap.people,
+        pto=snap.pto,
+        budget_revisions=snap.budget_revisions,
+        plan=snap.plan,
     )

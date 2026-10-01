@@ -13,6 +13,10 @@ Open: Alice #101 (estimated 10 h, 8-14), #102, #103; Bob #104, #105;
 #104 is Blocked since 2026-04-06 (14 days at the 04-20 fetch);
 #105 has an unanswered "Q: which env?";
 #106 unassigned; #107 assigned to cdoe, who is not in perch.yaml.
+
+Board moves for the quarterly report: #102 sat in Blocked 2026-04-02 to 04-07
+(5 days); #8 went into Done 04-08 and back out 04-09 before closing on 04-10.
+The dump keeps 90 days, so it covers 2026-01-20 to the 04-20 fetch.
 """
 
 import json
@@ -61,9 +65,20 @@ def history():
         issue(n, who, day, ["epic::billing"] if n <= 4 else [])
         for n, (who, day) in enumerate(closed, start=1)
     ]
+    records[7]["transitions"] = [  # #8: into Done, back out, then closed
+        ["2026-04-08T09:00:00.000Z", "add", "Done"],
+        ["2026-04-09T09:00:00.000Z", "remove", "Done"],
+    ]
     records += [
         issue(101, "asmith", labels=["epic::billing"]),
-        issue(102, "asmith"),
+        issue(
+            102,
+            "asmith",
+            transitions=[
+                ["2026-04-02T09:00:00.000Z", "add", "Blocked"],
+                ["2026-04-07T09:00:00.000Z", "remove", "Blocked"],
+            ],
+        ),
         issue(103, "asmith"),
         issue(
             104,
@@ -151,3 +166,27 @@ def build_home(tmp_path, *names, gitlab=True):
         if gitlab:
             config.write_text(config.read_text() + f"gitlab_project: grp/{name}\n")
     return home
+
+
+@pytest.fixture
+def quarter_world(world):
+    """The world above, plus the dated money files a quarterly report reads.
+
+    budget.csv (the pin in budgie.yaml is dropped, since a pin beats it):
+    $100,000 from Jan 1, $120,000 from 2026-04-15 ("Q2 increase").
+    plan.csv: Alice and Bob at 0.5 from Jan 1; Bob down to 0.25 from 2026-05-01.
+    2026 has 250 working days, so a day is 1,992 / 250 = 7.968 h; 167 are left
+    from May 1, so the change takes 167 x 7.968 x 0.25 = 332.664 h off Bob's
+    year: $16,633.20 at $50.
+    """
+    project = world.parent / "fy26"
+    (project / "budgie.yaml").write_text("year: 2026\nseed: 1\n")
+    (project / "budget.csv").write_text(
+        "effective_date,amount,note\n"
+        "2026-01-01,100000,Original\n2026-04-15,120000,Q2 increase\n"
+    )
+    (project / "plan.csv").write_text(
+        "name,effective_date,fte\n"
+        "Alice,2026-01-01,0.5\nBob,2026-01-01,0.5\nBob,2026-05-01,0.25\n"
+    )
+    return world

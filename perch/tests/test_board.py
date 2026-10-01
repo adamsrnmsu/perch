@@ -44,3 +44,13 @@ def test_a_file_that_is_not_a_dump_is_refused(tmp_path):
     path.write_text('{"issues": []}')
     with pytest.raises(ValueError, match="stats --dump"):
         load_board(path)
+
+
+def test_transitions_are_kept_as_dated_moves(world):
+    board = load_board(world.parent / "dump.json")
+    eight = next(i for i in board.issues if i.iid == 8)
+    assert eight.transitions == (
+        (date(2026, 4, 8), "add", "Done"),
+        (date(2026, 4, 9), "remove", "Done"),
+    )
+    assert eight.closed_on == date(2026, 4, 10)  # closed_at still wins

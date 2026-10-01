@@ -19,7 +19,8 @@ is one GitLab project + one Budgie project + one charge code, picked with
 ## Commands
 
 ```bash
-perch --help  # running the apps: projects, init, doctor, hours, monday [--all]
+perch --help  # running the apps: projects, init, doctor, hours, monday [--all],
+              # quarterly [--all]
 make venv     # ~/Documents/tools/perch; Budgie from GitHub, then ../budgie
 make test     # perch only: ~/Documents/tools/perch/bin/pytest
 make test-all # Budgie, perch and gitboard suites
@@ -74,6 +75,13 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `core/weekly.py` -- `perch weekly`: per-person markdown from this run plus
   history. Read-only. A trailing comparison needs 4 prior weeks that hold that
   figure; below that it prints `not enough history: n of 8 weeks`, never a trend.
+- `core/quarterly.py` -- `perch quarterly`: one quarter rebuilt from Budgie's
+  readings, budget revisions and plan plus the board dump (never
+  history.jsonl). The forecast is Budgie's `at_completion` + `simulate` +
+  `evaluate`; booked hours interpolate readings like Budgie's `monthly`.
+  Team level only: names appear only in staffing changes.
+- `core/report_mail.py` -- a `Quarter` as markdown and as an `.eml` draft
+  (multipart/alternative, `X-Unsent: 1`, table HTML with inline styles only).
 
 ## Testing
 
