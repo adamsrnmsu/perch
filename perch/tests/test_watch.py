@@ -123,7 +123,10 @@ def per_issue(heavy_from):
 def test_hours_per_issue_over_own_baseline_3_of_4_weeks_flags():
     alice = signal(per_issue(12), "Alice", "hours per issue")
     assert alice.flagged
-    assert alice.text.startswith("20 h vs own 11 h over 8 weeks (8 and 16 issues")
+    assert alice.text.startswith(
+        "20 h over the last 4 weeks vs own 11 h over the 8 before "
+        "(8 and 16 issues, 12 reading(s))"
+    )
     assert "out of line 3 of the last 4 weeks" in alice.text
 
 
@@ -145,6 +148,7 @@ def test_too_few_issues_says_so(world):
 
 
 MARCH = date(2026, 3, 2)
+ASKED = ("Q: which env?",)
 
 
 def test_doing_unmoved_10_working_days_flags_and_blocked_never_counts(world):
@@ -152,7 +156,7 @@ def test_doing_unmoved_10_working_days_flags_and_blocked_never_counts(world):
     doing = ("Doing",)
     board = replace(
         board,
-        columns=("Doing", BLOCKED, "Done"),
+        columns=("Doing", BLOCKED, "Done", "Failed"),
         issues=board.issues
         + (
             # 04-07..04-20 is 10 working days; 04-08..04-20 is 9
@@ -161,6 +165,9 @@ def test_doing_unmoved_10_working_days_flags_and_blocked_never_counts(world):
             # Blocked is someone else's doing; no column label is Backlog
             Issue(110, "t", "bjones", ("Doing", BLOCKED), None, last_moved=MARCH),
             Issue(111, "t", "bjones", (), None, last_moved=MARCH),
+            # waiting on an answer is someone else's doing too; Failed is not WIP
+            Issue(112, "t", "bjones", doing, None, last_moved=MARCH, questions=ASKED),
+            Issue(113, "t", "bjones", ("Failed",), None, last_moved=MARCH),
         ),
     )
     result = run(board, load_money(world.parent / "fy26"))  # no history needed
@@ -185,7 +192,7 @@ def test_estimate_overrun_3_of_4_weeks_flags(world):
     alice = signal(world_watch(world, rows, COVERED), "Alice", "estimates")
     assert alice.flagged
     assert alice.text.startswith(
-        "booked over estimate 1.67x vs own 1.15x over 8 weeks "
+        "booked over estimate 1.67x now vs own 1.15x over the 8 weeks before "
         "(8 of 8 closed issues estimated"
     )
     assert "out of line 3 of the last 4 weeks" in alice.text
@@ -265,3 +272,15 @@ def test_watch_all_goes_through_every_project(tmp_path, monkeypatch):
     assert result.exit_code == 0, result.output
     assert result.output.count("# Watch, grp/proj Dev, 2026-W17") == 2
     assert CliRunner().invoke(cli, ["watch", "-p", "apollo", "--all"]).exit_code == 2
+
+
+def test_watch_all_with_no_projects_says_init(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from perch.cli import cli
+    from perch.tests.conftest import build_home
+
+    monkeypatch.chdir(build_home(tmp_path).root)
+    result = CliRunner().invoke(cli, ["watch", "--all"])
+    assert result.exit_code != 0
+    assert "no projects yet. Run: perch init <name>" in result.output

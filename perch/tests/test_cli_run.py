@@ -185,3 +185,14 @@ def test_doctor_reports_a_missing_gitlab_token(tmp_path, monkeypatch):
     result = run("doctor")
     assert result.exit_code == 1
     assert "FIX" in result.output and "read token not found" in result.output
+
+
+def test_a_watch_that_cannot_be_read_does_not_fail_monday(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    (home.projects_dir / "apollo" / "history.jsonl").write_text("not json\n")
+    monkeypatch.chdir(home.root)
+    recorder(monkeypatch)
+    result = run("monday")
+    assert result.exit_code == 0, result.output
+    assert "watch: could not be read:" in result.output
+    assert "Traceback" not in result.output

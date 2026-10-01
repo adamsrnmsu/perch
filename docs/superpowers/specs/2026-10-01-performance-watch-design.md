@@ -27,7 +27,8 @@ flag is a prompt for a conversation, never a verdict.
 
 - `perch watch [-p NAME | --all]` prints to the terminal.
 - `perch monday` writes `projects/<name>/watch/<ISO week>.md`. `projects/` is
-  already gitignored. Monday ends with one line: "watch: N flags, run perch
+  gitignored in the perch checkout; in a separate workspace, add it to your
+  own `.gitignore`. Monday ends with one line: "watch: N flags, run perch
   watch" (or "watch: nothing out of line").
 
 ## When a signal flags
@@ -135,8 +136,11 @@ All against the hand-checkable world, with history weeks written by the test:
   last 3 recorded weeks, each against the 8 recorded weeks before it).
 - **The history minimum** applies to hours vs plan, hours per issue and
   estimates; the stall signal reads the current board and always shows.
-- **"A Doing-type column"** is a board list from the dump's `columns` other than
-  Done and Blocked; no column label is Backlog and never stalls. Its age is
+- **"A Doing-type column"** is a board list from the dump's `columns` that
+  gitboard counts as work in progress (not in its `NOT_WIP`: Backlog, Done,
+  Failed) and is not Blocked; no column label is Backlog and never stalls. An
+  issue waiting on someone else (Blocked, or an unanswered `Q:`, as `perch
+  weekly` lists it) never counts. Its age is
   working days (Budgie's `workdays_between`) from the issue's last transition
   to the board's fetch date; an issue with no transition has no age and is not
   listed.

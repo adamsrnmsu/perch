@@ -639,10 +639,15 @@ def _write_watch(home, name: str, week: str) -> None:
     """monday's last act: projects/NAME/watch/WEEK.md, and one line."""
     from perch.core.watch import render, summary
 
-    page = _watch(home.config_path(name))
-    path = home.watch_path(name, week)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render(page))
+    # The drafts are written by now: a watch that can't be read must not fail them.
+    try:
+        page = _watch(home.config_path(name))
+        path = home.watch_path(name, week)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(render(page))
+    except (OSError, TypeError, ValueError) as exc:
+        console.print(f"watch: could not be read: {exc}", markup=False, highlight=False)
+        return
     console.print(summary(page), markup=False, highlight=False)
 
 
@@ -670,6 +675,8 @@ def watch(config_path, project, all_projects):
         click.echo(render(page), nl=False)
         return
     home = _home()
+    if not home.projects():
+        raise click.ClickException("no projects yet. Run: perch init <name>")
     results = run_projects(
         home.projects(),
         lambda name: click.echo(render(_watch(home.config_path(name)))),

@@ -19,7 +19,7 @@ from budgie.core.calendar import workdays_between
 from perch.core.accuracy import MIN_COVERAGE, PersonAccuracy, by_person
 from perch.core.board import BLOCKED, DONE, Board
 from perch.core.estimates import Estimate
-from perch.core.history import week_key
+from perch.core.history import figures, week_key
 from perch.core.join import Rates
 from perch.core.money import Money
 from perch.core.weekly import MIN_WEEKS, WINDOW, _h, _prior_weeks, _rate, _thin
@@ -29,6 +29,7 @@ SLOWER = 1.5  # hours per issue over this multiple of their own is out of line
 MIN_ISSUES = 5  # closed issues each window needs before hours per issue is read
 STALL_DAYS = 10  # working days in a Doing column without a move
 OVERRUN = 1.3  # booked over estimate above this multiple of their own
+NOT_DOING = {"Backlog", DONE, "Failed", BLOCKED}  # gitboard's NOT_WIP, and Blocked
 RECENT = 4  # weeks: each window's length, and how many weeks the rule counts
 OUT_OF = 3  # out of line in this many of the last RECENT weeks flags
 
@@ -140,9 +141,13 @@ def _per_issue(
             n,
         )
     flagged, tally = _tally([out(*pair) for pair in pairs])
+    end = _anchors(money, name)[0]
+    start = end - (RECENT + WINDOW) * WEEK
+    read = sum(start < day <= end for day, _ in money.readings[name])
     text = (
-        f"{_rate(hours / n)} h vs own {_rate(base_hours / base_n)} h over {WINDOW} "
-        f"weeks ({n} and {base_n} issues); {tally}"
+        f"{_rate(hours / n)} h over the last {RECENT} weeks vs own "
+        f"{_rate(base_hours / base_n)} h over the {WINDOW} before ({n} and {base_n} "
+        f"issues, {read} reading(s)); {tally}"
     )
     factor = rates.types.factors.get(name) if rates.types else None
     if factor is not None:
@@ -151,13 +156,14 @@ def _per_issue(
 
 
 def _doing(board: Board, people: dict[str, str], name: str) -> Signal:
-    """Issues in a Doing-type column (a board list, not Done or Blocked) that
-    have not moved for STALL_DAYS working days. Blocked is someone else's doing."""
-    doing = [c for c in board.columns if c not in (DONE, BLOCKED)]
+    """Issues in a Doing-type column (a board list gitboard counts as work in
+    progress, not Blocked) that have not moved for STALL_DAYS working days.
+    Waiting (Blocked, or an unanswered `Q:`) is someone else's doing."""
+    doing = [c for c in board.columns if c not in NOT_DOING]
     found = []
     for i in board.open:
         column = next((c for c in doing if c in i.labels), None)
-        if people.get(i.assignee) != name or i.is_blocked or column is None:
+        if people.get(i.assignee) != name or i.is_waiting or column is None:
             continue
         if i.last_moved is None:
             continue
@@ -183,11 +189,7 @@ def _estimates(
             f"estimate, under the {MIN_COVERAGE:.0%} needed",
             acc.covered,
         )
-    ratios = {
-        r["week"]: r["ratio"]
-        for r in history
-        if r["kind"] == "accuracy" and r["name"] == name and r.get("ratio") is not None
-    }
+    ratios = figures(history, "accuracy", name, "ratio")
 
     def before(w: str) -> list[float]:
         return [ratios[x] for x in _prior_weeks(history, w) if x in ratios]
@@ -208,8 +210,8 @@ def _estimates(
     return Signal(
         ESTIMATES,
         flagged,
-        f"booked over estimate {acc.ratio:.2f}x vs own {mean(base):.2f}x over "
-        f"{len(base)} weeks ({acc.covered} of {acc.closed} closed issues "
+        f"booked over estimate {acc.ratio:.2f}x now vs own {mean(base):.2f}x over "
+        f"the {len(base)} weeks before ({acc.covered} of {acc.closed} closed issues "
         f"estimated); {tally}",
         acc.covered,
     )

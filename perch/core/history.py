@@ -88,3 +88,13 @@ def load(path: str | Path) -> list[dict]:
     if not path.is_file():
         return []
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def figures(rows: list[dict], kind: str, name: str, key: str) -> dict[str, float]:
+    """One recorded figure by week (e.g. Alice's accuracy `ratio`); weeks
+    without it are left out."""
+    return {
+        r["week"]: r[key]
+        for r in rows
+        if r["kind"] == kind and r["name"] == name and r.get(key) is not None
+    }

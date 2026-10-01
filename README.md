@@ -132,8 +132,9 @@ and each line shows the sample it rests on:
   burn-down plans for them (plan.csv; a week at 0 FTE plans 0 hours);
 - **hours per issue**: over 4 weeks, more than 1.5x their own over the 8
   weeks before, with 5 closed issues in each window;
-- **work in Doing**: an issue in a board list other than Done or Blocked that
-  has not moved for 10 working days (this one reads the current board);
+- **work in Doing**: an issue in a work-in-progress board list (not Backlog,
+  Done, Failed or Blocked) that has not moved for 10 working days; waiting on
+  an answer (`Q:`) never counts (this one reads the current board);
 - **estimates**: booked over estimate above 1.3x their own trailing ratio, at
   50% estimate coverage or more.
 
