@@ -127,3 +127,27 @@ def build_world(tmp_path):
 @pytest.fixture
 def world(tmp_path):
     return build_world(tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def _no_perch_home(monkeypatch):
+    """A PERCH_HOME in the developer's shell must not find a real workspace."""
+    monkeypatch.delenv("PERCH_HOME", raising=False)
+
+
+def build_home(tmp_path, *names, gitlab=True):
+    """A workspace whose projects are each the hand-checkable world above.
+
+    Each project's Budgie project is its own `fy26/` (perch.yaml points there),
+    so every number the world's docstring works out holds per project.
+    """
+    from perch.core.workspace import create_home
+
+    home = create_home(tmp_path / "ws", tmp_path / "gb")
+    for name in names:
+        folder = home.projects_dir / name
+        folder.mkdir(parents=True)
+        config = build_world(folder)
+        if gitlab:
+            config.write_text(config.read_text() + f"gitlab_project: grp/{name}\n")
+    return home
