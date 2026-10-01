@@ -21,13 +21,14 @@ from budgie.core.signals import SignalResult, evaluate
 
 from perch.core.accuracy import LabelAccuracy, by_label
 from perch.core.board import BLOCKED, DONE, Board
-from perch.core.estimates import Estimate
-from perch.core.join import Rates
-from perch.core.money import Money, Reading
+from perch.core.estimates import Estimate, issue_key
+from perch.core.join import Rates, hours_for
+from perch.core.money import Money
 
 DUMP_DAYS = 90  # how far back a board dump reaches (gitboard's HISTORY_DAYS)
 NO_DUMP = "no board dump; run `perch fetch`"
-NO_READINGS = "no hours readings; run `perch hours`"
+RUN_HOURS = "run `perch hours`"
+NO_READINGS = f"no hours readings; {RUN_HOURS}"
 _QUARTER = re.compile(r"(\d{4})-Q([1-4])", re.IGNORECASE)
 
 
@@ -50,26 +51,10 @@ def last_complete_quarter(year: int, today: date) -> str:
     return f"{year}-Q{max(done, 1)}"
 
 
-def _booked(series: list[Reading], day: date, year: int) -> float:
-    """Cumulative hours by the end of `day`, linear between readings.
-
-    The curve starts at 0 on Dec 31 and stays at the last reading after it:
-    the same rule as Budgie's `monthly._spent_at`, which is private, so this is
-    that reading arithmetic again, not budget math.
-    """
-    prev_day, prev_hours = date(year, 1, 1) - timedelta(days=1), 0.0
-    for when, hours in sorted(series):
-        if when >= day:
-            share = (day - prev_day).days / (when - prev_day).days
-            return prev_hours + (hours - prev_hours) * share
-        prev_day, prev_hours = when, hours
-    return prev_hours
-
-
 @dataclass(frozen=True)
 class Position:
-    spent_quarter: float | None  # None: no readings
-    spent_year: float | None
+    spent_quarter: float | None  # labor only; None: no readings in the quarter
+    spent_year: float | None  # labor only, Jan 1 to the quarter's last reading
     budget_start: float | None
     budget_end: float | None
     revisions: tuple[BudgetRevision, ...]  # dated inside the quarter
@@ -78,6 +63,7 @@ class Position:
     p50: float
     p90: float
     signal: SignalResult | None
+    non_labor: float  # the year's, in the forecast as a fixed total, not in spent
 
 
 @dataclass(frozen=True)
@@ -93,6 +79,14 @@ class Week:
         if not self.closed or self.hours is None:
             return None
         return self.hours / self.closed
+
+
+@dataclass(frozen=True)
+class IssueMiss:
+    key: str  # #iid
+    estimated: float
+    modelled: float  # the closer's rate, not the estimate: MODELLED
+    dollars: float | None  # modelled minus estimated at the closer's rate
 
 
 @dataclass(frozen=True)
@@ -115,8 +109,13 @@ class Quarter:
     through: date  # the quarter's end, or the latest reading while it runs
     to_date: bool
     as_of: date | None  # the latest hours reading
+    read_to: date | None  # where spent stops: the earlier of through and as_of
     position: Position
-    misses: tuple[LabelAccuracy, ...] | None  # MODELLED; None: nothing to compare
+    # MODELLED. Labels whose last issue closed in the quarter, compared whole;
+    # None when there are no estimates or no board to compare them with.
+    misses: tuple[LabelAccuracy, ...] | None
+    in_progress: tuple[tuple[str, int, int], ...]  # (label, closed, issues)
+    issue_misses: tuple[IssueMiss, ...]  # `#iid` estimates closed in the quarter
     weeks: tuple[Week, ...]
     blocked_days: int | None
     reopened: int | None
@@ -136,20 +135,30 @@ class Quarter:
             sum(hours) if hours else None,
         )
 
+    @property
+    def total_per_issue(self) -> float | None:
+        """Hours over issues, from the weeks where both are known."""
+        both = [w for w in self.weeks if w.closed is not None and w.hours is not None]
+        closed = sum(w.closed for w in both)
+        return sum(w.hours for w in both) / closed if closed else None
+
 
 def _team(money: Money, start: date, end: date, cost: bool) -> float:
-    """Hours (or dollars at each person's rate) booked from `start` to `end`."""
-    total = 0.0
-    for name, series in money.readings.items():
-        rate = money.hourly_cost.get(name, 0.0) if cost else 1.0
-        before = start - timedelta(days=1)
-        total += rate * (
-            _booked(series, end, money.year) - _booked(series, before, money.year)
-        )
-    return total
+    """Hours (or dollars at each person's rate) booked from `start` through `end`.
+
+    `Money.booked` interpolates between readings with Budgie's own monthly rule.
+    """
+    before = start - timedelta(days=1)
+    return sum(
+        (money.hourly_cost.get(name, 0.0) if cost else 1.0)
+        * money.booked(name, before, end)
+        for name in money.readings
+    )
 
 
-def _position(money: Money, start: date, end: date, through: date) -> Position:
+def _position(
+    money: Money, start: date, end: date, through: date, read_to: date | None
+) -> Position:
     def budget_on(day: date) -> float | None:
         if money.budget_revisions is not None:
             return money.budget_revisions.amount_on(day)
@@ -166,12 +175,10 @@ def _position(money: Money, start: date, end: date, through: date) -> Position:
     budget = budget_on(end)
     year_start = date(money.year, 1, 1)
     return Position(
-        spent_quarter=_team(money, start, through, cost=True)
-        if money.readings
+        spent_quarter=_team(money, start, read_to, cost=True)
+        if read_to and read_to >= start
         else None,
-        spent_year=_team(money, year_start, through, cost=True)
-        if money.readings
-        else None,
+        spent_year=_team(money, year_start, read_to, cost=True) if read_to else None,
         budget_start=budget_on(start),
         budget_end=budget,
         revisions=tuple(r for r in revisions if start <= r.effective_date <= end),
@@ -180,19 +187,21 @@ def _position(money: Money, start: date, end: date, through: date) -> Position:
         p50=sim.percentile(50),
         p90=sim.percentile(90),
         signal=None if budget is None else evaluate(sim, budget),
+        non_labor=money.non_labor,
     )
 
 
 def _weeks(board: Board | None, money: Money, start: date, through: date):
+    """ISO weeks clipped to the quarter. A week the dump or the readings do not
+    wholly cover is unknown (None), not zero."""
     out = []
     monday = start - timedelta(days=start.weekday())
     while monday <= through:
         a, b = max(monday, start), min(monday + timedelta(days=6), through)
         year, number, _ = monday.isocalendar()
         closed = None
-        if board is not None:
+        if board is not None and _since(board) <= a and b <= board.fetched_on:
             closed = sum(1 for i in board.closed if a <= i.closed_on <= b)
-        # A week past the latest reading is unknown, not zero.
         read = money.as_of is not None and b <= money.as_of
         hours = _team(money, a, b, cost=False) if read else None
         out.append(Week(f"{year}-W{number:02d}", a, b, closed, hours))
@@ -270,6 +279,64 @@ def _staffing(money: Money, start: date, end: date) -> tuple[Staffing, ...]:
     return tuple(sorted(out, key=lambda s: (s.day, s.name)))
 
 
+def _since(board: Board) -> date:
+    return board.fetched_on - timedelta(days=DUMP_DAYS)
+
+
+def _misses(board, estimates, rates, people, money, start, through):
+    """(finished labels, labels in progress, `#iid` rows), all MODELLED.
+
+    A label is compared whole, and only once its last issue closed in the
+    quarter; a label still in progress gets no comparison yet, never a prorated
+    one. An `#iid` estimate is compared on its own issue.
+    """
+    finished, going = [], []
+    for a in by_label(estimates, board, rates, people, money):
+        days = [i.closed_on for i in board.closed if a.label in i.labels]
+        if not days or not any(start <= d <= through for d in days):
+            continue
+        if a.open == 0 and start <= max(days) <= through:
+            finished.append(a)
+        elif a.open:
+            going.append((a.label, a.issues - a.open, a.issues))
+    issues = []
+    for i in board.closed:
+        estimate = estimates.get(issue_key(i.iid))
+        if estimate is None or not start <= i.closed_on <= through:
+            continue
+        name = people.get(i.assignee)
+        found = hours_for(i, name, {}, rates)  # rates only, as by_label does
+        if found is None:
+            continue
+        rate = money.hourly_cost.get(name)
+        diff = found.mode - estimate.hours
+        issues.append(
+            IssueMiss(
+                estimate.key,
+                estimate.hours,
+                found.mode,
+                None if rate is None else diff * rate,
+            )
+        )
+    return tuple(finished), tuple(going), tuple(issues)
+
+
+def _reopened(board: Board, start: date, through: date) -> int:
+    """Issues moved out of Done in the window. A removal on or after the day an
+    issue closed is GitLab dropping the list label on close, not a reopen."""
+    return sum(
+        1
+        for i in board.issues
+        if any(
+            label == DONE
+            and action == "remove"
+            and start <= day <= through
+            and (i.closed_on is None or day < i.closed_on)
+            for day, action, label in i.transitions
+        )
+    )
+
+
 def _day(day: date) -> str:
     return f"{day:%b} {day.day}"
 
@@ -294,34 +361,42 @@ def build(
     through = min(end, money.as_of or today) if to_date else end
     through = max(through, start)
 
+    as_of = money.as_of
+    read_to = min(through, as_of) if as_of else None
+    if as_of is None:
+        hours_note = NO_READINGS
+    elif as_of < start:
+        hours_note = f"readings run to {_day(as_of)}, before the quarter; " + RUN_HOURS
+    elif as_of < end:
+        hours_note = (
+            f"readings run to {_day(as_of)}; spent covers {_day(start)} – "
+            f"{_day(read_to)}; {RUN_HOURS}"
+        )
+    else:
+        hours_note = None
+
     board_note = misses = blocked = reopened = None
+    in_progress = issue_misses = ()
     if board is None:
         board_note = NO_DUMP
     else:
-        since = board.fetched_on - timedelta(days=DUMP_DAYS)
+        since = _since(board)
         covered = (max(start, since), min(through, board.fetched_on))
-        if covered[1] < covered[0]:
+        reaches = covered[0] <= covered[1]
+        if not reaches:
             board_note = f"the board dump is from {board.fetched_on}; run `perch fetch`"
         elif covered != (start, through):
             board_note = (
                 f"covers {_day(covered[0])} – {_day(covered[1])}; "
                 f"the board dump keeps {DUMP_DAYS} days"
             )
-        closed = tuple(i for i in board.closed if start <= i.closed_on <= through)
         if estimates and rates is not None:
-            found = by_label(
-                estimates, replace(board, issues=closed), rates, people, money
+            misses, in_progress, issue_misses = _misses(
+                board, estimates, rates, people, money, start, through
             )
-            misses = tuple(a for a in found if a.issues)
-        blocked = _blocked_days(board, start, covered[1], since)
-        reopened = sum(
-            1
-            for i in board.issues
-            if any(
-                label == DONE and action == "remove" and start <= day <= through
-                for day, action, label in i.transitions
-            )
-        )
+        if reaches:
+            blocked = _blocked_days(board, start, covered[1], since)
+            reopened = _reopened(board, start, through)
 
     return Quarter(
         project=project,
@@ -330,13 +405,16 @@ def build(
         end=end,
         through=through,
         to_date=to_date,
-        as_of=money.as_of,
-        position=_position(money, start, end, through),
+        as_of=as_of,
+        read_to=read_to,
+        position=_position(money, start, end, through, read_to),
         misses=misses,
+        in_progress=in_progress,
+        issue_misses=issue_misses,
         weeks=_weeks(board, money, start, through),
         blocked_days=blocked,
         reopened=reopened,
         staffing=_staffing(money, start, end),
-        hours_note=None if money.readings else NO_READINGS,
+        hours_note=hours_note,
         board_note=board_note,
     )

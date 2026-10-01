@@ -8,6 +8,7 @@ Outlook renders HTML through Word.
 
 from __future__ import annotations
 
+from datetime import date
 from email.message import EmailMessage
 from html import escape
 
@@ -44,11 +45,16 @@ def title(q: Quarter) -> str:
     return f"{q.project}, {q.name}{when}"
 
 
+def _signal(q: Quarter) -> str:
+    """Budgie's own word for the signal: GOOD, CAUTION, BAD or NO CHANGE."""
+    return q.position.signal.label.upper() if q.position.signal else "no budget"
+
+
 def subject(q: Quarter) -> str:
     p = q.position
-    signal = p.signal.signal.name if p.signal else "no budget"
+    signal = _signal(q)
     return (
-        f"{q.project}, {q.name}: {_money(p.spent_year)} spent of "
+        f"{q.project}, {q.name}: {_money(p.spent_year)} labor spent of "
         f"{_money(p.budget_end)}; forecast at completion {_money(p.p50)} ({signal})"
     )
 
@@ -61,25 +67,34 @@ def _opening(q: Quarter) -> str:
     out = [f"{q.name} runs {_span(q.start, q.end)}; {reading}."]
     if p.spent_quarter is not None:
         out.append(
-            f"{_money(p.spent_quarter)} was spent this quarter, "
+            f"{_money(p.spent_quarter)} of labor was spent this quarter, "
             f"{_money(p.spent_year)} this year."
         )
-    signal = f" ({p.signal.signal.name})" if p.signal else ""
+    signal = f" ({_signal(q)})" if p.signal else ""
     out.append(
         f"Forecast at completion {_money(p.p50)} against a "
         f"{_money(p.budget_end)} budget{signal}."
     )
+    # Like with like: finished labels and single issues are summed apart.
     if q.misses:
         miss = sum(a.dollars for a in q.misses)
         out.append(
-            f"Issues closed this quarter came in {_delta(miss)} against their "
-            "label estimates (modelled)."
+            f"Labels finished this quarter came in {_delta(miss)} against their "
+            "estimates (modelled)."
+        )
+    costed = [m.dollars for m in q.issue_misses if m.dollars is not None]
+    if costed:
+        out.append(
+            f"Issues with their own estimate came in {_delta(sum(costed))} (modelled)."
         )
     total = q.total
-    if total.closed is not None:
+    if total.closed is not None and q.total_per_issue is not None:
         out.append(
-            f"{total.closed} issues closed on {_hours(total.hours)} booked hours."
+            f"{total.closed} issues closed, at {_hours(q.total_per_issue)} booked "
+            "hours per closed issue."
         )
+    elif total.closed is not None:
+        out.append(f"{total.closed} issues closed; no hours readings.")
     if q.blocked_days is not None:
         out.append(f"{q.blocked_days} issue-days were spent in Blocked.")
     if q.staffing:
@@ -95,24 +110,46 @@ def _blocks(q: Quarter) -> list[tuple]:
     out.append(("h", "1. Budget position"))
     if q.hours_note:
         out.append(("p", q.hours_note))
+    to = q.read_to or q.through
+    forecast = f"Forecast at completion as of {q.through}"
     out.append(
         (
             "table",
             1,
             ("", "Amount"),
             [
-                ("Spent this quarter", _money(p.spent_quarter)),
-                ("Spent year to date", _money(p.spent_year)),
+                (f"Labor spent {_span(q.start, to)}", _money(p.spent_quarter)),
+                (
+                    f"Labor spent {_span(date(q.start.year, 1, 1), to)} (year to date)",
+                    _money(p.spent_year),
+                ),
                 (f"Budget on {q.start}", _money(p.budget_start)),
                 (f"Budget on {q.end}", _money(p.budget_end)),
-                ("Forecast at completion, P10", _money(p.p10)),
-                ("Forecast at completion, P50", _money(p.p50)),
-                ("Forecast at completion, P90", _money(p.p90)),
+                (f"{forecast}, P10", _money(p.p10)),
+                (f"{forecast}, P50", _money(p.p50)),
+                (f"{forecast}, P90", _money(p.p90)),
             ],
         )
     )
+    out.append(
+        (
+            "p",
+            (
+                f"Non-labor for the year: {_money(p.non_labor)}, in the forecast as a "
+                "fixed total and not in labor spent."
+            ),
+        )
+    )
     if p.signal:
-        out.append(("p", f"{p.signal.signal.name}: {p.signal.rationale}"))
+        out.append(
+            (
+                "p",
+                (
+                    f"{_signal(q)} against the {_money(p.budget_end)} budget in force "
+                    f"on {q.end}: {p.signal.rationale}"
+                ),
+            )
+        )
     if p.flat:
         out.append(("p", "The budget is a flat number; no revisions."))
     elif p.revisions:
@@ -127,9 +164,9 @@ def _blocks(q: Quarter) -> list[tuple]:
     if q.misses is None:
         if q.board_note != NO_DUMP:
             out.append(("p", "No `estimates:` in perch.yaml, so nothing to compare."))
-    elif not q.misses:
-        out.append(("p", "No issue closed this quarter carries an estimated label."))
-    else:
+    elif not (q.misses or q.in_progress or q.issue_misses):
+        out.append(("p", "No estimated label or issue finished this quarter."))
+    if q.misses:
         rows = [
             (
                 a.label,
@@ -140,15 +177,35 @@ def _blocks(q: Quarter) -> list[tuple]:
             )
             for a in q.misses
         ]
-        header = ("Label", "Closed", "Estimated h", "Modelled h", "Difference")
+        header = ("Finished label", "Issues", "Estimated h", "Modelled h", "Difference")
         out.append(("table", 1, header, rows))
+    if q.in_progress:
+        going = ", ".join(
+            f"{label} ({n} of {m} closed)" for label, n, m in q.in_progress
+        )
+        out.append(("p", f"In progress, no comparison yet: {going}."))
+    if q.issue_misses:
+        rows = [
+            (
+                m.key,
+                _hours(m.estimated),
+                _hours(m.modelled),
+                "—" if m.dollars is None else _delta(m.dollars),
+            )
+            for m in q.issue_misses
+        ]
+        header = ("Issue", "Estimated h", "Modelled h", "Difference")
+        out.append(("table", 1, header, rows))
+    if q.misses or q.issue_misses:
         out.append(
             (
                 "p",
                 (
                     "Modelled, not measured: nobody books hours per issue, so an "
-                    "issue's hours are its closer's rate. The estimate is the "
-                    "label's whole estimate."
+                    "issue's hours are its closer's rate. A label is compared whole, "
+                    "once its last issue has closed; its early issues may have closed "
+                    "before the board dump's 90 days and be missing from the modelled "
+                    "hours."
                 ),
             )
         )
@@ -167,10 +224,19 @@ def _blocks(q: Quarter) -> list[tuple]:
         )
         for w in (*q.weeks, q.total)
     ]
-    rows[-1] = ("Total", *rows[-1][1:])
+    rows[-1] = ("Total", *rows[-1][1:4], _hours(q.total_per_issue))
     header = ("Week", "Dates", "Closed", "Hours booked", "Hours per issue")
     out.append(("table", 2, header, rows))
-    out.append(("p", "Booked hours between two weekly readings are interpolated."))
+    out.append(
+        (
+            "p",
+            (
+                "Booked hours between two weekly readings are interpolated. "
+                "Hours per issue in the total counts only the weeks where both "
+                "are known; a week outside the board dump or the readings shows —."
+            ),
+        )
+    )
 
     out.append(("h", "4. Waiting and staffing"))
     if q.board_note:
@@ -216,7 +282,8 @@ def render_md(q: Quarter) -> str:
             _, left, header, rows = block
             rule = ["---" if n < left else "---:" for n in range(len(header))]
             for row in (header, rule, *rows):
-                lines.append("| " + " | ".join(row) + " |")
+                cells = (c.replace("|", "\\|") for c in row)
+                lines.append("| " + " | ".join(cells) + " |")
             lines.append("")
     return "\n".join(lines)
 

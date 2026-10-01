@@ -22,7 +22,9 @@ def test_quarterly_writes_the_project_s_draft_and_markdown(tmp_path, monkeypatch
     draft = email.message_from_bytes(
         (folder / "2026-Q1.eml").read_bytes(), policy=policy.default
     )
-    assert draft["Subject"].startswith("gemini, 2026-Q1: $22,607 spent of $100,000")
+    assert draft["Subject"].startswith(
+        "gemini, 2026-Q1: $22,607 labor spent of $100,000"
+    )
     assert not (home.projects_dir / "apollo" / "quarterly").exists()
 
 

@@ -5,6 +5,7 @@ Between Alice's readings of Mar 22 (160) and Apr 19 (200) she books 40/28 =
 team books 15/7 h a day from Mar 22 to Apr 19, and $1,250/7 a day.
 """
 
+import json
 from dataclasses import replace
 from datetime import date
 
@@ -104,6 +105,7 @@ def test_throughput_by_iso_week(quarter_world):
     assert q.weeks[2].per_issue is None
     total = q.total
     assert (total.closed, total.hours) == (2, pytest.approx(285 / 7))
+    assert q.total_per_issue == pytest.approx(285 / 7 / 2)
 
 
 def test_a_finished_quarter_runs_to_its_last_day(world):
@@ -113,22 +115,48 @@ def test_a_finished_quarter_runs_to_its_last_day(world):
     # Alice by Mar 31: 160 + 9 x 10/7; Bob: 80 + 37 x 5/7.
     alice, bob = 160 + 90 / 7, 80 + 185 / 7
     assert q.total.hours == pytest.approx(alice + bob)
-    assert q.total.closed == 11  # Alice 7, Bob 4
+    # Weeks starting before Jan 20 are outside the dump: unknown, not zero, so
+    # Alice's two Jan 10 closes are not counted. Feb-Mar: Alice 5, Bob 4.
+    assert [w.closed for w in q.weeks[:4]] == [None] * 4
+    assert q.total.closed == 9
+    known = [w for w in q.weeks if w.closed is not None]
+    assert q.total_per_issue == pytest.approx(sum(w.hours for w in known) / 9)
     assert q.position.spent_quarter == pytest.approx(alice * 100 + bob * 50)
 
 
-def test_estimate_misses_are_the_quarter_s_closed_issues(world):
+def test_a_label_still_in_progress_is_not_compared(world):
+    q = make(world, "2026-Q1")
+    # #101 is open, so epic::billing is 4 of 5 closed: no comparison yet.
+    assert q.misses == ()
+    assert q.in_progress == (("epic::billing", 4, 5),)
+    # #1 and #2 carry their own 15 h; Alice's rate models 25 h each, at $100.
+    rows = [(m.key, m.estimated, m.modelled, m.dollars) for m in q.issue_misses]
+    assert rows == [
+        ("#1", 15, pytest.approx(25), pytest.approx(1000)),
+        ("#2", 15, pytest.approx(25), pytest.approx(1000)),
+    ]
+
+
+def test_a_label_finished_in_the_quarter_is_compared_whole(world):
+    dump = world.parent / "dump.json"
+    meta = json.loads(dump.read_text())
+    for record in meta["history"]:
+        if record["iid"] == 101:
+            record["labels"] = []
+    dump.write_text(json.dumps(meta))
     (billing,) = make(world, "2026-Q1").misses
-    # #1-#4 closed in Q1, Alice's at 25 h each: 100 modelled against 60.
-    assert (billing.label, billing.issues) == ("epic::billing", 4)
+    # #1-#4 all closed, the last on Feb 10; Alice's at 25 h: 100 against 60.
+    assert (billing.label, billing.issues, billing.open) == ("epic::billing", 4, 0)
     assert billing.modelled == pytest.approx(100)
     assert billing.dollars == pytest.approx(40 * 100)
-    # Nothing carrying a label estimate closed in Q2.
-    assert make(world, "2026-Q2").misses == ()
+    # It finished in Q1, so Q2 has nothing to compare.
+    q2 = make(world, "2026-Q2")
+    assert (q2.misses, q2.in_progress, q2.issue_misses) == ((), (), ())
 
 
 def test_without_estimates_there_is_no_miss_table(world):
-    assert make(world, "2026-Q1", estimates=False).misses is None
+    q = make(world, "2026-Q1", estimates=False)
+    assert q.misses is None and q.issue_misses == () and q.in_progress == ()
 
 
 def test_waiting_counts_blocked_days_and_moves_out_of_done(world):
@@ -136,6 +164,16 @@ def test_waiting_counts_blocked_days_and_moves_out_of_done(world):
     # #104 blocked Apr 6 through Apr 19 (14 days), #102 Apr 2-7 (5).
     assert q.blocked_days == 14 + 5
     assert q.reopened == 1  # #8 back out of Done on Apr 9
+
+
+def test_a_done_label_dropped_on_close_is_not_a_reopen(world):
+    dump = world.parent / "dump.json"
+    meta = json.loads(dump.read_text())
+    for record in meta["history"]:
+        if record["iid"] == 13:  # Bob's, closed Apr 1: GitLab drops the label
+            record["transitions"] = [["2026-04-01T13:00:00.000Z", "remove", "Done"]]
+    dump.write_text(json.dumps(meta))
+    assert make(world, "2026-Q2").reopened == 1
 
 
 def test_staffing_changes_cost_the_year(quarter_world):
@@ -164,7 +202,7 @@ def test_without_a_dump_or_readings_the_report_still_builds(world):
     assert q.board_note == "no board dump; run `perch fetch`"
     assert q.hours_note == "no hours readings; run `perch hours`"
     assert q.position.spent_quarter is None
-    assert q.misses is None and q.blocked_days is None
+    assert q.misses is None and q.blocked_days is None and q.reopened is None
     assert all(w.closed is None and w.hours is None for w in q.weeks)
 
 
@@ -181,4 +219,21 @@ def test_a_finished_quarter_stops_where_its_sources_stop(world):
 def test_a_dump_from_before_the_quarter_says_so(world):
     q = make(world, "2026-Q3", today=date(2026, 10, 1))
     assert q.board_note == "the board dump is from 2026-04-20; run `perch fetch`"
-    assert q.blocked_days == 0 and q.total.closed == 0
+    assert q.blocked_days is None and q.reopened is None
+    assert q.total.closed is None and q.total_per_issue is None
+
+
+def test_readings_that_stop_early_say_so(world):
+    q = make(world, "2026-Q2", today=date(2026, 10, 1))
+    assert q.hours_note == (
+        "readings run to Apr 19; spent covers Apr 1 – Apr 19; run `perch hours`"
+    )
+    assert q.read_to == date(2026, 4, 19)
+    assert q.position.spent_quarter == pytest.approx(19 * 1250 / 7)
+    q3 = make(world, "2026-Q3", today=date(2026, 10, 1))
+    assert (
+        q3.hours_note == "readings run to Apr 19, before the quarter; run `perch hours`"
+    )
+    assert q3.position.spent_quarter is None
+    assert q3.position.spent_year == 200 * 100 + 120 * 50
+    assert make(world, "2026-Q1").hours_note is None

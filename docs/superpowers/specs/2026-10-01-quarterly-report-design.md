@@ -181,10 +181,12 @@ What they cover:
 
 ## Changes during build
 
-- **The forecast's non-labor is its fixed total.** `budgie forecast` passes the
-  cost lines to `simulate`; `Snapshot` carries only `non_labor`, and perch does
-  not re-read costs.csv. The two agree unless costs.csv gives a line `low`/
-  `high`. Follow-up: Budgie's `Snapshot` to carry the cost lines.
+- **The forecast's non-labor is its fixed total, and spent is labor only.**
+  `budgie forecast` passes the cost lines to `simulate`; `Snapshot` carries
+  only `non_labor`, and perch does not re-read costs.csv. The two agree unless
+  costs.csv gives a line `low`/`high`. The report says so: its rows and subject
+  say "labor spent", and a line gives the year's non-labor, "in the forecast as
+  a fixed total and not in labor spent". Follow-up: budgie-ccv / perch-yi9.
 - **The forecast is as of the report's last day.** Readings after the quarter
   are left out (`at_completion(as_of=...)`, as `budgie forecast --as-of`), and
   the signal tests the budget in force at the quarter's end, the same figure
@@ -199,9 +201,28 @@ What they cover:
   to its last day, but a week past the latest reading shows no hours (unknown,
   not zero) and Blocked time stops at the dump's fetch.
 - **Jan 1 plan rows are the starting team,** not joins.
-- **Reopens are moves out of Done.** The dump holds only board-column label
-  moves, so a reopen without a Done label is not seen.
-- **Estimate misses drop labels with no issue closed in the quarter.** A label
-  estimate covers the whole label, so the row compares that whole estimate
-  with the hours modelled for the quarter's slice; the report says so.
+- **Unknown is never zero.** A week the dump does not wholly cover (before
+  `fetched_at` − 90 days, or after the fetch) shows "—" for issues closed;
+  a week past the latest reading shows "—" for hours; blocked issue-days and
+  reopens are "—" when the dump does not reach the quarter. The total's hours
+  per issue counts only weeks where both are known. Readings that stop before
+  the quarter's end are a coverage note ("readings run to Apr 19; spent covers
+  Apr 1 – Apr 19"), labor spent rows carry their date span, and spent this
+  quarter is "—" when the readings stop before the quarter starts.
+- **Reopens are moves out of Done** before the issue closed. The dump holds only
+  board-column label moves, so a reopen without a Done label is not seen, and a
+  Done removal on or after `closed_on` is GitLab dropping the list label on
+  close (and, for an issue closed only by a Done move, matches perch's own
+  closed rule), so it is not counted.
+- **Estimate misses compare like with like (replaces "by_label restricted to
+  the quarter").** `by_label` runs on the whole board; a label is shown only
+  once it finished this quarter (no open issue, its last `closed_on` inside the
+  quarter), compared whole. A label with issues closed this quarter but still
+  open ones reads "n of m closed, no comparison yet" -- never prorated. `#iid`
+  estimates on issues closed in the quarter get their own rows (the closer's
+  modelled hours against the estimate). The opening gives the two sums apart.
+  Caveat in the report: a finished label's early issues can predate the dump.
+- **Booked hours use Budgie's `_spent_at` directly** through `Money.booked`
+  (merged from main; the contract test pins its signature; budgie-8u1 makes it
+  public), so there is no copy of the interpolation left in perch.
 - **`--out` with `--all`** writes one folder per project under the directory.
