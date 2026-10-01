@@ -1,3 +1,6 @@
+import os
+from datetime import datetime, timezone
+
 import pytest
 
 from perch.core.doctor import age, freshness, project_checks, tool_checks
@@ -44,6 +47,19 @@ def test_freshness_says_never_for_what_has_not_been_written(tmp_path):
 
 def test_age_of_a_missing_file_is_never(tmp_path):
     assert age(tmp_path / "nope") == "never"
+
+
+def test_age_shows_local_time_not_utc(tmp_path):
+    path = tmp_path / "test_file"
+    path.write_text("test")
+    ts = 1234567890  # 2009-02-13 23:31:30 UTC
+    os.utime(path, (ts, ts))
+    expected = (
+        datetime.fromtimestamp(ts, tz=timezone.utc)
+        .astimezone()
+        .strftime("%Y-%m-%d %H:%M")
+    )
+    assert age(path) == expected
 
 
 def test_tool_checks_name_the_tool_that_does_not_run(tmp_path):

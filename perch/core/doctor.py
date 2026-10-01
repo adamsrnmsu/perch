@@ -26,8 +26,10 @@ class Check:
 def age(path: Path) -> str:
     if not path.exists():
         return "never"
-    return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).strftime(
-        "%Y-%m-%d %H:%M"
+    return (
+        datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+        .astimezone()
+        .strftime("%Y-%m-%d %H:%M")
     )
 
 
