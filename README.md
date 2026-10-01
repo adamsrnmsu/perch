@@ -64,7 +64,7 @@ gitboard checkout with the project's `gitlab_project`.
 3. In `perch.yaml`, fix `budgie_project` and `board_dump` (they're relative to
    the file) and add `gitlab_project`.
 
-`perch doctor` names any path that is still wrong.
+`perch doctor` names what is still wrong; `perch fetch` rewrites the board dump.
 
 ## Use
 

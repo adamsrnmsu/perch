@@ -107,3 +107,16 @@ def test_scaffold_points_at_budget_name_and_never_overwrites(tmp_path):
 def test_project_names_cannot_escape_projects(tmp_path, bad):
     with pytest.raises(WorkspaceError, match="not a project name"):
         make_home(tmp_path).scaffold(bad)
+
+
+def test_broken_home_yaml_is_a_workspace_error(tmp_path):
+    bad = tmp_path / "perch-home.yaml"
+    bad.write_text("gitboard_dir: [unclosed\n")
+    with pytest.raises(WorkspaceError, match="not valid YAML"):
+        load_home(bad)
+
+
+def test_gitboard_dir_with_colon_space_round_trips(tmp_path):
+    odd = tmp_path / "a: b #c"
+    home = create_home(tmp_path / "ws", odd)
+    assert home.gitboard_dir == odd.resolve()

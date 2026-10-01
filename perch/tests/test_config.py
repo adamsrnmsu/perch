@@ -50,3 +50,10 @@ def test_a_missing_dump_is_allowed_before_the_first_fetch(world):
         load_config(world)
     config = load_config(world, require_dump=False)
     assert config.board_dump == world.parent / "dump.json"
+
+
+def test_broken_yaml_is_a_clean_value_error(tmp_path):
+    bad = tmp_path / "perch.yaml"
+    bad.write_text("budgie_project: [unclosed\n")
+    with pytest.raises(ValueError, match="not valid YAML"):
+        load_config(bad)

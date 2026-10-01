@@ -86,6 +86,8 @@ def test_iso_week_matches_date_G_W_V():
 def test_shown_is_a_command_you_could_paste(tmp_path):
     step = steps.Step("x", ("echo", "a b"), Path("/tmp/w s"))
     assert step.shown() == "(cd '/tmp/w s' && echo 'a b')"
+    with_env = steps.Step("x", ("py",), Path("/x"), env={"PYTHONPATH": "/x/s p"})
+    assert with_env.shown() == "(cd /x && PYTHONPATH='/x/s p' py)"
 
 
 def test_run_projects_carries_on_past_a_failure():

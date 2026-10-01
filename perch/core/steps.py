@@ -27,7 +27,8 @@ class Step:
     makes: tuple[Path, ...] = ()  # directories to create before running
 
     def shown(self) -> str:
-        return f"(cd {shlex.quote(str(self.cwd))} && {shlex.join(self.argv)})"
+        env = "".join(f"{k}={shlex.quote(v)} " for k, v in self.env.items())
+        return f"(cd {shlex.quote(str(self.cwd))} && {env}{shlex.join(self.argv)})"
 
 
 class StepFailed(Exception):

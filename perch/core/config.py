@@ -39,7 +39,10 @@ def load_config(path: str | Path, require_dump: bool = True) -> Config:
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"{path}: no such file. perch reads a {CONFIG_NAME}.")
-    data = yaml.safe_load(path.read_text()) or {}
+    try:
+        data = yaml.safe_load(path.read_text()) or {}
+    except yaml.YAMLError as exc:
+        raise ValueError(f"{path.name}: not valid YAML: {exc}") from exc
     if not isinstance(data, dict):
         raise TypeError(f"{path.name} must be a mapping, got {type(data).__name__}")
     unknown = set(data) - _KEYS

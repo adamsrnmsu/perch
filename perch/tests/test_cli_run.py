@@ -129,3 +129,32 @@ def test_doctor_names_the_fix_and_exits_1(tmp_path, monkeypatch):
     result = run("doctor", "-p", "apollo")
     assert result.exit_code == 1
     assert "FIX" in result.output and "gitlab_project" in result.output
+
+
+def break_config(home, name):
+    home.config_path(name).write_text("budgie_project: [unclosed\n")
+
+
+def test_monday_all_survives_a_malformed_perch_yaml(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo", "gemini")
+    break_config(home, "apollo")
+    monkeypatch.chdir(home.root)
+    ran = recorder(monkeypatch)
+    result = run("monday", "--all")
+    assert result.exit_code == 1
+    assert "apollo FAILED" in result.output and "gemini ok" in result.output
+    assert [s.name for s in ran] == ["fetch", "board", "weekly", "digest", "emails"]
+
+
+def test_doctor_reports_a_malformed_perch_yaml_as_a_fix(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    break_config(home, "apollo")
+    monkeypatch.chdir(home.root)
+    quiet_tools(monkeypatch, home)
+    result = run("doctor")
+    assert result.exit_code == 1
+    assert "FIX" in result.output and "Traceback" not in result.output
+
+
+def test_help_short_text_is_not_cut_at_the_step_number():
+    assert "Step 1: one GitLab read" in run("--help").output

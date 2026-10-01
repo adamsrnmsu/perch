@@ -112,7 +112,10 @@ class Home:
 
 def load_home(path: Path) -> Home:
     """Load and validate a perch-home.yaml; every error names the key."""
-    data = yaml.safe_load(path.read_text()) or {}
+    try:
+        data = yaml.safe_load(path.read_text()) or {}
+    except yaml.YAMLError as exc:
+        raise WorkspaceError(f"{path.name}: not valid YAML: {exc}") from exc
     if not isinstance(data, dict):
         raise WorkspaceError(f"{path.name} must be a mapping")
     unknown = set(data) - _HOME_KEYS
@@ -151,7 +154,7 @@ def create_home(root: Path, gitboard_dir: Path) -> Home:
     root.mkdir(parents=True, exist_ok=True)
     path = root / HOME_NAME
     if not path.exists():
-        path.write_text(f"gitboard_dir: {gitboard_dir}\n")
+        path.write_text(yaml.safe_dump({"gitboard_dir": str(gitboard_dir)}))
     for sub in (PROJECTS_DIR, BUDGET_DIR):
         (root / sub).mkdir(exist_ok=True)
     return load_home(path)

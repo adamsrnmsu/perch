@@ -426,18 +426,18 @@ def _one(project, build) -> None:
 @cli.command()
 @_project_option
 def hours(project):
-    """0. Open the project's weekly.csv to paste this week's timesheet totals."""
+    """Step 0: open the project's weekly.csv to paste this week's timesheet totals."""
     from perch.core import steps
 
     console.print("One row per person: name,week,hours_to_date (cumulative).")
-    editor = os.environ.get("EDITOR", "vi")
+    editor = os.environ.get("EDITOR") or "vi"
     _one(project, lambda home, name, config: steps.hours(editor, config))
 
 
 @cli.command()
 @_project_option
 def fetch(project):
-    """1. One GitLab read: gitboard stats into the project's board dump."""
+    """Step 1: one GitLab read, gitboard stats into the project's board dump."""
     from perch.core import steps
 
     _one(project, steps.fetch)
@@ -446,7 +446,7 @@ def fetch(project):
 @cli.command()
 @_project_option
 def digest(project):
-    """4. gitboard's team and per-person digest, from the same dump."""
+    """Step 4: gitboard's team and per-person digest, from the same dump."""
     from perch.core import steps
 
     _one(project, steps.digest)
@@ -455,7 +455,7 @@ def digest(project):
 @cli.command()
 @_project_option
 def emails(project):
-    """5. Budgie's per-person hours-left drafts (.eml). Nothing is sent."""
+    """Step 5: Budgie's per-person hours-left drafts (.eml); nothing is sent."""
     from perch.core import steps
 
     _one(project, lambda home, name, config: steps.emails(_bin_dir(), config))
@@ -501,12 +501,13 @@ def monday(project, all_projects):
 
     def run_one(home, name):
         config = load_config(home.config_path(name), require_dump=False)
+        console.print(f"[bold]== {escape(name)}[/bold]", highlight=False)
         for step in steps.monday(_bin_dir(), home, name, config, week):
             _run(step)
         console.print(f"\n[bold]{name}[/bold] done. Review, then send yourself:")
         for place in (
             home.weekly_path(name, week),
-            home.reports_dir(name),
+            f"{home.reports_dir(name)}  (newest dated folder)",
             config.budgie_project / "emails",
         ):
             console.print(f"  {place}", markup=False, highlight=False)
