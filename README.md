@@ -122,8 +122,8 @@ epic::billing,400,320,520
   against the budget left after spend to date and planned non-labor. It is not
   a year forecast; `budgie forecast` is.
 - Every `perch board` run records the week in `history.jsonl` (ignored by git:
-  it is per-person data). Nothing reads it yet. The weekly and quarterly
-  feedback will, and a trend can only start the day you begin recording.
+  it is per-person data). `perch weekly` and `perch cut` read it, and a trend
+  can only start the day you begin recording.
 
 perch never ranks people. A rate is a property of the join, not a score.
 

@@ -8,10 +8,11 @@ import inspect
 
 
 def test_budgie_core_names_perch_uses():
+    from budgie.core.allocation import Allocation
     from budgie.core.csvio import as_float, as_required_float, as_str, read_rows
     from budgie.core.montecarlo import simulate
     from budgie.core.person import HoursEstimate, Person
-    from budgie.core.plan import PlanEntry
+    from budgie.core.plan import AllocationPlan, PlanEntry
     from budgie.core.project import Snapshot, load_snapshot
     from budgie.core.signals import SignalResult, evaluate
 
@@ -35,6 +36,9 @@ def test_budgie_core_names_perch_uses():
     assert {"budget", "plan_entries"} <= set(
         inspect.signature(Snapshot.what_if).parameters
     )
+    # money.what_if reads each allocation's fte and the plan's names.
+    assert "fte" in Allocation.__dataclass_fields__
+    assert hasattr(AllocationPlan, "names")
     assert set(PlanEntry.__dataclass_fields__) == {"name", "effective_date", "fte"}
     assert all(
         callable(f)
