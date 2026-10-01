@@ -36,3 +36,17 @@ def test_a_bad_config_names_the_key_at_fault(world, text, error, says):
 def test_a_missing_config_says_so(tmp_path):
     with pytest.raises(FileNotFoundError, match="perch.yaml"):
         load_config(tmp_path / "perch.yaml")
+
+
+def test_gitlab_project_is_read_and_optional(world):
+    assert load_config(world).gitlab_project is None
+    world.write_text(world.read_text() + "gitlab_project: grp/apollo\n")
+    assert load_config(world).gitlab_project == "grp/apollo"
+
+
+def test_a_missing_dump_is_allowed_before_the_first_fetch(world):
+    (world.parent / "dump.json").unlink()
+    with pytest.raises(FileNotFoundError, match="stats --dump"):
+        load_config(world)
+    config = load_config(world, require_dump=False)
+    assert config.board_dump == world.parent / "dump.json"

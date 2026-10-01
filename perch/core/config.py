@@ -11,7 +11,7 @@ CONFIG_NAME = "perch.yaml"
 BUDGIE_CONFIG = "budgie.yaml"
 HISTORY_NAME = "history.jsonl"
 
-_KEYS = {"budgie_project", "board_dump", "estimates", "people"}
+_KEYS = {"budgie_project", "board_dump", "estimates", "gitlab_project", "people"}
 
 
 @dataclass(frozen=True)
@@ -23,14 +23,19 @@ class Config:
     board_dump: Path
     estimates: Path | None = None
     people: dict[str, str] = field(default_factory=dict)  # GitLab username -> name
+    gitlab_project: str | None = None  # e.g. group/apollo; only `fetch` needs it
 
     @property
     def history(self) -> Path:
         return self.root / HISTORY_NAME
 
 
-def load_config(path: str | Path) -> Config:
-    """Load and validate a perch.yaml. Paths resolve against its directory."""
+def load_config(path: str | Path, require_dump: bool = True) -> Config:
+    """Load and validate a perch.yaml. Paths resolve against its directory.
+
+    ``require_dump=False`` is for the steps that run before the first fetch
+    (doctor, fetch itself): the dump's path is still required, its file is not.
+    """
     path = Path(path)
     if not path.is_file():
         raise FileNotFoundError(f"{path}: no such file. perch reads a {CONFIG_NAME}.")
@@ -55,7 +60,7 @@ def load_config(path: str | Path) -> Config:
             f"{path.name}: `budgie_project` is {project}, which has no {BUDGIE_CONFIG}"
         )
     dump = located("board_dump")
-    if not dump.is_file():
+    if require_dump and not dump.is_file():
         raise FileNotFoundError(
             f"{path.name}: `board_dump` is {dump}, which does not exist. "
             "Write one with `gitboard stats --dump FILE`."
@@ -68,10 +73,12 @@ def load_config(path: str | Path) -> Config:
     people = data.get("people") or {}
     if not isinstance(people, dict):
         raise TypeError(f"{path.name}: `people` must map GitLab usernames to names")
+    gitlab = data.get("gitlab_project")
     return Config(
         root=root,
         budgie_project=project,
         board_dump=dump,
         estimates=estimates,
         people={str(user): str(name) for user, name in people.items()},
+        gitlab_project=str(gitlab) if gitlab else None,
     )
