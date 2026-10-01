@@ -226,3 +226,8 @@ What they cover:
   (merged from main; the contract test pins its signature; budgie-8u1 makes it
   public), so there is no copy of the interpolation left in perch.
 - **`--out` with `--all`** writes one folder per project under the directory.
+- **A partial count names its span.** When the dump covers only part of the
+  quarter, the opening and the Total row give the span of the weeks whose
+  closes are counted (and the dump's span for Blocked days). A finished
+  quarter whose readings stop early says "labor spent through <date>" in the
+  subject and opening, and the forecast rows are "as of" the last reading used.

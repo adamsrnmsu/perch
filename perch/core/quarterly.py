@@ -122,6 +122,18 @@ class Quarter:
     staffing: tuple[Staffing, ...]
     hours_note: str | None
     board_note: str | None
+    board_span: tuple[date, date] | None = None  # what the dump covers of it
+
+    @property
+    def board_partial(self) -> bool:
+        """The dump covers only part of the quarter (so far)."""
+        return self.board_span not in (None, (self.start, self.through))
+
+    @property
+    def closed_span(self) -> tuple[date, date] | None:
+        """First to last day of the weeks whose closes are counted."""
+        known = [w for w in self.weeks if w.closed is not None]
+        return (known[0].start, known[-1].end) if known else None
 
     @property
     def total(self) -> Week:
@@ -375,7 +387,7 @@ def build(
     else:
         hours_note = None
 
-    board_note = misses = blocked = reopened = None
+    board_note = misses = blocked = reopened = board_span = None
     in_progress = issue_misses = ()
     if board is None:
         board_note = NO_DUMP
@@ -383,6 +395,7 @@ def build(
         since = _since(board)
         covered = (max(start, since), min(through, board.fetched_on))
         reaches = covered[0] <= covered[1]
+        board_span = covered if reaches else None
         if not reaches:
             board_note = f"the board dump is from {board.fetched_on}; run `perch fetch`"
         elif covered != (start, through):
@@ -417,4 +430,5 @@ def build(
         staffing=_staffing(money, start, end),
         hours_note=hours_note,
         board_note=board_note,
+        board_span=board_span,
     )

@@ -1,8 +1,9 @@
 import email
+from dataclasses import replace
 from datetime import date
 from email import policy
 
-from perch.core.report_mail import render_eml, render_md
+from perch.core.report_mail import render_eml, render_md, subject
 from perch.core.watch import render
 from perch.tests.test_quarterly import make
 
@@ -52,7 +53,9 @@ def test_a_pipe_in_a_cell_is_escaped(quarter_world):
 def test_without_readings_the_opening_says_so_cleanly(world):
     (world.parent / "fy26" / "weekly.csv").unlink()
     text = render_md(make(world, "2026-Q2"))
-    assert "2 issues closed; no hours readings." in text
+    opening = text.split("\n\n")[1]
+    assert opening.count("no hours readings") == 1
+    assert "2 issues closed." in opening
     assert "on — booked hours" not in text
 
 
@@ -90,3 +93,44 @@ def test_nothing_from_the_private_watch_reaches_the_report(quarter_world):
     report = render_md(q) + msg.get_payload()[1].get_content()
     lines = [line for line in render(_watch(quarter_world)).splitlines() if line]
     assert lines and not [line for line in lines if line in report]
+
+
+def opening(q):
+    return render_md(q).split("\n\n")[1]
+
+
+def test_the_opening_says_why_there_is_no_hours_per_issue(quarter_world):
+    q = make(quarter_world, "2026-Q2")
+    assert "2 issues closed, at 20 booked hours per closed issue." in opening(q)
+    none = replace(q, weeks=tuple(replace(w, closed=0) for w in q.weeks))
+    assert "0 issues closed." in opening(none)
+    apart = replace(  # the close and the hours in different weeks
+        q,
+        weeks=(
+            replace(q.weeks[0], closed=1, hours=None),
+            replace(q.weeks[1], closed=0),
+        ),
+    )
+    text = opening(apart)
+    assert "1 issue closed; hours per issue not available for these weeks." in text
+    assert "no hours readings" not in text
+
+
+def test_a_partial_dump_gives_the_span_it_counts(world):
+    text = render_md(make(world, "2026-Q1"))
+    # Weeks from Jan 26 are wholly inside the dump (it starts Jan 20).
+    assert (
+        "9 issues closed Jan 26 – Mar 31 (the board dump covers Jan 20 – Mar 31)"
+    ) in text
+    assert "0 issue-days were spent in Blocked Jan 20 – Mar 31." in text
+    assert "| Total, closes counted Jan 26 – Mar 31 | Jan 1 – Mar 31 | 9 |" in text
+
+
+def test_a_finished_quarter_whose_readings_stop_early_says_through(world):
+    q = make(world, "2026-Q2", today=date(2026, 10, 1))
+    assert subject(q).startswith(
+        "apollo, 2026-Q2: $26,000 labor spent through Apr 19 of $100,000;"
+    )
+    text = render_md(q)
+    assert "was spent this quarter through Apr 19" in text
+    assert "| Forecast at completion as of 2026-04-19, P50 |" in text

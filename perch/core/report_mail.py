@@ -50,11 +50,22 @@ def _signal(q: Quarter) -> str:
     return q.position.signal.label.upper() if q.position.signal else "no budget"
 
 
+def _early(q: Quarter) -> str:
+    """` through Apr 19` when a finished quarter's readings stop before its end."""
+    if q.to_date or q.read_to is None or q.read_to >= q.end:
+        return ""
+    return f" through {q.read_to:%b} {q.read_to.day}"
+
+
+def _issues(n: int) -> str:
+    return f"{n} issue" if n == 1 else f"{n} issues"
+
+
 def subject(q: Quarter) -> str:
     p = q.position
     signal = _signal(q)
     return (
-        f"{q.project}, {q.name}: {_money(p.spent_year)} labor spent of "
+        f"{q.project}, {q.name}: {_money(p.spent_year)} labor spent{_early(q)} of "
         f"{_money(p.budget_end)}; forecast at completion {_money(p.p50)} ({signal})"
     )
 
@@ -67,7 +78,7 @@ def _opening(q: Quarter) -> str:
     out = [f"{q.name} runs {_span(q.start, q.end)}; {reading}."]
     if p.spent_quarter is not None:
         out.append(
-            f"{_money(p.spent_quarter)} of labor was spent this quarter, "
+            f"{_money(p.spent_quarter)} of labor was spent this quarter{_early(q)}, "
             f"{_money(p.spent_year)} this year."
         )
     signal = f" ({_signal(q)})" if p.signal else ""
@@ -88,15 +99,25 @@ def _opening(q: Quarter) -> str:
             f"Issues with their own estimate came in {_delta(sum(costed))} (modelled)."
         )
     total = q.total
-    if total.closed is not None and q.total_per_issue is not None:
-        out.append(
-            f"{total.closed} issues closed, at {_hours(q.total_per_issue)} booked "
-            "hours per closed issue."
-        )
-    elif total.closed is not None:
-        out.append(f"{total.closed} issues closed; no hours readings.")
+    # A partial dump counts part of the quarter: say which part.
+    counted = dumped = ""
+    if q.board_partial:
+        dumped = f" {_span(*q.board_span)}"
+        if q.closed_span:
+            counted = f" {_span(*q.closed_span)} (the board dump covers{dumped})"
+    if total.closed is not None:
+        closed = f"{_issues(total.closed)} closed{counted}"
+        if q.total_per_issue is not None:
+            out.append(
+                f"{closed}, at {_hours(q.total_per_issue)} booked hours per "
+                "closed issue."
+            )
+        elif q.as_of is None or total.closed == 0:
+            out.append(f"{closed}.")
+        else:
+            out.append(f"{closed}; hours per issue not available for these weeks.")
     if q.blocked_days is not None:
-        out.append(f"{q.blocked_days} issue-days were spent in Blocked.")
+        out.append(f"{q.blocked_days} issue-days were spent in Blocked{dumped}.")
     if q.staffing:
         out.append(f"{len(q.staffing)} staffing change(s).")
     return " ".join(out)
@@ -111,7 +132,7 @@ def _blocks(q: Quarter) -> list[tuple]:
     if q.hours_note:
         out.append(("p", q.hours_note))
     to = q.read_to or q.through
-    forecast = f"Forecast at completion as of {q.through}"
+    forecast = f"Forecast at completion as of {to}"
     out.append(
         (
             "table",
@@ -173,7 +194,7 @@ def _blocks(q: Quarter) -> list[tuple]:
                 str(a.issues),
                 _hours(a.estimated),
                 _hours(a.modelled),
-                _delta(a.dollars),
+                _delta(a.dollars) if a.modelled else "—",  # nothing modelled to cost
             )
             for a in q.misses
         ]
@@ -224,7 +245,10 @@ def _blocks(q: Quarter) -> list[tuple]:
         )
         for w in (*q.weeks, q.total)
     ]
-    rows[-1] = ("Total", *rows[-1][1:4], _hours(q.total_per_issue))
+    total = "Total"
+    if q.board_partial and q.closed_span:
+        total = f"Total, closes counted {_span(*q.closed_span)}"
+    rows[-1] = (total, *rows[-1][1:4], _hours(q.total_per_issue))
     header = ("Week", "Dates", "Closed", "Hours booked", "Hours per issue")
     out.append(("table", 2, header, rows))
     out.append(
