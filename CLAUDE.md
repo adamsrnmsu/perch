@@ -19,7 +19,7 @@ app keeps its own repo and its own dev Makefile and gets three things here: a
 
 ```bash
 make          # the menu for every app: Monday run, board changes, budget
-make venv     # ~/Documents/tools/perch; installs Budgie from ../budgie first
+make venv     # ~/Documents/tools/perch; Budgie from GitHub, then ../budgie
 make test     # perch only: ~/Documents/tools/perch/bin/pytest
 make test-all # Budgie, perch and gitboard suites
 make lint     # ruff check .
@@ -29,8 +29,10 @@ make format   # ruff format .
 The other apps are found beside this checkout (`../budgie`,
 `../remote-gitboard`); `BUDGIE_DIR=` and `GB_DIR=` override that.
 
-Budgie is a library dependency installed from the sibling checkout and is
-deliberately absent from `pyproject.toml` (the PyPI name is not ours).
+Budgie is a library dependency pinned in `pyproject.toml` by git URL
+(`budgie @ git+https://github.com/adamsrnmsu/budgie.git`), never by bare name: the PyPI name is not ours.
+`make venv` installs `../budgie` editable after perch, so the local checkout
+wins for dev.
 `perch/tests/test_contract.py` lists every `budgie.core` name perch imports;
 when Budgie changes, that test fails first.
 

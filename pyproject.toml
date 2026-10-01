@@ -3,12 +3,17 @@ name = "perch"
 version = "0.1.0"
 description = "What the open board means for the budget: the join between gitboard and Budgie"
 requires-python = ">=3.10"
-# Budgie is a dependency too, but it is not published, and whatever answers to
-# that name on PyPI is not ours to trust -- so it is NOT listed here, or a
-# fresh `pip install` could fetch a stranger's package. `make venv` installs it
-# from the sibling checkout, and perch/tests/test_contract.py fails loudly if
-# it is missing.
-dependencies = ["click", "rich", "pyyaml", "numpy"]
+# Budgie is not on PyPI, and whatever answers to that name there is not ours,
+# so it is pinned to its repo by URL: an explicit URL never resolves to a
+# stranger's package. `make venv` then installs ../budgie editable on top for
+# local dev.
+dependencies = [
+    "budgie @ git+https://github.com/adamsrnmsu/budgie.git",
+    "click",
+    "rich",
+    "pyyaml",
+    "numpy",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=6.2.4", "ruff"]

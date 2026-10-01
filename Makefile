@@ -99,7 +99,8 @@ doctor: ## Check installs, tokens, config and how fresh the data is
 install: ## (Re)install all three tools. Fixes "No module named perch/budgie"
 	$(MAKE) -C $(BUDGIE_DIR) install VENV=$(BUDGIE_VENV)
 	test -x $(BIN)/pip || python3 -m venv $(PERCH_VENV)
-	$(BIN)/pip install -q -e $(BUDGIE_DIR) -e '$(PERCH_DIR)[dev]'
+	$(BIN)/pip install -q -e '$(PERCH_DIR)[dev]'
+	$(BIN)/pip install -q -e $(BUDGIE_DIR)
 	$(MAKE) -C $(GB_DIR) install
 	@echo "installed. 'make link' puts perch and gitboard on your PATH."
 
@@ -191,11 +192,12 @@ budget-tui: ## Budgie interactive: inputs, plan, live forecast
 
 ##@ Development (perch itself, except test-all)
 
-venv: ## Create perch's venv: Budgie from its checkout, then perch with dev + docs
+# perch pulls Budgie from GitHub; the editable checkout goes on after so it wins.
+venv: ## Create perch's venv: perch with dev + docs, then Budgie from its checkout
 	python3 -m venv $(PERCH_VENV)
 	$(BIN)/pip install --upgrade pip
-	$(BIN)/pip install -e $(BUDGIE_DIR)
 	$(BIN)/pip install -e '$(PERCH_DIR)[dev,docs]'
+	$(BIN)/pip install -e $(BUDGIE_DIR)
 
 lint: ## Lint with ruff
 	cd $(PERCH_DIR) && $(BIN)/ruff check .

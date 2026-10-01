@@ -14,12 +14,13 @@ board logic stays in gitboard. perch never calls GitLab and never sends mail.
 ## Install
 
 ```bash
-make venv          # venv at ~/Documents/tools/perch; Budgie from ../budgie
+make venv          # venv at ~/Documents/tools/perch; Budgie editable from ../budgie
 ```
 
-Budgie is installed from the sibling checkout (`BUDGIE_DIR=../budgie` to
-override). It is deliberately not listed in `pyproject.toml`; see the comment
-there.
+`pyproject.toml` pins Budgie to its GitHub repo by URL (never PyPI, where the
+name is not ours), so a plain `pip install` of perch works anywhere. `make venv`
+then installs the sibling checkout editable on top (`BUDGIE_DIR=../budgie` to
+override), so local Budgie edits show up in perch at once.
 
 ## One menu for every pi app
 
