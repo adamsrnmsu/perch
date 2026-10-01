@@ -44,3 +44,16 @@ def test_a_file_that_is_not_a_dump_is_refused(tmp_path):
     path.write_text('{"issues": []}')
     with pytest.raises(ValueError, match="stats --dump"):
         load_board(path)
+
+
+def test_the_board_columns_and_each_issues_last_move(world, tmp_path):
+    board = load_board(world.parent / "dump.json")
+    assert board.columns == ("Doing", "Done")
+    blocked = next(i for i in board.issues if i.iid == 104)
+    assert blocked.last_moved == date(2026, 4, 6)
+    moves = [
+        ["2026-02-03T09:00:00Z", "add", "Doing"],
+        ["2026-02-01T09:00:00Z", "remove", "Backlog"],
+    ]
+    assert _dump(tmp_path, {"transitions": moves}).last_moved == date(2026, 2, 3)
+    assert _dump(tmp_path, {}).last_moved is None

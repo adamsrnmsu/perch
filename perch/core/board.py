@@ -27,6 +27,7 @@ class Issue:
     closed_on: date | None
     blocked_since: date | None = None  # last move into Blocked, if it is there
     questions: tuple[str, ...] = ()  # unanswered `Q:` notes, as gitboard exports
+    last_moved: date | None = None  # its latest transition, if it has any
 
     @property
     def is_blocked(self) -> bool:
@@ -57,6 +58,7 @@ class Board:
     name: str
     fetched_on: date
     issues: tuple[Issue, ...]
+    columns: tuple[str, ...] = ()  # the board's lists; no column label is Backlog
 
     @property
     def open(self) -> list[Issue]:
@@ -97,6 +99,11 @@ def _blocked_since(record: dict) -> date | None:
     return _day(moves[-1]) if moves else None
 
 
+def _last_moved(record: dict) -> date | None:
+    stamps = [stamp for stamp, _, _ in record.get("transitions") or []]
+    return _day(max(stamps)) if stamps else None
+
+
 def load_board(path: str | Path) -> Board:
     path = Path(path)
     try:
@@ -111,6 +118,7 @@ def load_board(path: str | Path) -> Board:
                 blocked_since=_blocked_since(record),
                 # absent in dumps from before gitboard's gb-b23: no questions
                 questions=tuple(q["text"] for q in record.get("questions") or ()),
+                last_moved=_last_moved(record),
             )
             for record in meta["history"]
         )
@@ -119,6 +127,7 @@ def load_board(path: str | Path) -> Board:
             name=str(meta.get("board") or ""),
             fetched_on=_day(meta["fetched_at"]),
             issues=issues,
+            columns=tuple(meta.get("columns") or ()),
         )
     except (KeyError, TypeError, json.JSONDecodeError) as exc:
         raise ValueError(

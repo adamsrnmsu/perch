@@ -42,3 +42,29 @@ def test_a_project_without_a_year_is_refused(world):
     (world.parent / "fy26" / "budgie.yaml").write_text("budget: 1\n")
     with pytest.raises(ValueError, match="`year` is not set"):
         load_money(world.parent / "fy26")
+
+
+def test_budgie_pace_and_booked_hours_over_a_window(world):
+    """Even burn without a plan: 996 h x 28/365 = 76.4 h planned in four weeks.
+    Alice read 160 at wk12 (03-22) and 200 at wk16 (04-19); 04-12 interpolates
+    to 160 + 40 x 21/28 = 190."""
+    money = load_money(world.parent / "fy26")
+    assert money.planned("Alice", date(2026, 3, 22), date(2026, 4, 19)) == (
+        pytest.approx(996 * 28 / 365)
+    )
+    assert money.booked("Alice", date(2026, 3, 22), date(2026, 4, 19)) == 40
+    assert money.booked("Alice", date(2026, 3, 22), date(2026, 4, 12)) == 30
+    assert money.booked("Alice", date(2025, 12, 1), date(2026, 1, 25)) == 40
+    assert money.planned("Carol", date(2026, 3, 22), date(2026, 4, 19)) is None
+    assert money.booked("Carol", date(2026, 3, 22), date(2026, 4, 19)) is None
+
+
+def test_a_week_at_zero_fte_in_plan_csv_plans_zero_hours(world):
+    project = world.parent / "fy26"
+    (project / "plan.csv").write_text(
+        "name,effective_date,fte\nAlice,2026-01-01,0.5\nAlice,2026-03-01,0\n"
+        "Bob,2026-01-01,0.5\n"
+    )
+    money = load_money(project)
+    assert money.planned("Alice", date(2026, 3, 22), date(2026, 4, 19)) == 0
+    assert money.planned("Bob", date(2026, 3, 22), date(2026, 4, 19)) > 0
