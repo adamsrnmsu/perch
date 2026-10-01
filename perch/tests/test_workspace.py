@@ -120,3 +120,13 @@ def test_gitboard_dir_with_colon_space_round_trips(tmp_path):
     odd = tmp_path / "a: b #c"
     home = create_home(tmp_path / "ws", odd)
     assert home.gitboard_dir == odd.resolve()
+
+
+def test_standing_in_a_project_folder_picks_it(tmp_path):
+    home = make_home(tmp_path, "apollo", "gemini")
+    deep = home.projects_dir / "gemini" / "weekly"
+    deep.mkdir(parents=True)
+    assert home.select(None, here=deep) == "gemini"
+    assert home.select("apollo", here=deep) == "apollo"  # -p still wins
+    with pytest.raises(WorkspaceError, match="several projects"):
+        home.select(None, here=home.root)

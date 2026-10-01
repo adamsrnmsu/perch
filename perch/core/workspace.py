@@ -82,8 +82,11 @@ class Home:
     def budget_dir(self, name: str) -> Path:
         return self.root / BUDGET_DIR / name
 
-    def select(self, name: str | None) -> str:
-        """The named project, else the only one; several and none named is an error."""
+    def select(self, name: str | None, here: Path | None = None) -> str:
+        """The named project, else the one ``here`` is inside, else the only one.
+
+        Several projects, none named and ``here`` in none of them is an error.
+        """
         names = self.projects()
         if name is not None:
             if name not in names:
@@ -92,6 +95,13 @@ class Home:
                     f"no project {name!r} in {self.projects_dir}. Known: {known}"
                 )
             return name
+        if here is not None:
+            try:
+                inside = here.resolve().relative_to(self.projects_dir).parts
+            except ValueError:
+                inside = ()
+            if inside and inside[0] in names:
+                return inside[0]
         if not names:
             raise WorkspaceError("no projects yet. Run: perch init <name>")
         if len(names) > 1:

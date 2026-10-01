@@ -37,7 +37,7 @@ perch hours -p apollo          # paste this week's apollo timesheet totals
 perch monday --all             # fetch, board, weekly, digest, emails for every project
 ```
 
-`-p NAME` picks a project; with only one, it can be left off. Nothing is ever sent.
+`-p NAME` picks a project. Without it, a `perch.yaml` in the current directory is used, then the project folder you are standing in, then the only project. Nothing is ever sent.
 
 ### The workspace
 

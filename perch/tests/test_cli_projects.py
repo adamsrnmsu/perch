@@ -119,3 +119,20 @@ def test_init_rejects_a_name_that_escapes(tmp_path, monkeypatch):
     result = run("init", "../x", "--home", "ws", "--gitboard-dir", "gb")
     assert result.exit_code != 0 and "not a project name" in result.output
     assert not (tmp_path / "x").exists()
+
+
+def test_a_local_perch_yaml_beats_perch_home(world, tmp_path, monkeypatch):
+    home = build_home(tmp_path / "other", "apollo", "gemini")
+    monkeypatch.setenv("PERCH_HOME", str(home.root))
+    monkeypatch.chdir(world.parent)
+    result = run("board", "--no-history")
+    assert result.exit_code == 0, result.output  # not "several projects"
+
+
+def test_inside_a_project_folder_that_project_is_used(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo", "gemini")
+    deep = home.projects_dir / "gemini" / "weekly"
+    deep.mkdir()
+    monkeypatch.chdir(deep)
+    result = run("weekly")
+    assert result.exit_code == 0, result.output

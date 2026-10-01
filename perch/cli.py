@@ -88,19 +88,19 @@ def _home():
 
 
 def _config_path(config_path: str | None, project: str | None) -> Path:
-    """--config wins; then -p in the workspace; outside one, ./perch.yaml."""
+    """--config, then -p, then ./perch.yaml, then the workspace's project.
+
+    A perch.yaml in this directory beats $PERCH_HOME: it is the one you are
+    standing next to. In the workspace, the project folder you are in counts.
+    """
     from perch.core.config import CONFIG_NAME
-    from perch.core.workspace import WorkspaceError
 
     if config_path:
         return Path(config_path)
-    try:
-        home = _find_home()
-    except WorkspaceError:
-        if project is None and Path(CONFIG_NAME).is_file():
-            return Path(CONFIG_NAME)
-        raise
-    return home.config_path(home.select(project))
+    if project is None and Path(CONFIG_NAME).is_file():
+        return Path(CONFIG_NAME)
+    home = _find_home()
+    return home.config_path(home.select(project, Path.cwd()))
 
 
 def _run(step) -> None:
@@ -405,7 +405,7 @@ def _project(project):
     from perch.core.config import load_config
 
     home = _find_home()
-    name = home.select(project)
+    name = home.select(project, Path.cwd())
     return home, name, load_config(home.config_path(name), require_dump=False)
 
 
@@ -516,7 +516,7 @@ def monday(project, all_projects):
     if not all_projects:
         name = project or "project"
         try:
-            name = home.select(project)
+            name = home.select(project, Path.cwd())
             run_one(home, name)
         except steps.StepFailed as exc:
             raise click.ClickException(f"{name}: {exc}") from exc
@@ -550,16 +550,19 @@ def _runs(argv, cwd, env) -> bool:
     return done.returncode == 0
 
 
-def _show_gitboard_config(home) -> None:
+def _show_gitboard_config(home) -> bool:
+    """Print gitboard's config table; True when it found a read token (exit 0)."""
     from perch.core.steps import gitboard
 
     step = gitboard(home, "gitboard config", "config")
     try:
-        subprocess.run(
+        done = subprocess.run(
             step.argv, cwd=step.cwd, env={**os.environ, **step.env}, check=False
         )
     except OSError as exc:
         console.print(f"  [red]gitboard config did not run[/red]: {escape(str(exc))}")
+        return False
+    return done.returncode == 0
 
 
 @cli.command()
@@ -605,6 +608,15 @@ def doctor(project):
             )
     if home.gitboard_dir.is_dir():
         console.print("[bold]GitLab tokens (gitboard config)[/bold]")
-        _show_gitboard_config(home)
+        if not _show_gitboard_config(home):
+            show(
+                [
+                    Check(
+                        False,
+                        "GitLab read token not found (or gitboard config failed)",
+                        "see gitboard's README, 'Mint tokens'",
+                    )
+                ]
+            )
     if failed:
         raise click.exceptions.Exit(1)

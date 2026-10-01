@@ -107,7 +107,7 @@ def test_monday_all_with_no_projects_says_init(tmp_path, monkeypatch):
 def quiet_tools(monkeypatch, home):
     home.gitboard_dir.mkdir()
     monkeypatch.setattr("perch.cli._runs", lambda argv, cwd, env: True)
-    monkeypatch.setattr("perch.cli._show_gitboard_config", lambda home: None)
+    monkeypatch.setattr("perch.cli._show_gitboard_config", lambda home: True)
 
 
 def test_doctor_all_well_exits_0_with_no_fix(tmp_path, monkeypatch):
@@ -158,3 +158,22 @@ def test_doctor_reports_a_malformed_perch_yaml_as_a_fix(tmp_path, monkeypatch):
 
 def test_help_short_text_is_not_cut_at_the_step_number():
     assert "Step 1: one GitLab read" in run("--help").output
+
+
+def test_monday_from_inside_a_project_runs_that_project(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo", "gemini")
+    monkeypatch.chdir(home.projects_dir / "gemini")
+    ran = recorder(monkeypatch)
+    result = run("monday")
+    assert result.exit_code == 0, result.output
+    assert "grp/gemini" in ran[0].argv
+
+
+def test_doctor_reports_a_missing_gitlab_token(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(home.root)
+    quiet_tools(monkeypatch, home)
+    monkeypatch.setattr("perch.cli._show_gitboard_config", lambda home: False)
+    result = run("doctor")
+    assert result.exit_code == 1
+    assert "FIX" in result.output and "read token not found" in result.output

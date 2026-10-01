@@ -101,10 +101,14 @@ perch board / weekly / accuracy   unchanged, gaining -p alongside the existing -
    `accuracy` only).
 2. `-p NAME` selects `projects/NAME/perch.yaml`. An unknown name is an error
    that lists the known names.
-3. No flag and exactly one project: that project is used.
-4. No flag and several projects: stop with
+3. No flag and a `perch.yaml` in the current directory: that file (`board`,
+   `weekly` and `accuracy`; it wins over `$PERCH_HOME`). Added by perch-28n.
+4. No flag and the current directory is inside `projects/<name>/`: that
+   project. Added by perch-28n.
+5. No flag and exactly one project: that project is used.
+6. No flag and several projects: stop with
    `several projects: apollo, gemini. Pass -p <name>.`
-5. No projects: stop with `no projects yet. Run: perch init <name>`.
+7. No projects: stop with `no projects yet. Run: perch init <name>`.
 
 ### monday
 
@@ -162,7 +166,8 @@ one `ok` or `FIX <what> -> <command>` line per check:
     is new and catches a mistyped name before Monday.
 - **Freshness per project:** when the dump, `weekly.csv` and `history.jsonl`
   were last written.
-- **Last:** `gitboard config` runs once (tokens and instance).
+- **Last:** `gitboard config` runs once (tokens and instance). It exits 1
+  with no read token (gb-3ac), which doctor reports as a FIX line.
 
 `doctor` exits non-zero if any check reported FIX.
 
