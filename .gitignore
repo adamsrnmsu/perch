@@ -21,4 +21,7 @@ dumps/
 weekly/
 budget/
 perch.yaml
+projects/
+perch-home.yaml
+.claude/worktrees/
 uv.lock

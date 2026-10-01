@@ -23,31 +23,54 @@ the private repo. `make venv`
 then installs the sibling checkout editable on top (`BUDGIE_DIR=../budgie` to
 override), so local Budgie edits show up in perch at once.
 
-## One menu for every pi app
+## One entry point for every pi app
 
-perch is the single place you run things from. Its `Makefile` drives gitboard,
-Budgie and perch; each app still lives in its own repo with its own Makefile.
+`perch` is the single place you run things from. It drives gitboard and Budgie
+as separate commands; each app still lives in its own repo. Run it from
+anywhere inside a workspace, or set `PERCH_HOME`.
 
 ```bash
-make               # the menu; `make lost` adds the Monday order
-make install       # all three tools
-make init          # perch.yaml and a Budgie project under budget/
-make doctor        # installs, tokens, config, how fresh the data is
-make hours         # paste this week's timesheet totals
-make monday        # fetch, board, weekly, digest, emails; nothing is sent
+perch init apollo --home ~/work/pi --gitboard-dir ~/Documents/git/pi_suite/remote-gitboard
+perch projects                 # every project, its GitLab project, how fresh its data is
+perch doctor                   # tools, config, people names, freshness; FIX lines say what to run
+perch hours -p apollo          # paste this week's apollo timesheet totals
+perch monday --all             # fetch, board, weekly, digest, emails for every project
 ```
 
-The other apps are looked for beside this checkout (`../budgie`,
-`../remote-gitboard`). Anywhere else: `make BUDGIE_DIR=... GB_DIR=... <target>`.
+`-p NAME` picks a project; with only one, it can be left off. Nothing is ever sent.
 
-A new app joins the menu with a `<APP>_DIR ?=` variable, a `##@` section and a
-line in `make lost`. Its code stays in its own repo.
+### The workspace
+
+A project is one funded piece of work: one GitLab project, one Budgie project,
+one timesheet charge code. Rates are per project (the same person can cost a
+different amount on different work), so each Budgie project has its own
+`people.csv`.
+
+```
+~/work/pi/
+  perch-home.yaml      gitboard_dir: /path/to/remote-gitboard
+  projects/apollo/     perch.yaml (gitlab_project: group/apollo), history.jsonl, dumps/, weekly/
+  budget/apollo/       the Budgie project: people.csv, plan.csv, weekly.csv, budget.csv
+```
+
+Board edits (pull, plan, land, tui) are `gitboard` commands, run from the
+gitboard checkout with the project's `gitlab_project`.
+
+### Moving a single-team setup in
+
+1. Create `perch-home.yaml` (one line: `gitboard_dir: /path/to/remote-gitboard`).
+2. Make `projects/team/`, then move `perch.yaml`, `history.jsonl` and `dumps/`
+   into it.
+3. In `perch.yaml`, fix `budgie_project` and `board_dump` (they're relative to
+   the file) and add `gitlab_project`.
+
+`perch doctor` names any path that is still wrong.
 
 ## Use
 
 ```bash
 gitboard stats group/project --dump dumps/team.json    # in the gitboard repo
-perch board                                            # reads ./perch.yaml
+perch board [-p NAME]                                 # or --config FILE
 perch accuracy
 perch weekly [--person NAME] [--out FILE]        # markdown drafts, nothing sent
 ```
@@ -57,6 +80,7 @@ perch weekly [--person NAME] [--out FILE]        # markdown drafts, nothing sent
 ```yaml
 budgie_project: ../budgets/budget/fy26   # the directory holding budgie.yaml
 board_dump: dumps/team.json
+gitlab_project: group/project            # what perch fetch reads
 estimates: estimates.csv                 # optional
 people:                                  # GitLab username -> Budgie name
   asmith: Alice
@@ -103,3 +127,4 @@ make format
 ```
 
 Design: `docs/superpowers/specs/2026-09-20-perch-v1-design.md`.
+Multi-project design: docs/superpowers/specs/2026-10-01-multi-project-design.md.

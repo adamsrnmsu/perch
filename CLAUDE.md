@@ -8,17 +8,18 @@ number neither tool produces, add it to the tool that owns it. perch never
 calls GitLab, never redoes budget math, never sends anything, and never ranks
 people.
 
-perch is also the one entry point for every pi app: its `Makefile` is the
-single menu, run from this directory. There is no parent folder or root
-Makefile to depend on. The menu only shells out to the tool that owns each
-step, so the rules above hold: perch never absorbs another app's code. A new
-app keeps its own repo and its own dev Makefile and gets three things here: a
-`<APP>_DIR ?=` variable, a `##@` section, and a line in `make lost`.
+perch is also the one entry point for every pi app, as a CLI: `perch monday`,
+`perch doctor`, `perch hours` and the rest shell out to the tool that owns each
+step (`perch/core/steps.py` holds each call as a `Step` value; the CLI runs
+them). perch never imports another app's code to do that. A workspace
+(`perch-home.yaml`) holds `projects/<name>/` and `budget/<name>/`; a project
+is one GitLab project + one Budgie project + one charge code, picked with
+`-p`. The Makefile is development only.
 
 ## Commands
 
 ```bash
-make          # the menu for every app: Monday run, board changes, budget
+perch --help  # running the apps: projects, init, doctor, hours, monday [--all]
 make venv     # ~/Documents/tools/perch; Budgie from GitHub, then ../budgie
 make test     # perch only: ~/Documents/tools/perch/bin/pytest
 make test-all # Budgie, perch and gitboard suites
@@ -43,6 +44,12 @@ Same rule as Budgie: everything under `perch/core/` is UI-free (no click, no
 rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 
 - `core/config.py` -- perch.yaml to a frozen `Config`; every error names the key.
+- `core/workspace.py` -- perch-home.yaml (walk up, else $PERCH_HOME), the
+  projects under projects/, `-p` selection, and scaffolding a project.
+- `core/steps.py` -- every Budgie/gitboard/perch call as a `Step(argv, cwd,
+  env)`; nothing here executes. `run_projects` is `monday --all`'s
+  carry-on-past-a-failure loop.
+- `core/doctor.py` -- `Check(ok, what, fix)` values for `perch doctor`.
 - `core/board.py` -- a `gitboard stats --dump` file to `Board`/`Issue`.
   `closed_on` follows gitboard's `done_at` (closed_at, else the last move into
   Done) so the two tools agree on what is finished. Type is the first

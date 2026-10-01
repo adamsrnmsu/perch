@@ -1,6 +1,6 @@
 # perch multi-project: one workspace, several funded projects
 
-Date: 2026-10-01. Status: design approved in conversation; spec awaiting review.
+Date: 2026-10-01. Status: approved and built.
 Bead: perch-h3l.
 
 ## Purpose
@@ -117,7 +117,7 @@ to review: the weekly file, the newest reports folder, and the emails folder.
 `monday --all` runs `monday` for every project in name order. If one project
 fails, it records the step and the error and moves on to the next project. It
 ends with one line per project (`apollo ok`, or
-`gemini FAILED at fetch: <first error line>`) and exits non-zero if any
+`gemini FAILED: fetch exited <code>`; the tool's own error output is shown live above it) and exits non-zero if any
 project failed. Nothing is retried. As before, nothing is ever sent.
 
 `hours` has no `--all`, because each charge code's totals are pasted by hand.
@@ -132,8 +132,7 @@ project failed. Nothing is retried. As before, nothing is ever sent.
   is always passed explicitly, so the `project` in `gitboard.toml` is never relied on.
   It is invoked the way the Makefile does today:
   `PYTHONPATH=<gitboard_dir>/src <gitboard_dir>/.venv/bin/python -m gitboard.cli`.
-- **perch's own steps** (`board`, `weekly`) are called in-process, not as a
-  separate command.
+- **perch's own steps** (`board`, `weekly`) run as `perch` commands from the same venv, like the other steps, so `monday` is one list of steps and the tests check the whole sequence.
 
 ### init
 
@@ -147,9 +146,7 @@ project failed. Nothing is retried. As before, nothing is ever sent.
 - prints what to fill in by hand: `gitlab_project`, `people:`, and the Budgie
   inputs (`budgie guide`).
 
-`--home DIR` writes `perch-home.yaml` in DIR (asking for `gitboard_dir`,
-or taking `--gitboard-dir`) when there is none yet, and creates
-`projects/` and `budget/` there.
+`--home DIR` writes `perch-home.yaml` in DIR when there is none yet (it needs `--gitboard-dir` then; perch never prompts, so init stays scriptable), and creates `projects/` and `budget/` there.
 
 ### doctor
 
