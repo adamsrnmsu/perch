@@ -64,6 +64,12 @@ class PersonWatch:
 class Watch:
     title: str
     people: list[PersonWatch]
+    weeks: int  # the prior weeks of history behind it
+
+    @property
+    def thin(self) -> bool:
+        """Under MIN_WEEKS of history: no own-baseline signal can flag yet."""
+        return self.weeks < MIN_WEEKS
 
     @property
     def flags(self) -> int:
@@ -242,7 +248,7 @@ def watch(
                 else Signal(ESTIMATES, False, "no `estimates:` file", 0)
             )
         out.append(PersonWatch(name, (*thin, _doing(board, people, name), last)))
-    return Watch(f"{board.project} {board.name}, {week}", out)
+    return Watch(f"{board.project} {board.name}, {week}", out, weeks)
 
 
 def render(result: Watch) -> str:

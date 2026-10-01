@@ -16,6 +16,7 @@ from pathlib import Path
 
 from textual import work
 from textual.app import App, ComposeResult
+from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.widgets import DataTable, Footer, Input, Log
 
@@ -23,8 +24,6 @@ from perch.cli import _bin_dir, _label, _money, _watch
 from perch.core.config import load_config
 from perch.core.doctor import freshness
 from perch.core.history import latest_week
-from perch.core.watch import PLAN
-from perch.core.weekly import _thin
 from perch.core.workspace import Home
 
 _ERRORS = (OSError, TypeError, ValueError, KeyError)  # doctor's, for a bad config
@@ -59,13 +58,9 @@ def _flags(config_path: Path) -> str:
     """The watch's flag count; "—" when it can't run or has too little history."""
     try:
         page = _watch(config_path)
-    except _ERRORS:
+    except Exception:  # noqa: BLE001 -- one bad project must not stop the dashboard
         return "—"
-    # Below MIN_WEEKS every signal reads `_thin(weeks)` and none can flag.
-    plan = [s for p in page.people for s in p.signals if s.name == PLAN]
-    if all(s.text == _thin(s.sample) for s in plan):
-        return "—"
-    return str(page.flags)
+    return "—" if page.thin else str(page.flags)
 
 
 def row(home: Home, name: str) -> tuple[str, ...]:
@@ -73,8 +68,8 @@ def row(home: Home, name: str) -> tuple[str, ...]:
     try:
         config = load_config(home.config_path(name), require_dump=False)
         week = latest_week(config.history)
-    except _ERRORS as exc:
-        return (name, f"error: {exc}", "", "", "", "", "")
+    except Exception as exc:  # noqa: BLE001 -- a display boundary: show, never crash
+        return (name, f"error: {type(exc).__name__}: {exc}", "", "", "", "", "")
     team = next((r for r in week if r["kind"] == "team"), {})
     ages = dict(freshness(home, name))
     return (
@@ -103,6 +98,7 @@ class PerchTUI(App):
         ("r", "refresh", "refresh"),
         ("question_mark", "show_help_panel", "help"),
         ("q", "quit", "quit"),
+        Binding("escape", "close_cut", show=False),
     ]
 
     def __init__(self, home: Home):
@@ -156,11 +152,11 @@ class PerchTUI(App):
 
     def _start(self, prefix: str, action: str, args: list[str]) -> None:
         self.busy = action
-        self._stream(prefix, [str(_bin_dir() / "perch"), *args])
+        self._stream(self.query_one(Log), prefix, [str(_bin_dir() / "perch"), *args])
 
     @work(thread=True)
-    def _stream(self, prefix: str, argv: list[str]) -> None:
-        log = self.query_one(Log)
+    def _stream(self, log: Log, prefix: str, argv: list[str]) -> None:
+        """In a thread: every touch of the app goes through call_from_thread."""
         try:
             for line in _spawn(argv, self.home.root):
                 self.call_from_thread(log.write_line, f"{prefix}: {line}")
@@ -179,10 +175,14 @@ class PerchTUI(App):
             box.display = True
             box.focus()
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        event.input.display = False
-        event.input.value = ""
+    def action_close_cut(self) -> None:
+        box = self.query_one(Input)
+        box.display = False
+        box.value = ""
         self.query_one(DataTable).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.action_close_cut()
         try:
             flags = tuple(shlex.split(event.value))
         except ValueError as exc:

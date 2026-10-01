@@ -96,6 +96,8 @@ def test_thin_history_reads_not_enough_history(world):
         found = signal(result, "Alice", name)
         assert not found.flagged and found.text == "not enough history: 3 of 8 weeks"
     assert signal(result, "Alice", "work in Doing").text.startswith("nothing")
+    assert result.weeks == 3 and result.thin
+    assert not world_watch(world, history(13)).thin  # W13-W16: 4 weeks
 
 
 # -- hours per issue -----------------------------------------------------------

@@ -104,5 +104,10 @@ world:
 - `?` opens Textual's built-in key help panel.
 - `c` with an empty line runs `perch cut -p NAME` (since the last recorded
   week).
+- Escape closes the `cut` input without running anything.
+- A row catches any exception, not only the config errors: the table is a
+  display boundary, so one bad project shows `error: <type>: <message>`.
+- `perch.core.watch.Watch` carries `weeks` (the prior weeks behind it) and
+  `thin`, which the flag column reads.
 - The tests are plain functions running `App.run_test()` under
   `asyncio.run`, so perch needs no pytest-asyncio.

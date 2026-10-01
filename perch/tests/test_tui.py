@@ -81,7 +81,7 @@ def test_the_table_has_every_project_and_its_last_recorded_week(tmp_path):
 
 def test_the_flag_column_counts_the_watch_flags(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo")
-    page = Watch("t", [PersonWatch("Alice", (Signal(PLAN, True, "x", 4),))])
+    page = Watch("t", [PersonWatch("Alice", (Signal(PLAN, True, "x", 4),))], 4)
     monkeypatch.setattr(tui, "_watch", lambda path: page)
 
     async def script(app, pilot):
@@ -244,5 +244,55 @@ def test_a_corrupt_history_is_an_error_row(tmp_path):
 
     async def script(app, pilot):
         assert _cells(app)[0][1].startswith("error: ")
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_malformed_dump_is_an_error_row_and_the_others_still_render(tmp_path):
+    home = build_home(tmp_path, "apollo", "beta")
+    dump = home.projects_dir / "apollo" / "dump.json"
+    closed = {"iid": 1, "title": "t", "state": "closed", "closed_at": 5}
+    bad = [{**closed, "labels": [], "transitions": []}]  # AttributeError on load
+    dump.write_text(json.dumps({**json.loads(dump.read_text()), "history": bad}))
+
+    async def script(app, pilot):
+        rows = _cells(app)
+        assert rows[0][6] == "—"  # the watch cannot read that dump
+        assert rows[1][1] == "grp/beta"
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_row_that_raises_anything_shows_the_error(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo", "beta")
+
+    def broken(path):
+        if "apollo" in str(path):
+            raise AttributeError("no fetched_at")
+        return original(path)
+
+    original = tui.latest_week
+    monkeypatch.setattr(tui, "latest_week", broken)
+
+    async def script(app, pilot):
+        rows = _cells(app)
+        assert rows[0][1] == "error: AttributeError: no fetched_at"
+        assert rows[1][1] == "grp/beta"
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_escape_closes_the_cut_input_without_running_anything(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        await pilot.press("c")
+        box = app.query_one(Input)
+        box.value = "--budget 700000"
+        await pilot.press("escape")
+        await settle(app, pilot)
+        assert not box.display and box.value == ""
+        assert app.query_one(DataTable).has_focus
+        assert spawned == []
 
     run(tui.PerchTUI(home), script)
