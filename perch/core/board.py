@@ -26,10 +26,15 @@ class Issue:
     labels: tuple[str, ...]
     closed_on: date | None
     blocked_since: date | None = None  # last move into Blocked, if it is there
+    questions: tuple[str, ...] = ()  # unanswered `Q:` notes, as gitboard exports
 
     @property
     def is_blocked(self) -> bool:
         return self.is_open and BLOCKED in self.labels
+
+    @property
+    def is_waiting(self) -> bool:
+        return self.is_open and (self.is_blocked or bool(self.questions))
 
     @property
     def is_open(self) -> bool:
@@ -104,6 +109,8 @@ def load_board(path: str | Path) -> Board:
                 labels=tuple(record.get("labels") or ()),
                 closed_on=_closed_on(record),
                 blocked_since=_blocked_since(record),
+                # absent in dumps from before gitboard's gb-b23: no questions
+                questions=tuple(q["text"] for q in record.get("questions") or ()),
             )
             for record in meta["history"]
         )

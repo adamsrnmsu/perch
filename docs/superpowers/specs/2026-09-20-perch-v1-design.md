@@ -300,7 +300,9 @@ Each block has four parts:
    baseline reads "above"/"below", else "in line").
 4. **Waiting on someone else**: open issues carrying gitboard's `Blocked`
    column label, with days since the last move into it (from the dump's
-   transitions). Board data only, so it needs no history.
+   transitions), plus open issues with an unanswered `Q:` note, listed with the
+   question text (the dump's per-issue `questions`, gitboard gb-b23; absent in
+   older dumps, read as none). Board data only, so it needs no history.
 
 Degrade rules: a trailing comparison needs at least 4 prior weeks that hold the
 figure in question; with fewer the line says `not enough history: 2 of 8

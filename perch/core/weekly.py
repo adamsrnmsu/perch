@@ -111,17 +111,24 @@ def _accuracy(
 
 
 def _waiting(name: str, board: Board, people: dict[str, str]) -> list[str]:
-    mine = [i for i in board.open if i.is_blocked and people.get(i.assignee) == name]
+    mine = [i for i in board.open if i.is_waiting and people.get(i.assignee) == name]
     if not mine:
-        return ["- **Waiting on someone else:** nothing in Blocked."]
-    out = ["- **Waiting on someone else** (in Blocked):"]
-    for i in sorted(mine, key=lambda i: i.blocked_since or board.fetched_on):
-        since = (
-            f"{(board.fetched_on - i.blocked_since).days} days"
-            if i.blocked_since
-            else "unknown time"
-        )
-        out.append(f"  - #{i.iid} {i.title}: {since}")
+        return ["- **Waiting on someone else:** nothing in Blocked or asked as `Q:`."]
+    out = ["- **Waiting on someone else** (in Blocked, or an unanswered `Q:` note):"]
+    # blocked longest first, then the question-only issues by number
+    for i in sorted(
+        mine,
+        key=lambda i: (not i.is_blocked, i.blocked_since or board.fetched_on, i.iid),
+    ):
+        parts = []
+        if i.is_blocked:
+            parts.append(
+                f"{(board.fetched_on - i.blocked_since).days} days"
+                if i.blocked_since
+                else "unknown time"
+            )
+        parts += [f'asked "{q}"' for q in i.questions]
+        out.append(f"  - #{i.iid} {i.title}: {'; '.join(parts)}")
     return out
 
 
