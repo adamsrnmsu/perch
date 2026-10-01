@@ -65,7 +65,8 @@ def test_no_history_file_and_no_estimates_still_render(world):
     out = run(world).output
     assert "not enough history to fit type rates" in out
     assert "no `estimates:` file" in out
-    assert "#104 Issue 104: 14 days" in out  # Bob's Blocked issue
+    assert "#104 Issue 104: 14 days\n" in out  # Bob's Blocked issue
+    assert '#105 Issue 105: asked "Q: which env?"' in out  # ...and his question
     assert not (world.parent / "history.jsonl").exists()  # weekly never writes
 
 
@@ -92,3 +93,8 @@ def test_out_writes_a_file_and_unknown_person_is_a_clean_error(world, tmp_path):
     assert "## Alice" in target.read_text() and "## Bob" in target.read_text()
     bad = run(world, "--person", "Zed")
     assert bad.exit_code != 0 and "Traceback" not in bad.output
+
+
+def test_alice_has_nothing_waiting(world):
+    out = run(world, "--person", "Alice").output
+    assert "nothing in Blocked or asked as `Q:`" in out

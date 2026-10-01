@@ -11,6 +11,7 @@
 
 Open: Alice #101 (estimated 10 h, 8-14), #102, #103; Bob #104, #105;
 #104 is Blocked since 2026-04-06 (14 days at the 04-20 fetch);
+#105 has an unanswered "Q: which env?";
 #106 unassigned; #107 assigned to cdoe, who is not in perch.yaml.
 """
 
@@ -29,8 +30,8 @@ def week(number: int) -> date:
     return date.fromisocalendar(2026, number, 7)
 
 
-def issue(iid, assignee=None, closed=None, labels=(), transitions=()):
-    return {
+def issue(iid, assignee=None, closed=None, labels=(), transitions=(), questions=()):
+    rec = {
         "iid": iid,
         "title": f"Issue {iid}",
         "state": "closed" if closed else "opened",
@@ -39,6 +40,12 @@ def issue(iid, assignee=None, closed=None, labels=(), transitions=()):
         "closed_at": f"{closed}T12:00:00.000Z" if closed else None,
         "transitions": list(transitions),
     }
+    if questions:  # gitboard's `questions`; older dumps have no such key
+        rec["questions"] = [
+            {"ts": "2026-04-15T09:00:00.000Z", "author": "x", "text": q}
+            for q in questions
+        ]
+    return rec
 
 
 def history():
@@ -64,7 +71,7 @@ def history():
             labels=["Blocked"],
             transitions=[["2026-04-06T09:00:00.000Z", "add", "Blocked"]],
         ),
-        issue(105, "bjones"),
+        issue(105, "bjones", questions=["Q: which env?"]),
         issue(106),
         issue(107, "cdoe"),
     ]
