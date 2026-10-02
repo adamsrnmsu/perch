@@ -302,7 +302,9 @@ def _since(board: Board) -> date:
     return board.since or board.fetched_on - timedelta(days=DUMP_DAYS)
 
 
-def _previous(board: Board, money: Money, start: date):
+def _previous(
+    board: Board, money: Money, start: date
+) -> tuple[Week | None, int | None]:
     """(totals, blocked issue-days) for the quarter before `start`, or (None,
     None) unless the dump's recorded `since` covers all of it."""
     end = start - timedelta(days=1)

@@ -11,6 +11,7 @@ def test_budgie_core_names_perch_uses():
     from budgie.core.budget import Budget, BudgetRevision
     from budgie.core.burndown import BurndownStatus, burndown
     from budgie.core.calendar import workdays_between
+    from budgie.core.costs import CostItem
     from budgie.core.csvio import as_float, as_required_float, as_str, read_rows
     from budgie.core.eac import at_completion
     from budgie.core.montecarlo import simulate
@@ -63,5 +64,6 @@ def test_budgie_core_names_perch_uses():
         for f in (
             as_float, as_required_float, as_str, read_rows, simulate, evaluate,
             load_snapshot, HoursEstimate, Person, SignalResult, BudgetRevision,
+            CostItem,
         )
     )  # fmt: skip

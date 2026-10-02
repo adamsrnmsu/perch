@@ -26,7 +26,7 @@ sent: the lead reviews the draft and sends it.
   - `budget.csv` (dated revisions);
   - `plan.csv` (joins, leaves, FTE changes);
   - gitboard's board dump (its issue history from `since`; `perch fetch`
-    pulls 276 days).
+    pulls 276 days, `--history-days 276`).
 - **Form:** an `.eml` draft for Outlook (an HTML part and a text part), plus a
   `.md` copy for review.
 - **Scope:** one draft per project. `--all` writes every project's draft.
@@ -205,14 +205,21 @@ What they cover:
   the Budgie year. They sit as a row under the throughput Total and a line in
   Waiting. `since` is a mid-day timestamp, so its own day counts as covered,
   as the 90-day guess always did.
-- **`perch fetch` passes `--days 138`** (ruling: the bead said 92). gitboard
-  fetches `max(2 x days, 90)` days back, and the default report is the last
-  complete quarter, run some days into the next: covering it and the one
-  before needs up to 92 + 92 days plus that lag, so 2 x 92 = 184 covers only a
-  fetch on the day after the quarter ends. 276 days covers the previous
-  quarter for the whole of the following quarter; the cost is about half as
-  many closed issues again for gitboard to read, and `calibrate` sees nine
-  months of closes rather than three.
+- **`perch fetch` passes `--history-days 276`** (ruling: the bead said
+  `--days 92`). The default report is the last complete quarter, run some days
+  into the next: covering it and the one before needs up to 92 + 92 days plus
+  that lag, so 184 days covers only a fetch on the day after the quarter ends,
+  while 276 covers the previous quarter for the WHOLE following quarter.
+  `--history-days` (gitboard gb-ep8) sets only the fetched span,
+  `since = now - max(2 x days, N)`; `--days` stays 7, so the printed summary
+  and the row `stats` appends to reports/stats.jsonl stay 7-day and the
+  digest's 8-week trend is not polluted (a `--days 138` would have changed
+  both). Cost against today's 90 days: about 3x the closed issues fetched;
+  gitboard makes about 3 calls per issue (open + closed in the window), so a
+  fetch takes roughly 1.7-3x as long depending on the open:closed mix. And
+  gitboard's own tight / late_milestones / gantt estimates now draw from
+  about nine months of finished cards, as do perch's `calibrate` and accuracy
+  (perch-7ho).
 - **`build` takes `today` and the project name.** Whether a quarter is still
   running depends on the date; the name is the project folder's.
 - **A quarter still running** stops at the latest reading. A finished one runs

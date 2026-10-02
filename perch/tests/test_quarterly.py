@@ -19,17 +19,9 @@ from perch.core.estimates import load_estimates
 from perch.core.join import calibrate
 from perch.core.money import load_money, load_snapshot
 from perch.core.quarterly import build, last_complete_quarter, parse_quarter
-from perch.tests.conftest import issue
+from perch.tests.conftest import issue, since
 
 FETCH_DAY = date(2026, 4, 20)
-
-
-def since(world, day):
-    """Give the world's dump gitboard's `since`: where its history starts."""
-    dump = world.parent / "dump.json"
-    meta = json.loads(dump.read_text())
-    meta["since"] = f"{day}T08:00:00+00:00"
-    dump.write_text(json.dumps(meta))
 
 
 def make(world, quarter, today=FETCH_DAY, board=True, estimates=True):

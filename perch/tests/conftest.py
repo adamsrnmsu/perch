@@ -139,6 +139,14 @@ def build_world(tmp_path):
     return config
 
 
+def since(world, day):
+    """Give the world's dump gitboard's `since`: where its history starts."""
+    dump = world.parent / "dump.json"
+    meta = json.loads(dump.read_text())
+    meta["since"] = f"{day}T08:00:00+00:00"
+    dump.write_text(json.dumps(meta))
+
+
 @pytest.fixture
 def world(tmp_path):
     return build_world(tmp_path)

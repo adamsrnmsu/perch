@@ -5,6 +5,7 @@ from email import policy
 
 from perch.core.report_mail import render_eml, render_md, subject
 from perch.core.watch import render
+from perch.tests.conftest import since
 from perch.tests.test_quarterly import make
 
 
@@ -48,8 +49,6 @@ def test_coverage_and_missing_inputs_are_said_where_they_matter(world):
 
 
 def test_the_previous_quarter_is_a_row_beside_the_total(world):
-    from perch.tests.test_quarterly import since
-
     assert "Previous quarter" not in render_md(make(world, "2026-Q2"))
     since(world, "2026-01-01")
     text = render_md(make(world, "2026-Q2"))

@@ -67,14 +67,14 @@ gitboard checkout with the project's `gitlab_project`.
    the file) and add `gitlab_project`.
 
 `perch doctor` names what is still wrong; `perch fetch` rewrites the board dump.
-It asks gitboard for about nine months of history (`gitboard stats --days 138`,
-twice that back from the fetch), so `perch quarterly` can set a quarter beside
-the one before it.
+It asks gitboard for about nine months of history (`gitboard stats
+--history-days 276`; the stats summary stays 7 days), so `perch quarterly` can
+set a quarter beside the one before it.
 
 ## Use
 
 ```bash
-gitboard stats group/project --days 138 --dump dumps/team.json   # gitboard repo
+gitboard stats group/project --history-days 276 --dump dumps/team.json  # gitboard
 perch board [-p NAME]                                 # or --config FILE
 perch accuracy
 perch weekly [--person NAME] [--out FILE]        # markdown drafts, nothing sent
