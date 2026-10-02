@@ -15,7 +15,7 @@ def test_budgie_core_names_perch_uses():
     from budgie.core.csvio import as_float, as_required_float, as_str, read_rows
     from budgie.core.eac import at_completion
     from budgie.core.montecarlo import simulate
-    from budgie.core.monthly import _spent_at  # private until budgie-8u1
+    from budgie.core.monthly import spent_at
     from budgie.core.person import HoursEstimate, Person
     from budgie.core.plan import AllocationPlan, PlanEntry
     from budgie.core.project import Snapshot, load_snapshot
@@ -48,7 +48,7 @@ def test_budgie_core_names_perch_uses():
     assert hasattr(AllocationPlan, "names")
     assert set(PlanEntry.__dataclass_fields__) == {"name", "effective_date", "fte"}
     assert {"observations", "plan"} <= set(inspect.signature(burndown).parameters)
-    assert {"series", "day", "year"} == set(inspect.signature(_spent_at).parameters)
+    assert {"series", "day", "year"} == set(inspect.signature(spent_at).parameters)
     assert callable(BurndownStatus.expected_on) and callable(workdays_between)
     # What quarterly.build calls on them.
     assert {"people", "observations", "year", "as_of", "plan"} <= set(

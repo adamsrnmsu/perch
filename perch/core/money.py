@@ -14,7 +14,7 @@ from pathlib import Path
 
 from budgie.core.budget import Budget
 from budgie.core.burndown import BurndownStatus, burndown
-from budgie.core.monthly import _spent_at  # private until budgie-8u1
+from budgie.core.monthly import spent_at
 from budgie.core.person import Person
 from budgie.core.plan import AllocationPlan, PlanEntry
 from budgie.core.project import Snapshot, load_snapshot
@@ -75,7 +75,7 @@ class Money:
         before_year = date(self.year, 1, 1) - timedelta(days=1)  # the curve's 0
 
         def at(day: date) -> float:
-            return _spent_at(series, max(day, before_year), self.year)
+            return spent_at(series, max(day, before_year), self.year)
 
         return at(end) - at(start)
 
