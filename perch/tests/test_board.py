@@ -101,3 +101,9 @@ def test_a_record_without_an_iid_is_refused(tmp_path):
     )
     with pytest.raises(ValueError, match="stats --dump.*iid"):
         load_board(path)
+
+
+def test_created_on_is_the_issues_creation_day(tmp_path):
+    made = _dump(tmp_path, {"created_at": "2026-03-02T10:00:00.000Z"})
+    assert made.created_on == date(2026, 3, 2)
+    assert _dump(tmp_path, {}).created_on is None  # absent in the record

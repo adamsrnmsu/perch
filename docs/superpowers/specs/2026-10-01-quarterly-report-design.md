@@ -252,8 +252,12 @@ What they cover:
 - **A label's finish is judged by the board at the quarter's end** (perch-ctt),
   not at the fetch: an issue closed after the report's last day was open then,
   so a past quarter's label that finished later reads "n of m closed by <end>".
-  Issues created after the quarter still count towards m: gitboard's dump has
-  `created_at`, but perch's `Issue` does not carry it yet (perch-iyl).
+  Issues created after the report's last day are not in m (perch-iyl):
+  `Issue.created_on` is the dump's `created_at`, and the label judgement and
+  `by_label`'s whole-label figures both use the board as it stood then. The
+  cutoff is `through` (the quarter's end, or the latest reading while it runs),
+  the same day the label line names. An old dump without `created_at` counts
+  every issue, as before.
 - **The issue-estimate dollar total names what it leaves out** (perch-xww): a
   total line under the `#iid` table, and the opening's issue sum, add "n issue(s)
   without a known hourly cost are not in the dollar total" when n > 0; with no

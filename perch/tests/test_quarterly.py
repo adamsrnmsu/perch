@@ -19,6 +19,7 @@ from perch.core.estimates import load_estimates
 from perch.core.join import calibrate
 from perch.core.money import load_money, load_snapshot
 from perch.core.quarterly import build, last_complete_quarter, parse_quarter
+from perch.tests.conftest import issue
 
 FETCH_DAY = date(2026, 4, 20)
 
@@ -320,3 +321,23 @@ def test_no_previous_quarter_unless_the_dump_covers_all_of_it(world):
     since(world, "2026-01-02")
     q = make(world, "2026-Q2")
     assert q.previous is None and q.previous_blocked is None
+
+
+def test_an_issue_created_after_the_quarter_is_not_in_its_label(world):
+    """#108 joins epic::billing on Apr 5, after Q1: Q1's billing was still
+    4 of 5 (#101 open). With #101 out of the label, billing finished in Q1 as
+    its 4 issues, whatever was added to it later."""
+    dump = world.parent / "dump.json"
+    meta = json.loads(dump.read_text())
+    late = issue(108, "asmith", labels=["epic::billing"])
+    late["created_at"] = "2026-04-05T09:00:00.000Z"
+    meta["history"].append(late)
+    dump.write_text(json.dumps(meta))
+    q1 = make(world, "2026-Q1", today=date(2026, 10, 1))
+    assert q1.in_progress == (("epic::billing", 4, 5),)
+    for record in meta["history"]:
+        if record["iid"] == 101:
+            record["labels"] = []
+    dump.write_text(json.dumps(meta))
+    (billing,) = make(world, "2026-Q1", today=date(2026, 10, 1)).misses
+    assert (billing.label, billing.issues, billing.open) == ("epic::billing", 4, 0)

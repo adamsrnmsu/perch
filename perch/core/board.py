@@ -32,6 +32,7 @@ class Issue:
     last_moved: date | None = None  # its latest transition, if it has any
     # (date, "add" | "remove", column label): the card's moves across the board
     transitions: tuple[tuple[date, str, str], ...] = ()
+    created_on: date | None = None  # gitboard's created_at; None when absent
 
     @property
     def is_blocked(self) -> bool:
@@ -130,6 +131,7 @@ def _issue(record: dict) -> Issue:
             (_day(stamp), action, label)
             for stamp, action, label in record.get("transitions") or ()
         ),
+        created_on=_day(record["created_at"]) if record.get("created_at") else None,
     )
 
 

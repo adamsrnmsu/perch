@@ -10,7 +10,7 @@ changes, which are facts from plan.csv.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
 from budgie.core.budget import BudgetRevision
@@ -321,16 +321,22 @@ def _previous(board: Board, money: Money, start: date):
 def _misses(board, estimates, rates, people, money, start, through):
     """(finished labels, labels in progress, `#iid` rows), all MODELLED.
 
-    Judged by the board as of `through`: an issue closed after it was open then.
-    A label is compared whole, and only once its last issue closed in the
-    quarter; a label still in progress at `through` gets no comparison, never a
-    prorated one. An issue created after the quarter still counts towards it:
-    perch's `Issue` has no creation date. An `#iid` estimate is compared on its
-    own issue.
+    Judged by the board as of `through`: an issue closed after it was open then,
+    and one created after it was not there (an old dump's issues carry no
+    creation day, so they all count). A label is compared whole, and only once
+    its last issue closed in the quarter; a label still in progress at
+    `through` gets no comparison, never a prorated one. An `#iid` estimate is
+    compared on its own issue.
     """
+    then = replace(
+        board,
+        issues=tuple(
+            i for i in board.issues if i.created_on is None or i.created_on <= through
+        ),
+    )
     finished, going = [], []
-    for a in by_label(estimates, board, rates, people, money):
-        under = [i for i in board.issues if a.label in i.labels]
+    for a in by_label(estimates, then, rates, people, money):
+        under = [i for i in then.issues if a.label in i.labels]
         # As the board stood on `through`, not at the fetch: closed later is open.
         days = [i.closed_on for i in under if i.closed_on and i.closed_on <= through]
         if not any(start <= d for d in days):
