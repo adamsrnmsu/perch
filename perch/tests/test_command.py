@@ -41,7 +41,7 @@ def test_amount(text, value):
     assert amount(text) == value
 
 
-@pytest.mark.parametrize("bad", ["", "k", "abc", "0", "-5k", "$"])
+@pytest.mark.parametrize("bad", ["", "k", "abc", "0", "-5k", "$", "inf", "nan"])
 def test_amount_refuses(bad):
     with pytest.raises(ValueError, match="amount"):
         amount(bad)

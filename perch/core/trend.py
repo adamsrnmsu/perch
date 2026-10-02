@@ -93,7 +93,7 @@ def team_lines(rows: list[dict]) -> list[str]:
         _money(last.get(k)) for k in ("clear_p10", "clear_p50", "clear_p90")
     )
     head = (
-        f"{last.get('signal') or '—'}"
+        f"{(last.get('signal') or '—').upper()}"
         f" · over {'—' if prob is None else f'{prob:.0%}'}"
         f" · budget {_money(last.get('budget'))}"
         f" · spent {_money(last.get('spent_cost'))}"
@@ -101,7 +101,7 @@ def team_lines(rows: list[dict]) -> list[str]:
         f" · left {'—' if left is None else f'{left:,.0f}h'}"
         f" · clear {clear}"
     )
-    signals = {r["week"]: r.get("signal") or "—" for r in team}
+    signals = {r["week"]: (r.get("signal") or "—").upper() for r in team}
     return [head] + [
         f"{week}  {_money(value)}  {signals[week]}"
         for week, value in series(rows, "headroom").items()

@@ -7,6 +7,7 @@ words, so the TUI can show a bad line as a toast before spawning anything.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -44,7 +45,7 @@ def amount(token: str) -> float:
         value = float(text[:-1] if scale > 1 else text) * scale
     except ValueError:
         value = 0
-    if not value > 0:  # also catches nan
+    if not 0 < value < math.inf:  # also catches nan
         raise ValueError(f"not an amount: {token!r} (try 700k, 1.2m or $700,000)")
     return value
 

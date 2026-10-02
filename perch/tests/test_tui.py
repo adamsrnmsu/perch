@@ -254,6 +254,28 @@ def test_a_corrupt_history_is_an_error_row(tmp_path):
     run(tui.PerchTUI(home), script)
 
 
+def test_a_history_row_without_a_week_is_an_error_row(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    (home.projects_dir / "apollo" / "history.jsonl").write_text(
+        '{"kind": "team", "name": "team"}\n'
+    )
+
+    async def script(app, pilot):
+        assert _cells(app)[0][1] == "error: KeyError: 'week'"
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_negative_headroom_has_a_real_minus_sign(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    _team_row(home, "apollo", -12000, "red")
+
+    async def script(app, pilot):
+        assert _cells(app)[0][3] == "−$12,000"
+
+    run(tui.PerchTUI(home), script)
+
+
 def test_a_malformed_dump_is_an_error_row_and_the_others_still_render(tmp_path):
     home = build_home(tmp_path, "apollo", "beta")
     dump = home.projects_dir / "apollo" / "dump.json"
@@ -865,7 +887,7 @@ def test_i_on_headroom_shows_the_team_lines(tmp_path, spawned):
         await pilot.pause()
         title, body, status = _cards(app)[-1]
         assert status == "info" and "apollo" in title
-        assert body.startswith("red") and "2026-W36  $100  green" in body
+        assert body.startswith("RED") and "2026-W36  $100  GREEN" in body
         assert "Alice" not in body and spawned == []
 
     run(tui.PerchTUI(home), script)

@@ -33,13 +33,21 @@ from textual.coordinate import Coordinate
 from textual.message import Message
 from textual.widgets import DataTable, Footer, Input, Static
 
-from perch.cli import _bin_dir, _label, _money, _watch
+from perch.cli import _bin_dir, _label, _watch
 from perch.core import history
 from perch.core.command import parse
 from perch.core.config import load_config
 from perch.core.doctor import project_checks
 from perch.core.status import STEPS, next_command, next_step, status
-from perch.core.trend import Change, change, describe, series, spark, team_lines
+from perch.core.trend import (
+    Change,
+    _money,
+    change,
+    describe,
+    series,
+    spark,
+    team_lines,
+)
 from perch.core.workspace import Home
 
 _ERRORS = (OSError, TypeError, ValueError, KeyError)  # doctor's, for a bad config
@@ -111,6 +119,10 @@ def snapshot(home: Home, name: str) -> tuple[tuple[str | Text, ...], Change | No
     try:
         config = load_config(home.config_path(name), require_dump=False)
         rows = history.load(config.history)
+        last = max((r["week"] for r in rows), default=None)
+        team = next((r for r in rows if r["week"] == last and r["kind"] == "team"), {})
+        moved = change(rows)
+        trend = spark(series(rows, "headroom").values())
     except Exception as exc:  # noqa: BLE001 -- a display boundary: show, never crash
         return (
             name,
@@ -121,9 +133,6 @@ def snapshot(home: Home, name: str) -> tuple[tuple[str | Text, ...], Change | No
             *steps,
             "",
         ), None
-    last = max((r["week"] for r in rows), default=None)
-    team = next((r for r in rows if r["week"] == last and r["kind"] == "team"), {})
-    moved = change(rows)
     stoplight = Text(
         _label(team.get("signal")), style="reverse" if moved and moved.signal else ""
     )
@@ -132,7 +141,7 @@ def snapshot(home: Home, name: str) -> tuple[tuple[str | Text, ...], Change | No
         config.gitlab_project or "not set",
         stoplight,
         _money(team.get("headroom")),
-        spark(series(rows, "headroom").values()),
+        trend,
         *steps,
         _flags(home.config_path(name)),
     ), moved
@@ -325,7 +334,7 @@ class PerchTUI(App):
             self.notify(f"busy: {self.busy}", severity="warning")
         return not self.busy
 
-    def action_run(self, key: str, extra: tuple[str, ...] = ()) -> None:
+    def action_run(self, key: str) -> None:
         if not self._free():
             return
         if key == "a":  # `perch monday` refuses -p with --all
@@ -334,8 +343,8 @@ class PerchTUI(App):
         name = self._selected()
         if name is None:
             return
-        command = COMMANDS.get(key, key)  # `cut` comes here by name
-        self._start(name, command, [command, "-p", name, *extra])
+        command = COMMANDS[key]
+        self._start(name, command, [command, "-p", name])
 
     def _show(self, card: RunCard) -> RunCard:
         """Add a card to the output pane, dropping the oldest beyond KEEP."""
