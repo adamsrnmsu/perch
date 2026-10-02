@@ -117,7 +117,40 @@ def _run(step) -> None:
         raise StepFailed(step, code)
 
 
-@click.group()
+# --help in the order the work goes, not alphabetical. Every command is in one.
+_SECTIONS = {
+    "Set up": ["init", "projects", "doctor"],
+    "Every Monday, in order": [
+        "hours",
+        "fetch",
+        "board",
+        "weekly",
+        "digest",
+        "emails",
+        "monday",
+    ],
+    "Look closer": [
+        "accuracy",
+        "budget",
+        "forecast",
+        "cut",
+        "watch",
+        "quarterly",
+        "tui",
+    ],
+}
+
+
+class _SectionedGroup(click.Group):
+    def format_commands(self, ctx, formatter):
+        limit = formatter.width - 6 - max(len(name) for name in self.commands)
+        for title, names in _SECTIONS.items():
+            rows = [(n, self.commands[n].get_short_help_str(limit)) for n in names]
+            with formatter.section(title):
+                formatter.write_dl(rows)
+
+
+@click.group(cls=_SectionedGroup)
 def cli():
     """perch -- what the open board means for the budget."""
 
@@ -129,7 +162,7 @@ def cli():
 @click.option("--iterations", default=None, type=int, help="Simulation draws.")
 @click.option("--no-history", is_flag=True, help="Don't append to history.jsonl.")
 def board(config_path, project, seed, iterations, no_history):
-    """Cost to clear the open board, against the hours and budget left."""
+    """Step 2: cost to clear the open board, against the hours and budget left."""
     from perch.core.accuracy import by_person
     from perch.core.history import record, rows_for
     from perch.core.join import notes, person_rows, rollup
@@ -288,7 +321,7 @@ def accuracy(config_path, project):
 @click.option("--person", default=None, help="Only this person (a name in `people:`).")
 @click.option("--out", "out_path", default=None, help="Write the markdown here.")
 def weekly(config_path, project, person, out_path):
-    """Per-person markdown drafts for the weekly digest. Nothing is sent."""
+    """Step 3: per-person markdown drafts for the weekly digest. Nothing is sent."""
     from perch.core.accuracy import by_person
     from perch.core.history import load
     from perch.core.join import person_rows

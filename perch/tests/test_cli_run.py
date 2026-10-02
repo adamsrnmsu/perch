@@ -196,3 +196,13 @@ def test_a_watch_that_cannot_be_read_does_not_fail_monday(tmp_path, monkeypatch)
     assert result.exit_code == 0, result.output
     assert "watch: could not be read:" in result.output
     assert "Traceback" not in result.output
+
+
+def test_help_lists_every_command_once_in_workflow_order():
+    from perch.cli import _SECTIONS, cli
+
+    listed = [name for names in _SECTIONS.values() for name in names]
+    assert sorted(listed) == sorted(cli.commands)
+    out = run("--help").output
+    steps = ["hours", "fetch", "board", "weekly", "digest", "emails"]
+    assert sorted(steps, key=lambda c: out.index(f"  {c} ")) == steps
