@@ -25,6 +25,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.coordinate import Coordinate
+from textual.message import Message
 from textual.widgets import DataTable, Footer, Input, Log
 
 from perch.cli import _bin_dir, _label, _money, _watch
@@ -146,6 +147,20 @@ def switch(entry: dict) -> None:
         sys.exit(f"switch failed: {exc}")
 
 
+class Grid(DataTable):
+    """Enter runs the cursor's cell; a click only moves the cursor.
+
+    DataTable also selects on a click of the cursor's cell, and a stray click
+    must never start a fetch, so Enter posts its own message instead.
+    """
+
+    class Go(Message):
+        pass
+
+    def action_select_cursor(self) -> None:
+        self.post_message(self.Go())
+
+
 class PerchTUI(App):
     AUTO_FOCUS = "#projects"
     CSS = """
@@ -175,7 +190,7 @@ class PerchTUI(App):
 
     def compose(self) -> ComposeResult:
         with Horizontal():
-            yield DataTable(id="projects", cursor_type="cell")
+            yield Grid(id="projects", cursor_type="cell")
             yield Log(id="output")
         yield Input(id="flags", placeholder="cut flags, e.g. --budget 700000")
         yield Footer()
@@ -208,7 +223,7 @@ class PerchTUI(App):
         if not self._free():
             return
         if key == "a":  # `perch monday` refuses -p with --all
-            self._start("all", "monday --all", ["monday", "--all"])
+            self._start(None, "monday --all", ["monday", "--all"])
             return
         name = self._selected()
         if name is None:
@@ -216,16 +231,17 @@ class PerchTUI(App):
         command = COMMANDS.get(key, key)  # `cut` comes here by name
         self._start(name, command, [command, "-p", name, *extra])
 
-    def _start(self, prefix: str, action: str, args: list[str]) -> None:
+    def _start(self, name: str | None, action: str, args: list[str]) -> None:
+        """Run perch on one project, or on every project when ``name`` is None."""
         self.busy = action
-        self._stream(self.query_one(Log), prefix, [str(_bin_dir() / "perch"), *args])
+        self._stream(self.query_one(Log), name, [str(_bin_dir() / "perch"), *args])
 
-    def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:
+    def on_grid_go(self) -> None:
         """Enter: a step's cell runs that step; any other column, the next one."""
         name = self._selected() if self._free() else None
         if name is None:
             return
-        column = COLUMNS[event.coordinate.column]
+        column = COLUMNS[self.query_one(Grid).cursor_coordinate.column]
         step = (
             column
             if column in STEPS
@@ -240,8 +256,9 @@ class PerchTUI(App):
             self._start(name, " ".join(argv), argv)
 
     @work(thread=True)
-    def _stream(self, log: Log, prefix: str, argv: list[str]) -> None:
+    def _stream(self, log: Log, name: str | None, argv: list[str]) -> None:
         """In a thread: every touch of the app goes through call_from_thread."""
+        prefix = name or "all"
         last = ""
         try:
             for last in _spawn(argv, self.home.root, self._hold):
@@ -250,7 +267,7 @@ class PerchTUI(App):
             self.call_from_thread(log.write_line, f"{prefix}: {exc}")
         finally:  # _spawn's last line is "exited N" when the command failed
             failed = last.startswith("exited ")
-            self.call_from_thread(self._finished, prefix, failed)
+            self.call_from_thread(self._finished, name, failed)
 
     def _hold(self, proc: subprocess.Popen) -> None:
         self.child = proc
@@ -266,21 +283,22 @@ class PerchTUI(App):
         except subprocess.TimeoutExpired:
             proc.kill()
 
-    def _finished(self, prefix: str = "all", failed: bool = False) -> None:
+    def _finished(self, name: str | None = None, failed: bool = False) -> None:
         """Refresh the row that ran (every row after `a`); a failure logs its FIXes."""
         self.child = None
         self.busy = None
-        if prefix not in self.names:
+        if name not in self.names:  # None (`a`), or a project gone meanwhile
             self.action_refresh()
             return
         table = self.query_one(DataTable)
-        for col, cell in enumerate(row(self.home, prefix)):
-            table.update_cell_at(Coordinate(self.names.index(prefix), col), cell)
+        at = self.names.index(name)
+        for col, cell in enumerate(row(self.home, name)):
+            table.update_cell_at(Coordinate(at, col), cell, update_width=True)
         if failed:  # ponytail: `a` (monday --all) gets no FIX lines
             log = self.query_one(Log)
-            for check in project_checks(self.home, prefix):
+            for check in project_checks(self.home, name):
                 if not check.ok:
-                    log.write_line(f"{prefix}: FIX  {check.what}  ->  {check.fix}")
+                    log.write_line(f"{name}: FIX  {check.what}  ->  {check.fix}")
 
     def action_cut(self) -> None:
         if self._free() and self.names:

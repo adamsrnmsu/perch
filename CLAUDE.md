@@ -19,8 +19,8 @@ is one GitLab project + one Budgie project + one charge code, picked with
 ## Commands
 
 ```bash
-perch --help  # running the apps: projects, init, doctor, hours, monday [--all],
-              # quarterly [--all]
+perch --help  # running the apps: projects, init, doctor, status, hours,
+              # monday [--all | --from STEP], quarterly [--all]
 make venv     # ~/Documents/tools/perch; Budgie from GitHub, then ../budgie
 make test     # perch only: ~/Documents/tools/perch/bin/pytest
 make test-all # Budgie, perch and gitboard suites
@@ -51,6 +51,12 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   env)`; nothing here executes. `run_projects` is `monday --all`'s
   carry-on-past-a-failure loop.
 - `core/doctor.py` -- `Check(ok, what, fix)` values for `perch doctor`.
+- `core/status.py` -- `perch status` and the TUI's step cells: done, stale,
+  todo, failed or error per Monday step this ISO week, read only from the files
+  each step writes (no simulation, no rate fit). hours counts last week's
+  reading (Budgie dates it at that week's Sunday). `monday` writes
+  `projects/NAME/monday.json` when a step fails and deletes it once a run gets
+  through; the cell stays failed until that step's output is newer.
 - `core/board.py` -- a `gitboard stats --dump` file to `Board`/`Issue`.
   `closed_on` follows gitboard's `done_at` (closed_at, else the last move into
   Done) so the two tools agree on what is finished. Type is the first
@@ -92,8 +98,10 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `core/report_mail.py` -- a `Quarter` as markdown and as an `.eml` draft
   (multipart/alternative, `X-Unsent: 1`, table HTML with inline styles only).
 - `tui.py` -- `perch tui` (Textual): the projects table from what is on disk
-  (the last recorded team row, `doctor.freshness`, the watch's flag count only)
+  (the last recorded team row, `status` step cells, the watch's flag count only)
   and keys that run `perch <command> -p NAME` through `_spawn`, which tests fake.
+  Enter on a step cell runs `monday --from` that step; after a run only that
+  project's row is redrawn.
   Display and key handling only, like cli.py.
 
 ## Testing

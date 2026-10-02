@@ -568,3 +568,35 @@ def test_after_a_run_only_that_row_refreshes_and_the_cursor_stays(
         assert calls == ["beta", "apollo", "beta"]
 
     run(tui.PerchTUI(home), script)
+
+
+def test_a_click_on_the_cursor_cell_runs_nothing(tmp_path, spawned, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.setattr(
+        tui.PerchTUI, "action_hours", lambda self: spawned.append("hours")
+    )
+
+    async def script(app, pilot):
+        await pilot.click("#projects", offset=(2, 1))  # the Project cell, row 0
+        await pilot.click("#projects", offset=(2, 1))  # again: DataTable "selects"
+        await settle(app, pilot)
+        assert spawned == []
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_monday_all_refreshes_every_row_even_with_a_project_named_all(
+    tmp_path, spawned, monkeypatch
+):
+    home = build_home(tmp_path, "all", "beta")
+    calls = []
+    original = tui.row
+    monkeypatch.setattr(tui, "row", lambda h, n: calls.append(n) or original(h, n))
+
+    async def script(app, pilot):
+        calls.clear()
+        await pilot.press("a")
+        await settle(app, pilot)
+        assert calls == ["all", "beta"]
+
+    run(tui.PerchTUI(home), script)
