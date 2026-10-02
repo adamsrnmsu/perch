@@ -112,38 +112,45 @@ def _last_moved(record: dict) -> date | None:
     return _day(max(stamps)) if stamps else None
 
 
+def _issue(record: dict) -> Issue:
+    return Issue(
+        iid=int(record["iid"]),
+        title=str(record.get("title") or ""),
+        assignee=record.get("assignee") or None,
+        labels=tuple(record.get("labels") or ()),
+        closed_on=_closed_on(record),
+        blocked_since=_blocked_since(record),
+        # absent in dumps from before gitboard's gb-b23: no questions
+        questions=tuple(q["text"] for q in record.get("questions") or ()),
+        milestone=record.get("milestone") or None,
+        milestone_due=_due(record.get("milestone_due")),
+        last_moved=_last_moved(record),
+        transitions=tuple(
+            (_day(stamp), action, label)
+            for stamp, action, label in record.get("transitions") or ()
+        ),
+    )
+
+
 def load_board(path: str | Path) -> Board:
     path = Path(path)
+    bad = "not a `gitboard stats --dump` file"
     try:
         meta = json.loads(path.read_text())
-        issues = tuple(
-            Issue(
-                iid=int(record["iid"]),
-                title=str(record.get("title") or ""),
-                assignee=record.get("assignee") or None,
-                labels=tuple(record.get("labels") or ()),
-                closed_on=_closed_on(record),
-                blocked_since=_blocked_since(record),
-                # absent in dumps from before gitboard's gb-b23: no questions
-                questions=tuple(q["text"] for q in record.get("questions") or ()),
-                milestone=record.get("milestone") or None,
-                milestone_due=_due(record.get("milestone_due")),
-                last_moved=_last_moved(record),
-                transitions=tuple(
-                    (_day(stamp), action, label)
-                    for stamp, action, label in record.get("transitions") or ()
-                ),
-            )
-            for record in meta["history"]
-        )
+        issues = []
+        for n, record in enumerate(meta["history"]):
+            try:
+                issues.append(_issue(record))
+            except (AttributeError, TypeError, KeyError, ValueError) as exc:
+                raise ValueError(
+                    f"{path}: {bad} (history record {n}: {exc!r})"
+                ) from exc
         return Board(
             project=str(meta.get("project") or ""),
             name=str(meta.get("board") or ""),
             fetched_on=_day(meta["fetched_at"]),
-            issues=issues,
+            issues=tuple(issues),
             columns=tuple(meta.get("columns") or ()),
         )
-    except (KeyError, TypeError, json.JSONDecodeError) as exc:
-        raise ValueError(
-            f"{path}: not a `gitboard stats --dump` file ({exc!r})"
-        ) from exc
+    except (AttributeError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"{path}: {bad} ({exc!r})") from exc

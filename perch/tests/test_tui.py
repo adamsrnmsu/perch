@@ -42,7 +42,7 @@ def spawned(monkeypatch):
     """Every argv the TUI spawns, with its cwd; each prints one line."""
     calls = []
 
-    def fake(argv, cwd):
+    def fake(argv, cwd, started):
         calls.append((list(argv), cwd))
         yield "ran"
 
@@ -201,7 +201,7 @@ def test_a_key_while_a_command_runs_says_busy(tmp_path, monkeypatch):
     release = threading.Event()
     calls = []
 
-    def slow(argv, cwd):
+    def slow(argv, cwd, started):
         calls.append(argv)
         release.wait(5)
         yield "done"
@@ -296,3 +296,53 @@ def test_escape_closes_the_cut_input_without_running_anything(tmp_path, spawned)
         assert spawned == []
 
     run(tui.PerchTUI(home), script)
+
+
+class _Proc:
+    """Process-like: terminate() is recorded and lets the fake's stream end."""
+
+    def __init__(self):
+        self.ended = threading.Event()
+        self.terminated = 0
+
+    def poll(self):
+        return 0 if self.ended.is_set() else None
+
+    def terminate(self):
+        self.terminated += 1
+        self.ended.set()
+
+    def wait(self, timeout=None):
+        return 0
+
+    def kill(self):
+        raise AssertionError("terminate was enough")
+
+
+def test_quitting_while_a_command_runs_terminates_the_child(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    proc = _Proc()
+
+    def long(argv, cwd, started):
+        started(proc)
+        proc.ended.wait(5)
+        yield "cut short"
+
+    monkeypatch.setattr(tui, "_spawn", long)
+
+    async def script(app, pilot):
+        await pilot.press("b")
+        await pilot.pause()
+        while app.child is None:
+            await pilot.pause()
+        await pilot.press("q")
+
+    run(tui.PerchTUI(home), script)
+    assert proc.terminated == 1
+
+
+def test_quitting_with_nothing_running_is_fine(tmp_path, spawned):
+    async def script(app, pilot):
+        await pilot.press("q")
+
+    run(tui.PerchTUI(build_home(tmp_path, "apollo")), script)

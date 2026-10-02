@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import shlex
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from textual import work
@@ -38,8 +38,13 @@ COMMANDS = {  # key -> the perch command it runs on the selected project
 }
 
 
-def _spawn(argv: list[str], cwd: Path) -> Iterator[str]:
-    """Run a command, yielding its output lines as they come; tests replace this."""
+def _spawn(
+    argv: list[str], cwd: Path, started: Callable[[subprocess.Popen], None]
+) -> Iterator[str]:
+    """Run a command, yielding its output lines as they come; tests replace this.
+
+    `started` gets the process as soon as it exists, so the app can stop it.
+    """
     with subprocess.Popen(
         argv,
         cwd=cwd,
@@ -48,6 +53,7 @@ def _spawn(argv: list[str], cwd: Path) -> Iterator[str]:
         text=True,
         errors="replace",  # an odd byte must not kill the worker, and the app
     ) as proc:
+        started(proc)
         for line in proc.stdout:
             yield line.rstrip("\n")
     if proc.returncode:
@@ -106,6 +112,7 @@ class PerchTUI(App):
         self.home = home
         self.names = home.projects()
         self.busy: str | None = None
+        self.child: subprocess.Popen | None = None  # the running command's process
 
     def compose(self) -> ComposeResult:
         with Horizontal():
@@ -158,14 +165,29 @@ class PerchTUI(App):
     def _stream(self, log: Log, prefix: str, argv: list[str]) -> None:
         """In a thread: every touch of the app goes through call_from_thread."""
         try:
-            for line in _spawn(argv, self.home.root):
+            for line in _spawn(argv, self.home.root, self._hold):
                 self.call_from_thread(log.write_line, f"{prefix}: {line}")
         except OSError as exc:
             self.call_from_thread(log.write_line, f"{prefix}: {exc}")
         finally:
             self.call_from_thread(self._finished)
 
+    def _hold(self, proc: subprocess.Popen) -> None:
+        self.child = proc
+
+    def on_unmount(self) -> None:
+        """Quitting must not leave the child running: ask it to stop, then force."""
+        proc, self.child = self.child, None
+        if proc is None or proc.poll() is not None:
+            return
+        proc.terminate()
+        try:
+            proc.wait(3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+
     def _finished(self) -> None:
+        self.child = None
         self.busy = None
         self.action_refresh()
 

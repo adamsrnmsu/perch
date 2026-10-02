@@ -74,3 +74,21 @@ def test_transitions_are_kept_as_dated_moves(world):
         (date(2026, 4, 9), "remove", "Done"),
     )
     assert eight.closed_on == date(2026, 4, 10)  # closed_at still wins
+
+
+@pytest.mark.parametrize(
+    "record",
+    [{"closed_at": 5}, {"iid": None}, {"transitions": "oops"}, {"transitions": 3}],
+)
+def test_a_malformed_record_is_refused_with_the_same_error(tmp_path, record):
+    with pytest.raises(ValueError, match="stats --dump.*history record 0"):
+        _dump(tmp_path, record)
+
+
+def test_a_record_without_an_iid_is_refused(tmp_path):
+    path = tmp_path / "d.json"
+    path.write_text(
+        json.dumps({"fetched_at": "2026-04-20T08:00:00Z", "history": [{"title": "t"}]})
+    )
+    with pytest.raises(ValueError, match="stats --dump.*iid"):
+        load_board(path)

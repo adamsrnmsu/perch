@@ -52,3 +52,14 @@ def test_a_bad_config_is_a_clean_error_not_a_traceback(world):
     result = run(world, "board")
     assert result.exit_code != 0 and "budgie.yaml" in result.output
     assert "Traceback" not in result.output
+
+
+def test_board_on_a_malformed_dump_is_a_clean_error(world):
+    dump = world.parent / "dump.json"
+    meta = json.loads(dump.read_text())
+    meta["history"][0]["closed_at"] = 5
+    dump.write_text(json.dumps(meta))
+    result = run(world, "board")
+    assert result.exit_code == 1
+    assert "stats --dump" in result.output and "Traceback" not in result.output
+    assert isinstance(result.exception, SystemExit)
