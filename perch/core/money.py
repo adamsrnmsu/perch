@@ -14,6 +14,7 @@ from pathlib import Path
 
 from budgie.core.budget import Budget
 from budgie.core.burndown import BurndownStatus, burndown
+from budgie.core.costs import CostItem
 from budgie.core.monthly import spent_at
 from budgie.core.person import Person
 from budgie.core.plan import AllocationPlan, PlanEntry
@@ -30,7 +31,8 @@ class Money:
     readings: dict[str, list[Reading]] = field(default_factory=dict)
     allocated: dict[str, float] = field(default_factory=dict)
     spent: dict[str, float] = field(default_factory=dict)
-    non_labor: float = 0.0
+    non_labor: float = 0.0  # the year's cost lines, summed
+    costs: list[CostItem] = field(default_factory=list)  # for simulate(costs=)
     budget: float | None = None
     iterations: int = 10_000
     seed: int | None = None
@@ -94,6 +96,7 @@ def money_from(snap: Snapshot) -> Money:
         allocated=snap.allocated,
         spent=snap.spent,
         non_labor=snap.non_labor,
+        costs=snap.costs,
         budget=None if snap.budget is None else snap.budget.latest,
         iterations=snap.iterations,
         seed=snap.seed,

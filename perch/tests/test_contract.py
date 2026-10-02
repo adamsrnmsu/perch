@@ -20,13 +20,16 @@ def test_budgie_core_names_perch_uses():
     from budgie.core.project import Snapshot, load_snapshot
     from budgie.core.signals import SignalResult, evaluate
 
-    assert {"iterations", "seed"} <= set(inspect.signature(simulate).parameters)
+    assert {"iterations", "seed", "costs"} <= set(
+        inspect.signature(simulate).parameters
+    )
     # What money.load_money reads off the snapshot: fields and properties.
     for name in (
         "year",
         "people",
         "readings",
         "non_labor",
+        "costs",  # quarterly: simulate(costs=), as `budgie forecast`
         "budget",
         "iterations",
         "seed",

@@ -6,7 +6,6 @@ team books 15/7 h a day from Mar 22 to Apr 19, and $1,250/7 a day.
 """
 
 import json
-from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -18,7 +17,7 @@ from perch.core.board import load_board
 from perch.core.config import load_config
 from perch.core.estimates import load_estimates
 from perch.core.join import calibrate
-from perch.core.money import load_money
+from perch.core.money import load_money, load_snapshot
 from perch.core.quarterly import build, last_complete_quarter, parse_quarter
 
 FETCH_DAY = date(2026, 4, 20)
@@ -75,14 +74,37 @@ def test_budget_position_for_a_quarter_to_date(quarter_world):
     # Budgie's own estimate at completion, as `budgie forecast --as-of` runs it.
     money = load_money(quarter_world.parent / "fy26")
     eac = at_completion(money.people, money.readings, 2026, q.through, money.plan)
-    sim = simulate(eac.people, iterations=money.iterations, seed=money.seed)
-    sim = replace(sim, total_costs=sim.total_costs + 5000)  # the laptops
+    # The cost lines go in as `budgie forecast` passes them: the laptops, $5,000.
+    sim = simulate(
+        eac.people, iterations=money.iterations, seed=money.seed, costs=money.costs
+    )
+    assert sim.mean == pytest.approx(
+        simulate(eac.people, iterations=money.iterations, seed=money.seed).mean + 5000
+    )
     assert p.p50 == pytest.approx(sim.percentile(50))
     assert (p.p10, p.p90) == (
         pytest.approx(sim.percentile(10)),
         pytest.approx(sim.percentile(90)),
     )
     assert p.signal.signal == evaluate(sim, 120000).signal
+
+
+def test_a_cost_line_with_a_range_is_sampled_as_budgie_forecast_does(quarter_world):
+    """Laptops $5,000, low 4,000, high 7,000: Budgie samples the line with the
+    labor, so the percentiles are its own `simulate(..., costs=...)`."""
+    costs = quarter_world.parent / "fy26" / "costs.csv"
+    costs.write_text(costs.read_text().replace("5000,,,", "5000,4000,7000,"))
+    q = make(quarter_world, "2026-Q2")
+    snap = load_snapshot(quarter_world.parent / "fy26")
+    assert [(c.low, c.high) for c in snap.costs] == [(4000, 7000)]
+    eac = at_completion(snap.people, snap.readings, 2026, q.through, snap.plan)
+    sim = simulate(eac.people, iterations=snap.iterations, seed=1, costs=snap.costs)
+    p = q.position
+    assert (p.p10, p.p50, p.p90) == (
+        pytest.approx(sim.percentile(10)),
+        pytest.approx(sim.percentile(50)),
+        pytest.approx(sim.percentile(90)),
+    )
 
 
 def test_a_pinned_budget_is_flat(world):

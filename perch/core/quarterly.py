@@ -10,7 +10,7 @@ changes, which are facts from plan.csv.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from budgie.core.budget import BudgetRevision
@@ -63,7 +63,7 @@ class Position:
     p50: float
     p90: float
     signal: SignalResult | None
-    non_labor: float  # the year's, in the forecast as a fixed total, not in spent
+    non_labor: float  # the year's cost lines, in the forecast, not in spent
 
 
 @dataclass(frozen=True)
@@ -179,12 +179,13 @@ def _position(
 
     revisions = money.budget_revisions.revisions if money.budget_revisions else ()
     # Budgie's estimate at completion, as `budgie forecast --as-of` computes it.
-    # Non-labor is its fixed total: the snapshot carries no cost lines.
+    # The cost lines go in as it passes them: a low/high line is sampled too.
     eac = at_completion(
         money.people, money.readings, money.year, as_of=through, plan=money.plan
     )
-    sim = simulate(eac.people, iterations=money.iterations, seed=money.seed)
-    sim = replace(sim, total_costs=sim.total_costs + money.non_labor)
+    sim = simulate(
+        eac.people, iterations=money.iterations, seed=money.seed, costs=money.costs
+    )
     budget = budget_on(end)
     year_start = date(money.year, 1, 1)
     return Position(

@@ -171,8 +171,9 @@ def _blocks(q: Quarter) -> list[tuple]:
         (
             "p",
             (
-                f"Non-labor for the year: {_money(p.non_labor)}, in the forecast as a "
-                "fixed total and not in labor spent."
+                f"Non-labor for the year: {_money(p.non_labor)}, in the forecast "
+                "(a cost line with a low/high range is sampled with the labor, as "
+                "`budgie forecast` does) and not in labor spent."
             ),
         )
     )

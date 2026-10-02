@@ -181,12 +181,14 @@ What they cover:
 
 ## Changes during build
 
-- **The forecast's non-labor is its fixed total, and spent is labor only.**
-  `budgie forecast` passes the cost lines to `simulate`; `Snapshot` carries
-  only `non_labor`, and perch does not re-read costs.csv. The two agree unless
-  costs.csv gives a line `low`/`high`. The report says so: its rows and subject
-  say "labor spent", and a line gives the year's non-labor, "in the forecast as
-  a fixed total and not in labor spent". Follow-up: budgie-ccv / perch-yi9.
+- **The forecast takes Budgie's cost lines, and spent is labor only.**
+  `Snapshot.costs` carries costs.csv's lines, and perch passes them to
+  `simulate(costs=...)` exactly as `budgie forecast` does, so a line with
+  `low`/`high` is sampled with the labor rather than added as a fixed total
+  (perch-yi9). The report's rows and subject say "labor spent", and a line
+  gives the year's non-labor, "in the forecast (a cost line with a low/high
+  range is sampled with the labor, as `budgie forecast` does) and not in labor
+  spent".
 - **The forecast is as of the report's last day.** Readings after the quarter
   are left out (`at_completion(as_of=...)`, as `budgie forecast --as-of`), and
   the signal tests the budget in force at the quarter's end, the same figure

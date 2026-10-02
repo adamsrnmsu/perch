@@ -20,7 +20,7 @@ def test_the_markdown_has_every_section(quarter_world):
         assert heading in text
     assert "| Labor spent Apr 1 – Apr 19 | $3,393 |" in text  # 19 days at $1,250/7
     assert "| Labor spent Jan 1 – Apr 19 (year to date) | $26,000 |" in text
-    assert "Non-labor for the year: $5,000, in the forecast as a fixed total" in text
+    assert "Non-labor for the year: $5,000, in the forecast (a cost line" in text
     assert "| Forecast at completion as of 2026-04-19, P50 |" in text
     assert "against the $120,000 budget in force on 2026-06-30" in text
     assert "| 2026-04-15 | Q2 increase | $120,000 |" in text
