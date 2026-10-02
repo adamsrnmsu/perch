@@ -74,8 +74,8 @@ def test_the_table_has_every_project_and_its_last_recorded_week(tmp_path):
         assert rows[0][1] == "grp/apollo"
         assert rows[0][2:4] == ["YELLOW", "$12,345"]
         assert rows[1][2:4] == ["—", "—"]  # no history yet
-        assert "never" not in rows[0][4:6]  # the dump and weekly.csv exist
-        assert rows[0][6] == "—"  # under 4 weeks of history: no watch yet
+        assert [c for c in tui.COLUMNS[4:11]] == list(tui.STEPS)
+        assert rows[0][11] == "—"  # under 4 weeks of history: no watch yet
 
     run(tui.PerchTUI(home), script)
 
@@ -86,7 +86,7 @@ def test_the_flag_column_counts_the_watch_flags(tmp_path, monkeypatch):
     monkeypatch.setattr(tui, "_watch", lambda path: page)
 
     async def script(app, pilot):
-        assert _cells(app)[0][6] == "1"
+        assert _cells(app)[0][11] == "1"
 
     run(tui.PerchTUI(home), script)
 
@@ -97,8 +97,8 @@ def test_a_project_without_a_dump_has_no_flag_count(tmp_path):
 
     async def script(app, pilot):
         row = _cells(app)[0]
-        assert row[4] == "never"
-        assert row[6] == "—"
+        assert row[5] == "·"  # fetch: no dump
+        assert row[11] == "—"
 
     run(tui.PerchTUI(home), script)
 
@@ -258,7 +258,7 @@ def test_a_malformed_dump_is_an_error_row_and_the_others_still_render(tmp_path):
 
     async def script(app, pilot):
         rows = _cells(app)
-        assert rows[0][6] == "—"  # the watch cannot read that dump
+        assert rows[0][11] == "—"  # the watch cannot read that dump
         assert rows[1][1] == "grp/beta"
 
     run(tui.PerchTUI(home), script)
@@ -442,3 +442,129 @@ def test_perch_tui_execs_the_target_it_exited_with(tmp_path, monkeypatch):
     monkeypatch.setattr(tui, "switch", switched.append)
     assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
     assert switched == [entry]
+
+
+# --- the Monday grid: step cells, Enter, FAIL, one-row refresh ---------------
+
+
+def _fail(home, name, step="board"):
+    from datetime import datetime
+
+    from perch.core.status import record_failure
+    from perch.core.steps import iso_week
+
+    now = datetime.now()  # noqa: DTZ005
+    record_failure(home, name, iso_week(now.date()), step, 2, now)
+
+
+def test_a_recorded_failure_shows_a_fail_cell(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    _fail(home, "apollo", "board")
+
+    async def script(app, pilot):
+        row = _cells(app)[0]
+        assert row[6] == "FAIL"  # board
+        assert row[7] != "FAIL"
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_enter_on_a_step_cell_runs_monday_from_that_step(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        app.query_one(DataTable).move_cursor(row=0, column=tui.COLUMNS.index("weekly"))
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert [a[1:] for a, _ in spawned] == [
+            ["monday", "-p", "apollo", "--from", "weekly"]
+        ]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_enter_on_watch_runs_watch(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        app.query_one(DataTable).move_cursor(row=0, column=tui.COLUMNS.index("watch"))
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert [a[1:] for a, _ in spawned] == [["watch", "-p", "apollo"]]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_enter_on_the_project_cell_runs_the_next_step(tmp_path, spawned, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    from perch.core.status import Cell
+
+    cells = {s: Cell("done", "now") for s in tui.STEPS} | {"digest": Cell("todo", "")}
+    monkeypatch.setattr(tui, "status", lambda *a: cells)
+
+    async def script(app, pilot):
+        await pilot.press("enter")  # cursor starts on the Project cell
+        await settle(app, pilot)
+        assert [a[1:] for a, _ in spawned] == [
+            ["monday", "-p", "apollo", "--from", "digest"]
+        ]
+        cells["digest"] = Cell("done", "now")
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert len(spawned) == 1
+        assert "apollo: Monday done" in _log(app)
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_failing_run_logs_the_projects_fix_lines(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo", "beta", gitlab=False)
+
+    def fake(argv, cwd, started):
+        yield "boom"
+        yield "exited 2"
+
+    monkeypatch.setattr(tui, "_spawn", fake)
+
+    async def script(app, pilot):
+        await pilot.press("down", "m")  # beta has no gitlab_project
+        await settle(app, pilot)
+        fixes = [x for x in _log(app) if "FIX" in x]
+        assert len(fixes) == 1 and fixes[0].startswith("beta: FIX  ")
+        assert "gitlab_project" in fixes[0] and "  ->  " in fixes[0]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_passing_run_logs_no_fix_lines(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo", gitlab=False)
+
+    async def script(app, pilot):
+        await pilot.press("m")
+        await settle(app, pilot)
+        assert not [x for x in _log(app) if "FIX" in x]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_after_a_run_only_that_row_refreshes_and_the_cursor_stays(
+    tmp_path, spawned, monkeypatch
+):
+    home = build_home(tmp_path, "apollo", "beta")
+    calls = []
+    original = tui.row
+    monkeypatch.setattr(tui, "row", lambda h, n: calls.append(n) or original(h, n))
+
+    async def script(app, pilot):
+        calls.clear()
+        table = app.query_one(DataTable)
+        table.move_cursor(row=1, column=3)
+        await pilot.press("b")
+        await settle(app, pilot)
+        assert calls == ["beta"]
+        assert table.cursor_coordinate == (1, 3)
+        await pilot.press("a")
+        await settle(app, pilot)
+        assert calls == ["beta", "apollo", "beta"]
+
+    run(tui.PerchTUI(home), script)

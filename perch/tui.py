@@ -1,9 +1,11 @@
 """`perch tui`: every project in one table, and single keys that run perch on one.
 
 Display and key handling only. The table reads what is already on disk: the
-last week `perch board` recorded (never a new simulation), how fresh the files
-are, and how many flags the private watch has. Only the count shows here; the
-watch itself goes to the output pane, and only when the lead presses `w`.
+last week `perch board` recorded (never a new simulation), one cell per Monday
+step (`perch.core.status`: done, stale, todo, FAIL, ERR), and how many flags
+the private watch has. Only the count shows here; the watch itself goes to the
+output pane, and only when the lead presses `w`. The cursor is a cell: Enter on
+a step runs it (and what follows), on any other column runs the next step.
 """
 
 from __future__ import annotations
@@ -14,22 +16,33 @@ import shlex
 import subprocess
 import sys
 from collections.abc import Callable, Iterator
+from datetime import date
 from pathlib import Path
 
+from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
+from textual.coordinate import Coordinate
 from textual.widgets import DataTable, Footer, Input, Log
 
 from perch.cli import _bin_dir, _label, _money, _watch
 from perch.core.config import load_config
-from perch.core.doctor import freshness
+from perch.core.doctor import project_checks
 from perch.core.history import latest_week
+from perch.core.status import STEPS, next_command, next_step, status
 from perch.core.workspace import Home
 
 _ERRORS = (OSError, TypeError, ValueError, KeyError)  # doctor's, for a bad config
-COLUMNS = ("Project", "GitLab", "Stoplight", "Headroom", "Dump", "weekly.csv", "Flags")
+COLUMNS = ("Project", "GitLab", "Stoplight", "Headroom", *STEPS, "Flags")
+_SHOWN = {  # cell state -> (text, rich style)
+    "done": ("✓", "green"),
+    "stale": ("stale", "yellow"),
+    "todo": ("·", "dim"),
+    "failed": ("FAIL", "bold red"),
+    "error": ("ERR", "bold red"),
+}
 COMMANDS = {  # key -> the perch command it runs on the selected project
     "b": "board",
     "m": "monday",
@@ -71,22 +84,25 @@ def _flags(config_path: Path) -> str:
     return "—" if page.thin else str(page.flags)
 
 
-def row(home: Home, name: str) -> tuple[str, ...]:
+def _step_cells(cells) -> tuple[Text, ...]:
+    return tuple(Text(*_SHOWN[cells[step].state]) for step in STEPS)
+
+
+def row(home: Home, name: str) -> tuple[str | Text, ...]:
     """One project's cells; a config or history that fails to load shows its error."""
+    steps = _step_cells(status(home, name, date.today()))  # noqa: DTZ011 -- never raises
     try:
         config = load_config(home.config_path(name), require_dump=False)
         week = latest_week(config.history)
     except Exception as exc:  # noqa: BLE001 -- a display boundary: show, never crash
-        return (name, f"error: {type(exc).__name__}: {exc}", "", "", "", "", "")
+        return (name, f"error: {type(exc).__name__}: {exc}", "", "", *steps, "")
     team = next((r for r in week if r["kind"] == "team"), {})
-    ages = dict(freshness(home, name))
     return (
         name,
         config.gitlab_project or "not set",
         _label(team.get("signal")),
         _money(team.get("headroom")),
-        ages.get("board dump", "—"),
-        ages.get("weekly.csv", "—"),
+        *steps,
         _flags(home.config_path(name)),
     )
 
@@ -159,7 +175,7 @@ class PerchTUI(App):
 
     def compose(self) -> ComposeResult:
         with Horizontal():
-            yield DataTable(id="projects", cursor_type="row")
+            yield DataTable(id="projects", cursor_type="cell")
             yield Log(id="output")
         yield Input(id="flags", placeholder="cut flags, e.g. --budget 700000")
         yield Footer()
@@ -170,18 +186,18 @@ class PerchTUI(App):
 
     def action_refresh(self) -> None:
         table = self.query_one(DataTable)
-        at = table.cursor_row
+        at = table.cursor_coordinate
         table.clear()
         self.names = self.home.projects()  # a project made meanwhile shows up
         for name in self.names:
             table.add_row(*row(self.home, name), key=name)
-        table.move_cursor(row=at)
+        table.move_cursor(row=at.row, column=at.column)
 
     def _selected(self) -> str | None:
         if not self.names:
             self.query_one(Log).write_line("no projects yet. Run: perch init <name>")
             return None
-        return self.names[self.query_one(DataTable).cursor_row]
+        return self.names[self.query_one(DataTable).cursor_coordinate.row]
 
     def _free(self) -> bool:
         if self.busy:
@@ -204,16 +220,37 @@ class PerchTUI(App):
         self.busy = action
         self._stream(self.query_one(Log), prefix, [str(_bin_dir() / "perch"), *args])
 
+    def on_data_table_cell_selected(self, event: DataTable.CellSelected) -> None:
+        """Enter: a step's cell runs that step; any other column, the next one."""
+        name = self._selected() if self._free() else None
+        if name is None:
+            return
+        column = COLUMNS[event.coordinate.column]
+        step = (
+            column
+            if column in STEPS
+            else next_step(status(self.home, name, date.today()))  # noqa: DTZ011
+        )
+        if step is None:
+            self.query_one(Log).write_line(f"{name}: Monday done")
+        elif step == "hours":
+            self.action_hours()
+        else:
+            argv = next_command(name, step)
+            self._start(name, " ".join(argv), argv)
+
     @work(thread=True)
     def _stream(self, log: Log, prefix: str, argv: list[str]) -> None:
         """In a thread: every touch of the app goes through call_from_thread."""
+        last = ""
         try:
-            for line in _spawn(argv, self.home.root, self._hold):
-                self.call_from_thread(log.write_line, f"{prefix}: {line}")
+            for last in _spawn(argv, self.home.root, self._hold):
+                self.call_from_thread(log.write_line, f"{prefix}: {last}")
         except OSError as exc:
             self.call_from_thread(log.write_line, f"{prefix}: {exc}")
-        finally:
-            self.call_from_thread(self._finished)
+        finally:  # _spawn's last line is "exited N" when the command failed
+            failed = last.startswith("exited ")
+            self.call_from_thread(self._finished, prefix, failed)
 
     def _hold(self, proc: subprocess.Popen) -> None:
         self.child = proc
@@ -229,10 +266,21 @@ class PerchTUI(App):
         except subprocess.TimeoutExpired:
             proc.kill()
 
-    def _finished(self) -> None:
+    def _finished(self, prefix: str = "all", failed: bool = False) -> None:
+        """Refresh the row that ran (every row after `a`); a failure logs its FIXes."""
         self.child = None
         self.busy = None
-        self.action_refresh()
+        if prefix not in self.names:
+            self.action_refresh()
+            return
+        table = self.query_one(DataTable)
+        for col, cell in enumerate(row(self.home, prefix)):
+            table.update_cell_at(Coordinate(self.names.index(prefix), col), cell)
+        if failed:  # ponytail: `a` (monday --all) gets no FIX lines
+            log = self.query_one(Log)
+            for check in project_checks(self.home, prefix):
+                if not check.ok:
+                    log.write_line(f"{prefix}: FIX  {check.what}  ->  {check.fix}")
 
     def action_cut(self) -> None:
         if self._free() and self.names:
