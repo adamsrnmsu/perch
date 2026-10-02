@@ -126,7 +126,8 @@ All against the hand-checkable world in `perch/tests/conftest.py`:
   the plan alone, so `--leaves Bob:2026-07-01` for someone only in
   `allocations.csv` would zero his whole year. `money.what_if` first adds a
   Jan 1 plan row at the person's flat FTE (a restatement, not new math).
-  Follow-up bead filed for Budgie to do this itself.
+  Since perch-22d Budgie's `Snapshot.what_if` does this itself and
+  `money.what_if` only forwards to it.
 - **`compare`'s `before`** is a `Money` (what-if) or the recorded history week
   (after the fact): a week cannot be rebuilt into a `Money`. Both become a
   `Side` (team figures plus each person's hours left).

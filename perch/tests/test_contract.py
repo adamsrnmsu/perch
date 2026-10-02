@@ -8,7 +8,6 @@ import inspect
 
 
 def test_budgie_core_names_perch_uses():
-    from budgie.core.allocation import Allocation
     from budgie.core.budget import Budget, BudgetRevision
     from budgie.core.burndown import BurndownStatus, burndown
     from budgie.core.calendar import workdays_between
@@ -35,7 +34,7 @@ def test_budgie_core_names_perch_uses():
         "spent",
         "pto",
         "budget_revisions",
-        "allocations",  # money.what_if: each person's flat fte
+        "allocations",  # money_from: one pace line per allocation
         "plan",
         "what_if",
     ):
@@ -43,9 +42,6 @@ def test_budgie_core_names_perch_uses():
     assert {"budget", "plan_entries"} <= set(
         inspect.signature(Snapshot.what_if).parameters
     )
-    # money.what_if reads each allocation's fte and the plan's names.
-    assert "fte" in Allocation.__dataclass_fields__
-    assert hasattr(AllocationPlan, "names")
     assert set(PlanEntry.__dataclass_fields__) == {"name", "effective_date", "fte"}
     assert {"observations", "plan"} <= set(inspect.signature(burndown).parameters)
     assert {"series", "day", "year"} == set(inspect.signature(spent_at).parameters)

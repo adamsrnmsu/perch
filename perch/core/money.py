@@ -113,18 +113,7 @@ def money_from(snap: Snapshot) -> Money:
 def what_if(
     snap: Snapshot, budget: float | None = None, changes: Sequence[PlanEntry] = ()
 ) -> Snapshot:
-    """Budgie's what-if, with each changed person's current FTE carried from Jan 1.
-
-    Budgie reads a planned person from the plan alone, so `Bob leaves in July`
-    for someone only in allocations.csv would zero his whole year. Restating
-    his flat FTE as a Jan 1 row first keeps January to June as it was.
-    Remove the seeding (and its contract asserts) when perch-22d lands in Budgie.
-    """
-    planned = set(snap.plan.names) if snap.plan else set()
-    flat = {a.name: a.fte for a in snap.allocations}
-    seeds = [
-        PlanEntry(name, date(snap.year, 1, 1), flat[name])
-        for name in dict.fromkeys(c.name for c in changes)
-        if name not in planned and name in flat
-    ]
-    return snap.what_if(budget=budget, plan_entries=[*seeds, *changes])
+    """Budgie's what-if: a new budget and/or plan changes. Budgie carries a
+    changed person who is only in allocations.csv at their flat FTE from Jan 1,
+    so `Bob leaves in July` keeps January to June as it was."""
+    return snap.what_if(budget=budget, plan_entries=changes)
