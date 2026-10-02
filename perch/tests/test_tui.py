@@ -197,6 +197,21 @@ def test_h_edits_weekly_csv_in_a_suspended_app_then_refreshes(tmp_path, monkeypa
     run(tui.PerchTUI(home), script)
 
 
+def test_h_falls_back_to_vim_when_editor_is_unset(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.delenv("EDITOR", raising=False)
+    monkeypatch.setattr(tui.PerchTUI, "suspend", lambda self: nullcontext())
+    edited = []
+    monkeypatch.setattr(subprocess, "run", lambda argv, cwd, check: edited.append(argv))
+
+    async def script(app, pilot):
+        await pilot.press("h")
+        await pilot.pause()
+        assert edited[0][0] == "vim"
+
+    run(tui.PerchTUI(home), script)
+
+
 def test_a_key_while_a_command_runs_says_busy(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo")
     release = threading.Event()
