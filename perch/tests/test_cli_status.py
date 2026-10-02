@@ -80,3 +80,51 @@ def test_status_dash_p_shows_one_project(tmp_path, monkeypatch):
     result = run("status", "-p", "gemini")
     assert result.exit_code == 0, result.output
     assert "gemini" in result.output and "apollo" not in result.output
+
+
+def test_a_tool_that_will_not_start_is_recorded_against_its_step(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(home.root)
+
+    def fake(step):
+        if step.name == "digest":
+            raise FileNotFoundError("no gitboard python")
+
+    monkeypatch.setattr("perch.cli._run", fake)
+    assert run("monday", "-p", "apollo").exit_code == 1
+    rec = json.loads(failure_path(home, "apollo").read_text())
+    assert (rec["step"], rec["code"]) == ("digest", 1)
+
+
+def test_from_a_later_step_keeps_an_earlier_failure(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(home.root)
+    recorder(monkeypatch, fail=lambda s: s.name == "fetch")
+    assert run("monday", "-p", "apollo").exit_code == 1
+    recorder(monkeypatch)
+    assert run("monday", "-p", "apollo", "--from", "weekly").exit_code == 0
+    assert json.loads(failure_path(home, "apollo").read_text())["step"] == "fetch"
+
+
+def test_status_outside_a_workspace_or_for_no_such_project_is_a_clean_error(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("PERCH_HOME", raising=False)
+    monkeypatch.chdir(tmp_path)
+    result = run("status")
+    assert result.exit_code == 1 and isinstance(result.exception, SystemExit)
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(home.root)
+    result = run("status", "-p", "zzz")
+    assert result.exit_code == 1 and isinstance(result.exception, SystemExit)
+
+
+def test_watch_for_a_project_writes_the_weeks_copy(tmp_path, monkeypatch):
+    from datetime import date
+
+    from perch.core.steps import iso_week
+
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(home.root)
+    assert run("watch", "-p", "apollo").exit_code == 0
+    assert home.watch_path("apollo", iso_week(date.today())).is_file()  # noqa: DTZ011

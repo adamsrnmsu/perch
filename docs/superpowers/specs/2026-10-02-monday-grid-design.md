@@ -45,8 +45,8 @@ week's Monday at 00:00 local time.
 | fetch  | `config.board_dump`                  | mtime at or after the cutoff                    |
 | board  | `config.history`                     | `latest_week` is this week's key                |
 | weekly | `home.weekly_path(name, week)`       | the file exists                                 |
-| digest | `home.reports_dir(name)/<YYYY-MM-DD>`| a dated folder falls in this week (gitboard names them by date) |
-| emails | `config.budgie_project / "emails"`   | mtime at or after the cutoff                    |
+| digest | `home.reports_dir(name)/<YYYY-MM-DD>`| newest file in the newest dated folder written at or after the cutoff (the name is gitboard's UTC day, so it only picks the folder) |
+| emails | `config.budgie_project / "emails"`   | newest file inside at or after the cutoff (Budgie rewrites the same names, so the directory's own mtime does not move) |
 | watch  | `home.watch_path(name, week)`        | the file exists                                 |
 
 hours: a weekly.csv row means "cumulative through ISO week N", and Budgie
@@ -70,8 +70,9 @@ never raises for one bad project.
 ### The failure record
 
 `perch monday` (one project or `--all`) writes `projects/NAME/monday.json`
-when a step fails: `{"week": "2026-W40", "step": "fetch", "code": 2, "at":
-"<ISO datetime>"}`. A run that gets past that step deletes the file. Only
+when a step fails (a non-zero exit, or a tool that would not start: code 1): `{"week": "2026-W40", "step": "fetch", "code": 2, "at":
+"<ISO datetime>"}`. A run that gets past that step deletes the file; a `--from` run that started
+after it leaves it. Only
 perch writes it, it records only what perch ran, and it holds no number.
 
 `status` turns the recorded step's cell into **`failed`** (`why` = "fetch
@@ -106,7 +107,7 @@ hermes   todo ok   ok   ok    ok   ok   ok     next: perch hours -p hermes
 ```
 
 `next` maps `hours` to `perch hours -p NAME`, `watch` to `perch watch -p
-NAME`, and every other step to `perch monday -p NAME --from STEP`. It sits
+NAME` (which, given `-p`, now also writes the week's watch file), and every other step to `perch monday -p NAME --from STEP`. It sits
 first in the "Every Monday, in order" help section. Exit 0 always: it reports,
 it does not judge.
 

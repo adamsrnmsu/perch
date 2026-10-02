@@ -44,12 +44,30 @@ def record_failure(
     path.write_text(json.dumps(rec))
 
 
-def clear_failure(home: Home, name: str) -> None:
-    failure_path(home, name).unlink(missing_ok=True)
+def clear_failure(home: Home, name: str, ran: tuple[str, ...] = STEPS) -> None:
+    """Drop the record once a run got through its step (`ran`: the steps run)."""
+    path = failure_path(home, name)
+    try:
+        if json.loads(path.read_text())["step"] not in ran:
+            return  # `--from` a later step: the earlier failure still stands
+    except (ValueError, KeyError, TypeError):
+        pass  # unreadable: nothing worth keeping
+    except OSError:
+        return  # no record
+    path.unlink(missing_ok=True)
 
 
 def _mtime(path: Path) -> float | None:
-    return path.stat().st_mtime if path.exists() else None
+    """A file's mtime; a directory's newest file, since rewriting a file in
+    place (Budgie's .eml drafts, a same-day digest) leaves the directory's own."""
+    if not path.exists():
+        return None
+    if path.is_dir():
+        return max(
+            (p.stat().st_mtime for p in path.rglob("*") if p.is_file()),
+            default=path.stat().st_mtime,
+        )
+    return path.stat().st_mtime
 
 
 def _newest_report(reports: Path) -> Path:
@@ -107,8 +125,8 @@ def status(home: Home, name: str, today: date) -> dict[str, Cell]:
         "fetch": dump is not None and dump >= cutoff,
         "board": latest == {week},
         "weekly": m["weekly"] is not None,
-        "digest": m["digest"] is not None
-        and paths["digest"].name >= monday.isoformat(),
+        # by mtime, not the folder's name: gitboard names it by the UTC day
+        "digest": m["digest"] is not None and m["digest"] >= cutoff,
         "emails": m["emails"] is not None and m["emails"] >= cutoff,
         "watch": m["watch"] is not None,
     }

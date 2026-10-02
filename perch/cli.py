@@ -555,15 +555,21 @@ def monday(project, all_projects, start):
     def run_one(home, name):
         config = load_config(home.config_path(name), require_dump=False)
         console.print(f"[bold]== {escape(name)}[/bold]", highlight=False)
+        ran = steps.MONDAY_STEPS[steps.MONDAY_STEPS.index(start or "fetch") :]
+        current = ran[0]
         try:
             for step in steps.monday(_bin_dir(), home, name, config, week, start):
+                current = step.name
                 _run(step)
-        except steps.StepFailed as exc:
-            # local naive time: status.py reads `at` back with fromisoformat()
+        except (steps.StepFailed, OSError, TypeError, ValueError) as exc:
+            # A tool that would not start or a missing gitlab_project fails its
+            # step as surely as a non-zero exit. Local naive time: status.py
+            # reads `at` back with fromisoformat().
+            code = exc.code if isinstance(exc, steps.StepFailed) else 1
             at = datetime.now()  # noqa: DTZ005
-            record_failure(home, name, week, exc.step.name, exc.code, at)
+            record_failure(home, name, week, current, code, at)
             raise
-        clear_failure(home, name)
+        clear_failure(home, name, ran)
         console.print(f"\n[bold]{name}[/bold] done. Review, then send yourself:")
         for place in (
             home.weekly_path(name, week),
@@ -617,8 +623,11 @@ def status(project):
 
     from perch.core import status as st
 
-    home = _find_home()
-    names = [home.select(project, Path.cwd())] if project else home.projects()
+    home = _home()
+    try:
+        names = [home.select(project, Path.cwd())] if project else home.projects()
+    except ValueError as exc:  # WorkspaceError: no such project
+        raise click.ClickException(str(exc)) from exc
     if not names:
         raise click.ClickException("no projects yet. Run: perch init <name>")
     today = date.today()  # noqa: DTZ011 -- the lead's local Monday
@@ -928,6 +937,13 @@ def watch(config_path, project, all_projects):
     if not all_projects:
         try:
             page = _watch(_config_path(config_path, project))
+            if project:  # keep the week's copy, as monday does: `perch status` reads it
+                from perch.core.steps import iso_week
+
+                home = _find_home()
+                path = home.watch_path(home.select(project), iso_week(date.today()))  # noqa: DTZ011
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(render(page))
         except (OSError, TypeError, ValueError) as exc:
             raise click.ClickException(str(exc)) from exc
         click.echo(render(page), nl=False)

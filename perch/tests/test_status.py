@@ -14,8 +14,9 @@ from perch.core.history import record
 from perch.tests.conftest import build_home
 
 TODAY = date(2026, 4, 20)
-OLD, NEW, NEWER = (
+OLD, MON, NEW, NEWER = (
     datetime(2026, 4, 17, 9),
+    datetime(2026, 4, 20, 8),
     datetime(2026, 4, 21, 9),
     datetime(2026, 4, 22, 9),
 )
@@ -78,7 +79,7 @@ def test_board_weekly_watch_digest_done(tmp_path):
     touch(p / "history.jsonl", NEW)
     touch(p / "weekly" / "2026-W17.md", NEW)
     touch(p / "watch" / "2026-W17.md", NEW)
-    touch(reports / "2026-04-13", NEW)
+    touch(reports / "2026-04-13", OLD)
     assert states(home)["digest"] == "todo"  # last week's folder
     touch(reports / "2026-04-20", NEW)
     (reports / "notes").mkdir()  # not a date: ignored
@@ -94,7 +95,7 @@ def test_stale_when_an_input_is_newer(tmp_path):
     touch(p / "watch" / "2026-W17.md", OLD)
     touch(p / "dump.json", NEW)
     touch(emails, NEW)
-    touch(reports / "2026-04-20", OLD)
+    touch(reports / "2026-04-20", MON)
     s = states(home)
     assert s["weekly"] == s["watch"] == s["digest"] == "stale"
     assert s["board"] == s["emails"] == "done"
@@ -153,3 +154,31 @@ def test_next_step_and_command():
     assert st.next_command("a", "hours") == ["hours", "-p", "a"]
     assert st.next_command("a", "watch") == ["watch", "-p", "a"]
     assert st.next_command("a", "weekly") == ["monday", "-p", "a", "--from", "weekly"]
+
+
+def test_a_directory_is_as_new_as_its_newest_file(tmp_path):
+    """Budgie rewrites the same .eml names weekly; the directory mtime stays put."""
+    home, _, emails, reports = setup(tmp_path)
+    touch(emails / "ann.eml", NEW)
+    touch(reports / "2026-04-20" / "apollo" / "team.md", NEW)
+    os.utime(emails, (OLD.timestamp(), OLD.timestamp()))
+    os.utime(reports / "2026-04-20", (OLD.timestamp(),) * 2)
+    s = states(home)
+    assert s["emails"] == "done" and s["digest"] == "done"
+
+
+def test_digest_is_this_weeks_by_when_written_not_by_folder_name(tmp_path):
+    """gitboard names the folder by the UTC day: a Sunday-evening run in UTC-6
+    lands in Monday's folder but was written last week."""
+    home, _, _, reports = setup(tmp_path)
+    touch(reports / "2026-04-20", datetime(2026, 4, 19, 20))
+    assert states(home)["digest"] == "todo"
+
+
+def test_clear_failure_keeps_a_record_the_run_did_not_reach(tmp_path):
+    home, *_ = setup(tmp_path)
+    st.record_failure(home, "apollo", "2026-W17", "fetch", 2, NEW)
+    st.clear_failure(home, "apollo", ("weekly", "digest", "emails"))
+    assert st.failure_path(home, "apollo").exists()
+    st.clear_failure(home, "apollo", ("fetch", "board"))
+    assert not st.failure_path(home, "apollo").exists()
