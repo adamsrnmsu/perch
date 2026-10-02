@@ -61,6 +61,21 @@ def _issues(n: int) -> str:
     return f"{n} issue" if n == 1 else f"{n} issues"
 
 
+def _uncosted(q: Quarter) -> str:
+    """`; 1 issue without a known hourly cost is not in the dollar total`, or ""."""
+    n = sum(1 for m in q.issue_misses if m.dollars is None)
+    if not n:
+        return ""
+    verb = "is" if n == 1 else "are"
+    return f"; {_issues(n)} without a known hourly cost {verb} not in the dollar total"
+
+
+def _issue_total(q: Quarter) -> str:
+    """The `#iid` rows' dollar sum; — when no row has an hourly cost."""
+    costed = [m.dollars for m in q.issue_misses if m.dollars is not None]
+    return _delta(sum(costed)) if costed else "—"
+
+
 def subject(q: Quarter) -> str:
     p = q.position
     signal = _signal(q)
@@ -93,10 +108,10 @@ def _opening(q: Quarter) -> str:
             f"Labels finished this quarter came in {_delta(miss)} against their "
             "estimates (modelled)."
         )
-    costed = [m.dollars for m in q.issue_misses if m.dollars is not None]
-    if costed:
+    if q.issue_misses:
         out.append(
-            f"Issues with their own estimate came in {_delta(sum(costed))} (modelled)."
+            f"Issues with their own estimate came in {_issue_total(q)} "
+            f"(modelled{_uncosted(q)})."
         )
     total = q.total
     # A partial dump counts part of the quarter: say which part.
@@ -201,8 +216,9 @@ def _blocks(q: Quarter) -> list[tuple]:
         header = ("Finished label", "Issues", "Estimated h", "Modelled h", "Difference")
         out.append(("table", 1, header, rows))
     if q.in_progress:
+        by = f"{q.through:%b} {q.through.day}"
         going = ", ".join(
-            f"{label} ({n} of {m} closed)" for label, n, m in q.in_progress
+            f"{label} ({n} of {m} closed by {by})" for label, n, m in q.in_progress
         )
         out.append(("p", f"In progress, no comparison yet: {going}."))
     if q.issue_misses:
@@ -217,6 +233,15 @@ def _blocks(q: Quarter) -> list[tuple]:
         ]
         header = ("Issue", "Estimated h", "Modelled h", "Difference")
         out.append(("table", 1, header, rows))
+        out.append(
+            (
+                "p",
+                (
+                    "Issues with their own estimate, total: "
+                    f"{_issue_total(q)}{_uncosted(q)}."
+                ),
+            )
+        )
     if q.misses or q.issue_misses:
         out.append(
             (

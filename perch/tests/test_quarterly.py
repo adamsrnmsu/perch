@@ -145,6 +145,8 @@ def test_a_label_finished_in_the_quarter_is_compared_whole(world):
             record["labels"] = []
     dump.write_text(json.dumps(meta))
     (billing,) = make(world, "2026-Q1").misses
+    # The same once Q1 is long over.
+    assert make(world, "2026-Q1", today=date(2026, 10, 1)).misses == (billing,)
     # #1-#4 all closed, the last on Feb 10; Alice's at 25 h: 100 against 60.
     assert (billing.label, billing.issues, billing.open) == ("epic::billing", 4, 0)
     assert billing.modelled == pytest.approx(100)
@@ -152,6 +154,21 @@ def test_a_label_finished_in_the_quarter_is_compared_whole(world):
     # It finished in Q1, so Q2 has nothing to compare.
     q2 = make(world, "2026-Q2")
     assert (q2.misses, q2.in_progress, q2.issue_misses) == ((), (), ())
+
+
+def test_a_label_finished_later_is_in_progress_at_the_quarters_end(world):
+    dump = world.parent / "dump.json"
+    meta = json.loads(dump.read_text())
+    for record in meta["history"]:
+        if record["iid"] == 101:  # after Alice's last reading: rates unchanged
+            record["closed_at"] = "2026-04-20T07:00:00.000Z"
+    dump.write_text(json.dumps(meta))
+    # Run after Q2: #101 was still open on Mar 31, so billing was 4 of 5 then.
+    q1 = make(world, "2026-Q1", today=date(2026, 10, 1))
+    assert (q1.misses, q1.in_progress) == ((), (("epic::billing", 4, 5),))
+    # It finished in Q2, so Q2 compares it whole.
+    (billing,) = make(world, "2026-Q2", today=date(2026, 10, 1)).misses
+    assert (billing.label, billing.issues, billing.open) == ("epic::billing", 5, 0)
 
 
 def test_without_estimates_there_is_no_miss_table(world):

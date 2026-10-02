@@ -231,3 +231,12 @@ What they cover:
   closes are counted (and the dump's span for Blocked days). A finished
   quarter whose readings stop early says "labor spent through <date>" in the
   subject and opening, and the forecast rows are "as of" the last reading used.
+- **A label's finish is judged by the board at the quarter's end** (perch-ctt),
+  not at the fetch: an issue closed after the report's last day was open then,
+  so a past quarter's label that finished later reads "n of m closed by <end>".
+  Issues created after the quarter still count towards m: gitboard's dump has
+  `created_at`, but perch's `Issue` does not carry it yet (perch-iyl).
+- **The issue-estimate dollar total names what it leaves out** (perch-xww): a
+  total line under the `#iid` table, and the opening's issue sum, add "n issue(s)
+  without a known hourly cost are not in the dollar total" when n > 0; with no
+  costed row the total is "—".
