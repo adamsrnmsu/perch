@@ -984,6 +984,8 @@ def quarterly(config_path, project, all_projects, quarter, out_dir):
 @cli.command()
 def tui():
     """Every project in one table; single keys run perch on the selected one."""
-    from perch.tui import PerchTUI
+    from perch import tui as tui_mod
 
-    PerchTUI(_home()).run()
+    target = tui_mod.PerchTUI(_home()).run()
+    if target:
+        tui_mod.switch(tui_mod.suite_entry(target))

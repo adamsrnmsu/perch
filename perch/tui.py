@@ -8,9 +8,11 @@ watch itself goes to the output pane, and only when the lead presses `w`.
 
 from __future__ import annotations
 
+import json
 import os
 import shlex
 import subprocess
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -89,6 +91,45 @@ def row(home: Home, name: str) -> tuple[str, ...]:
     )
 
 
+SUITE = "PI_SUITE"  # JSON: app -> {"cwd", "argv"}; Budgie and gitboard read it
+
+
+def suite_map(home: Home, name: str) -> dict[str, dict]:
+    """Where each app runs for this project: they all find config by walk-up."""
+    config = load_config(home.config_path(name), require_dump=False)
+    gitlab = [config.gitlab_project] if config.gitlab_project else []
+    return {
+        "perch": {"cwd": str(home.root), "argv": [str(_bin_dir() / "perch"), "tui"]},
+        "budgie": {
+            "cwd": str(config.budgie_project),
+            "argv": [str(_bin_dir() / "budgie"), "tui"],
+        },
+        "gitboard": {
+            "cwd": str(home.gitboard_dir),
+            "argv": ["gitboard", "tui", *gitlab],
+        },
+    }
+
+
+def suite_entry(name: str) -> dict | None:
+    """$PI_SUITE's entry for ``name``; None when unset, malformed or absent."""
+    try:
+        entry = json.loads(os.environ.get(SUITE, ""))[name]
+        cwd, argv = str(entry["cwd"]), [str(a) for a in entry["argv"]]
+    except (ValueError, KeyError, TypeError):
+        return None
+    return {"cwd": cwd, "argv": argv} if argv else None
+
+
+def switch(entry: dict) -> None:
+    """Become the other app. Call only once the terminal is restored."""
+    try:
+        os.chdir(entry["cwd"])
+        os.execvp(entry["argv"][0], entry["argv"])
+    except OSError as exc:
+        sys.exit(f"switch failed: {exc}")
+
+
 class PerchTUI(App):
     AUTO_FOCUS = "#projects"
     CSS = """
@@ -102,6 +143,8 @@ class PerchTUI(App):
         ("c", "cut", "cut"),
         ("h", "hours", "hours"),
         ("r", "refresh", "refresh"),
+        ("B", "switch('budgie')", "budgie"),
+        ("G", "switch('gitboard')", "gitboard"),
         ("question_mark", "show_help_panel", "help"),
         ("q", "quit", "quit"),
         Binding("escape", "close_cut", show=False),
@@ -226,3 +269,15 @@ class PerchTUI(App):
         except _ERRORS as exc:
             self.query_one(Log).write_line(f"{name}: {exc}")
         self.action_refresh()
+
+    def action_switch(self, target: str) -> None:
+        """Hand the terminal to Budgie or gitboard for the selected project."""
+        name = self._selected() if self._free() else None
+        if name is None:
+            return
+        try:  # a bad config is a line in the pane, not a crash
+            os.environ[SUITE] = json.dumps(suite_map(self.home, name))
+        except _ERRORS as exc:
+            self.query_one(Log).write_line(f"{name}: {exc}")
+            return
+        self.exit(target)

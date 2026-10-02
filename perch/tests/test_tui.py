@@ -6,6 +6,7 @@ needs no pytest-asyncio.
 
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import threading
@@ -346,3 +347,98 @@ def test_quitting_with_nothing_running_is_fine(tmp_path, spawned):
         await pilot.press("q")
 
     run(tui.PerchTUI(build_home(tmp_path, "apollo")), script)
+
+
+# --- switching to Budgie and gitboard (PI_SUITE) ----------------------------
+
+BIN = Path(sys.executable).parent
+
+
+def test_suite_map_points_each_app_at_the_selected_project(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    m = tui.suite_map(home, "apollo")
+    assert m["perch"] == {"cwd": str(home.root), "argv": [str(BIN / "perch"), "tui"]}
+    assert m["budgie"] == {
+        "cwd": str((home.projects_dir / "apollo" / "fy26").resolve()),
+        "argv": [str(BIN / "budgie"), "tui"],
+    }
+    assert m["gitboard"] == {
+        "cwd": str(home.gitboard_dir),
+        "argv": ["gitboard", "tui", "grp/apollo"],
+    }
+
+
+def test_suite_map_without_a_gitlab_project_lets_gitboard_choose(tmp_path):
+    home = build_home(tmp_path, "apollo", gitlab=False)
+    assert tui.suite_map(home, "apollo")["gitboard"]["argv"] == ["gitboard", "tui"]
+
+
+def test_b_and_g_set_pi_suite_and_exit_with_the_target(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    for key, target in (("B", "budgie"), ("G", "gitboard")):
+        monkeypatch.setenv("PI_SUITE", "")  # restored after the test
+        app = tui.PerchTUI(home)
+
+        async def script(app, pilot, key=key):
+            await pilot.press(key)
+            await pilot.pause()
+
+        run(app, script)
+        assert app.return_value == target
+        assert json.loads(os.environ["PI_SUITE"]) == tui.suite_map(home, "apollo")
+
+
+def test_switching_while_a_command_runs_says_busy(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    release = threading.Event()
+
+    def slow(argv, cwd, started):
+        release.wait(5)
+        yield "done"
+
+    monkeypatch.setattr(tui, "_spawn", slow)
+
+    async def script(app, pilot):
+        await pilot.press("b")
+        await pilot.pause()
+        await pilot.press("G")
+        await pilot.pause()
+        assert "busy: board" in _log(app)
+        assert app.is_running
+        release.set()
+        await settle(app, pilot)
+
+    try:
+        run(tui.PerchTUI(home), script)
+    finally:
+        release.set()
+
+
+def test_switch_chdirs_then_execs(monkeypatch):
+    calls = []
+    monkeypatch.setattr(os, "chdir", lambda d: calls.append(("chdir", d)))
+    monkeypatch.setattr(os, "execvp", lambda f, a: calls.append(("exec", f, a)))
+    tui.switch({"cwd": "/b", "argv": ["budgie", "tui"]})
+    assert calls == [("chdir", "/b"), ("exec", "budgie", ["budgie", "tui"])]
+
+
+def test_switch_that_cannot_exec_says_why(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        tui.switch({"cwd": str(tmp_path / "gone"), "argv": ["budgie", "tui"]})
+    assert "switch failed" in str(exc.value.code)
+
+
+def test_perch_tui_execs_the_target_it_exited_with(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from perch.cli import cli
+
+    build_home(tmp_path, "apollo")
+    monkeypatch.chdir(tmp_path / "ws")
+    entry = {"cwd": "/b", "argv": ["budgie", "tui"]}
+    monkeypatch.setenv("PI_SUITE", json.dumps({"budgie": entry}))
+    monkeypatch.setattr(tui.PerchTUI, "run", lambda self: "budgie")
+    switched = []
+    monkeypatch.setattr(tui, "switch", switched.append)
+    assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
+    assert switched == [entry]
