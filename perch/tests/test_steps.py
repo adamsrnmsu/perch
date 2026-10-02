@@ -53,6 +53,16 @@ def test_monday_is_five_steps_in_order_each_in_its_tool(tmp_path):
     assert emails.cwd == config.budgie_project
 
 
+def test_monday_from_a_step_runs_it_and_the_rest(tmp_path):
+    home, config = apollo(tmp_path)
+    run = steps.monday(BIN, home, "apollo", config, "2026-W40", "weekly")
+    assert [s.name for s in run] == ["weekly", "digest", "emails"]
+    assert steps.MONDAY_STEPS == ("fetch", "board", "weekly", "digest", "emails")
+    assert len(steps.monday(BIN, home, "apollo", config, "2026-W40", None)) == 5
+    with pytest.raises(ValueError, match="nope"):
+        steps.monday(BIN, home, "apollo", config, "2026-W40", "nope")
+
+
 def test_fetch_without_gitlab_project_says_what_to_add(tmp_path):
     home, config = apollo(tmp_path, gitlab=False)
     with pytest.raises(WorkspaceError, match="gitlab_project"):

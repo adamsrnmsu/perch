@@ -133,17 +133,28 @@ def budgie_init(bin_dir: Path, home: Home, name: str) -> Step:
     return Step("budgie init", (str(bin_dir / "budgie"), "init", name), home.root)
 
 
+MONDAY_STEPS = ("fetch", "board", "weekly", "digest", "emails")
+
+
 def monday(
-    bin_dir: Path, home: Home, project: str, config: Config, week: str
+    bin_dir: Path,
+    home: Home,
+    project: str,
+    config: Config,
+    week: str,
+    start: str | None = None,
 ) -> list[Step]:
-    """Steps 1-5, in order. `hours` (step 0) is by hand and comes first."""
-    return [
+    """Steps 1-5, in order, from `start` on. `hours` (step 0) is by hand."""
+    if start is not None and start not in MONDAY_STEPS:
+        raise ValueError(f"{start!r} is not a step: {', '.join(MONDAY_STEPS)}")
+    run = [
         fetch(home, project, config),
         board(bin_dir, home, project),
         weekly(bin_dir, home, project, week),
         digest(home, project, config),
         emails(bin_dir, config),
     ]
+    return run[MONDAY_STEPS.index(start) if start else 0 :]
 
 
 def run_projects(
