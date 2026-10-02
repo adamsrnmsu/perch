@@ -4,7 +4,8 @@ Display and key handling only. The table reads what is already on disk: the
 last week `perch board` recorded (never a new simulation), one cell per Monday
 step (`perch.core.status`: done, stale, todo, FAIL, ERR), and how many flags
 the private watch has. Only the count shows here; the watch itself goes to the
-output pane, and only when the lead presses `w`. The cursor is a cell: Enter on
+output pane, and only when the lead presses `w`. The output pane is a stack of
+run cards: one per command, in the tool's own colours, with a live status. The cursor is a cell: Enter on
 a step runs it (and what follows), on any other column runs the next step.
 """
 
@@ -15,6 +16,7 @@ import os
 import shlex
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Iterator
 from datetime import date
 from pathlib import Path
@@ -23,10 +25,10 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal
+from textual.containers import Horizontal, VerticalScroll
 from textual.coordinate import Coordinate
 from textual.message import Message
-from textual.widgets import DataTable, Footer, Input, Log
+from textual.widgets import DataTable, Footer, Input, Static
 
 from perch.cli import _bin_dir, _label, _money, _watch
 from perch.core.config import load_config
@@ -54,16 +56,25 @@ COMMANDS = {  # key -> the perch command it runs on the selected project
 }
 
 
+KEEP = 20  # run cards kept in the output pane
+SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+
 def _spawn(
-    argv: list[str], cwd: Path, started: Callable[[subprocess.Popen], None]
+    argv: list[str],
+    cwd: Path,
+    started: Callable[[subprocess.Popen], None],
+    env: dict[str, str] | None = None,
 ) -> Iterator[str]:
     """Run a command, yielding its output lines as they come; tests replace this.
 
     `started` gets the process as soon as it exists, so the app can stop it.
+    `env` is added to os.environ.
     """
     with subprocess.Popen(
         argv,
         cwd=cwd,
+        env={**os.environ, **(env or {})},
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -147,6 +158,49 @@ def switch(entry: dict) -> None:
         sys.exit(f"switch failed: {exc}")
 
 
+class RunCard(Static):
+    """One command's output: its title, a live status, the tool's own colours."""
+
+    DEFAULT_CSS = """
+    RunCard {
+        height: auto;
+        border: round $panel-lighten-2;
+        border-title-color: $text;
+        border-subtitle-color: $text-muted;
+        padding: 0 1;
+    }
+    RunCard.ok { border: round $success; border-subtitle-color: $success; }
+    RunCard.failed { border: round $error; border-subtitle-color: $error; }
+    """
+
+    def __init__(self, title: str):
+        super().__init__()
+        self.border_title = title
+        self.body = Text()
+        self.began = time.monotonic()
+        self.frame = 0
+
+    def on_mount(self) -> None:
+        self.ticker = self.set_interval(0.1, self._tick)
+        self._tick()
+
+    def _tick(self) -> None:
+        self.border_subtitle = f"{SPINNER[self.frame % len(SPINNER)]} running"
+        self.frame += 1
+
+    def add(self, line: Text) -> None:
+        if self.body:
+            self.body.append("\n")
+        self.body.append_text(line)
+        self.update(self.body)
+
+    def finish(self, code: int) -> None:
+        self.ticker.stop()
+        took = f"{time.monotonic() - self.began:.1f}s"
+        self.border_subtitle = f"✓ {took}" if not code else f"✗ exited {code} · {took}"
+        self.add_class("failed" if code else "ok")
+
+
 class Grid(DataTable):
     """Enter runs the cursor's cell; a click only moves the cursor.
 
@@ -165,7 +219,7 @@ class PerchTUI(App):
     AUTO_FOCUS = "#projects"
     CSS = """
     #projects { width: 3fr; }
-    #output { width: 2fr; border-left: solid $panel; }
+    #output { width: 2fr; border-left: solid $panel; padding: 0 1; }
     #flags { display: none; dock: bottom; }
     """
     BINDINGS = [  # noqa: RUF012 -- Textual reads it off the class
@@ -191,7 +245,7 @@ class PerchTUI(App):
     def compose(self) -> ComposeResult:
         with Horizontal():
             yield Grid(id="projects", cursor_type="cell")
-            yield Log(id="output")
+            yield VerticalScroll(id="output")
         yield Input(id="flags", placeholder="cut flags, e.g. --budget 700000")
         yield Footer()
 
@@ -210,13 +264,13 @@ class PerchTUI(App):
 
     def _selected(self) -> str | None:
         if not self.names:
-            self.query_one(Log).write_line("no projects yet. Run: perch init <name>")
+            self.notify("no projects yet. Run: perch init <name>", severity="warning")
             return None
         return self.names[self.query_one(DataTable).cursor_coordinate.row]
 
     def _free(self) -> bool:
         if self.busy:
-            self.query_one(Log).write_line(f"busy: {self.busy}")
+            self.notify(f"busy: {self.busy}", severity="warning")
         return not self.busy
 
     def action_run(self, key: str, extra: tuple[str, ...] = ()) -> None:
@@ -234,7 +288,15 @@ class PerchTUI(App):
     def _start(self, name: str | None, action: str, args: list[str]) -> None:
         """Run perch on one project, or on every project when ``name`` is None."""
         self.busy = action
-        self._stream(self.query_one(Log), name, [str(_bin_dir() / "perch"), *args])
+        pane = self.query_one("#output", VerticalScroll)
+        card = RunCard(f"{action} · {name}" if name else action)
+        pane.mount(card)
+        for old in list(pane.query(RunCard))[:-KEEP]:
+            old.remove()
+        pane.scroll_end(animate=False)
+        width = max(pane.size.width - 4, 40)  # the card's inside: tables fit it
+        env = {"FORCE_COLOR": "1", "COLUMNS": str(width)}
+        self._stream(card, name, [str(_bin_dir() / "perch"), *args], env)
 
     def on_grid_go(self) -> None:
         """Enter: a step's cell runs that step; any other column, the next one."""
@@ -248,7 +310,7 @@ class PerchTUI(App):
             else next_step(status(self.home, name, date.today()))  # noqa: DTZ011
         )
         if step is None:
-            self.query_one(Log).write_line(f"{name}: Monday done")
+            self.notify(f"{name}: Monday done")
         elif step == "hours":
             self.action_hours()
         else:
@@ -256,18 +318,28 @@ class PerchTUI(App):
             self._start(name, " ".join(argv), argv)
 
     @work(thread=True)
-    def _stream(self, log: Log, name: str | None, argv: list[str]) -> None:
-        """In a thread: every touch of the app goes through call_from_thread."""
-        prefix = name or "all"
-        last = ""
+    def _stream(
+        self, card: RunCard, name: str | None, argv: list[str], env: dict[str, str]
+    ) -> None:
+        """In a thread: every touch of the app goes through call_from_thread.
+
+        Each line is shown one behind, so `_spawn`'s closing "exited N" can go
+        to the card's status instead of its body.
+        """
+        pending, code = None, 0
         try:
-            for last in _spawn(argv, self.home.root, self._hold):
-                self.call_from_thread(log.write_line, f"{prefix}: {last}")
-        except OSError as exc:
-            self.call_from_thread(log.write_line, f"{prefix}: {exc}")
-        finally:  # _spawn's last line is "exited N" when the command failed
-            failed = last.startswith("exited ")
-            self.call_from_thread(self._finished, name, failed)
+            for line in _spawn(argv, self.home.root, self._hold, env):
+                if pending is not None:
+                    self.call_from_thread(card.add, Text.from_ansi(pending))
+                pending = line
+            if pending is not None and pending.startswith("exited "):
+                code, pending = int(pending.split()[1]), None
+        except (OSError, ValueError) as exc:
+            code, pending = 1, f"{pending}\n{exc}" if pending else str(exc)
+        finally:
+            if pending is not None:
+                self.call_from_thread(card.add, Text.from_ansi(pending))
+            self.call_from_thread(self._finished, name, card, code)
 
     def _hold(self, proc: subprocess.Popen) -> None:
         self.child = proc
@@ -283,10 +355,15 @@ class PerchTUI(App):
         except subprocess.TimeoutExpired:
             proc.kill()
 
-    def _finished(self, name: str | None = None, failed: bool = False) -> None:
-        """Refresh the row that ran (every row after `a`); a failure logs its FIXes."""
+    def _finished(self, name: str | None, card: RunCard, code: int) -> None:
+        """Close the card; refresh the row that ran (every row after `a`).
+
+        A failure adds the project's FIX lines to its card.
+        """
         self.child = None
         self.busy = None
+        card.finish(code)
+        self.query_one("#output", VerticalScroll).scroll_end(animate=False)
         if name not in self.names:  # None (`a`), or a project gone meanwhile
             self.action_refresh()
             return
@@ -294,11 +371,12 @@ class PerchTUI(App):
         at = self.names.index(name)
         for col, cell in enumerate(row(self.home, name)):
             table.update_cell_at(Coordinate(at, col), cell, update_width=True)
-        if failed:  # ponytail: `a` (monday --all) gets no FIX lines
-            log = self.query_one(Log)
+        if code:  # ponytail: `a` (monday --all) gets no FIX lines
             for check in project_checks(self.home, name):
                 if not check.ok:
-                    log.write_line(f"{name}: FIX  {check.what}  ->  {check.fix}")
+                    fix = Text.assemble(("▲ FIX  ", "bold yellow"), check.what)
+                    fix.append(f"\n       → {check.fix}", style="yellow")
+                    card.add(fix)
 
     def action_cut(self) -> None:
         if self._free() and self.names:
@@ -317,7 +395,7 @@ class PerchTUI(App):
         try:
             flags = tuple(shlex.split(event.value))
         except ValueError as exc:
-            self.query_one(Log).write_line(f"cut: {exc}")
+            self.notify(f"cut: {exc}", severity="error")
             return
         self.action_run("cut", flags)
 
@@ -333,7 +411,7 @@ class PerchTUI(App):
             with self.suspend():
                 subprocess.run(step.argv, cwd=step.cwd, check=False)
         except _ERRORS as exc:
-            self.query_one(Log).write_line(f"{name}: {exc}")
+            self.notify(f"{name}: {exc}", severity="error")
         self.action_refresh()
 
     def action_switch(self, target: str) -> None:
@@ -344,6 +422,6 @@ class PerchTUI(App):
         try:  # a bad config is a line in the pane, not a crash
             os.environ[SUITE] = json.dumps(suite_map(self.home, name))
         except _ERRORS as exc:
-            self.query_one(Log).write_line(f"{name}: {exc}")
+            self.notify(f"{name}: {exc}", severity="error")
             return
         self.exit(target)

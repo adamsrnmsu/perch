@@ -14,7 +14,7 @@ from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
-from textual.widgets import DataTable, Input, Log
+from textual.widgets import DataTable, Input
 
 from perch import tui
 from perch.core.watch import PLAN, PersonWatch, Signal, Watch
@@ -28,8 +28,16 @@ def _cells(app) -> list[list[str]]:
     return [[str(c) for c in table.get_row_at(i)] for i in range(table.row_count)]
 
 
-def _log(app) -> list[str]:
-    return list(app.query_one(Log).lines)
+def _cards(app) -> list[tuple[str, str, str]]:
+    """(title, body, status) of each run card, oldest first."""
+    return [
+        (c.border_title, c.body.plain, c.border_subtitle)
+        for c in app.query(tui.RunCard)
+    ]
+
+
+def _notices(app) -> list[str]:
+    return [n.message for n in app._notifications]
 
 
 def _team_row(home, name, headroom, signal):
@@ -43,7 +51,7 @@ def spawned(monkeypatch):
     """Every argv the TUI spawns, with its cwd; each prints one line."""
     calls = []
 
-    def fake(argv, cwd, started):
+    def fake(argv, cwd, started, env=None):
         calls.append((list(argv), cwd))
         yield "ran"
 
@@ -134,8 +142,8 @@ def test_each_key_runs_its_command_on_the_selected_project(tmp_path, spawned):
             await settle(app, pilot)
         assert [argv for argv, _ in spawned] == [[PERCH, *a] for a in keys.values()]
         assert {cwd for _, cwd in spawned} == {home.root}
-        assert _log(app)[-1] == "apollo: ran"
-        assert "all: ran" in _log(app)
+        assert _cards(app)[-1][:2] == ("quarterly · apollo", "ran")
+        assert ("monday --all", "ran") in [c[:2] for c in _cards(app)]
 
     run(tui.PerchTUI(home), script)
 
@@ -217,7 +225,7 @@ def test_a_key_while_a_command_runs_says_busy(tmp_path, monkeypatch):
     release = threading.Event()
     calls = []
 
-    def slow(argv, cwd, started):
+    def slow(argv, cwd, started, env=None):
         calls.append(argv)
         release.wait(5)
         yield "done"
@@ -231,7 +239,7 @@ def test_a_key_while_a_command_runs_says_busy(tmp_path, monkeypatch):
         await pilot.pause()
         release.set()
         await settle(app, pilot)
-        assert "busy: board" in _log(app)
+        assert "busy: board" in _notices(app)
         assert len(calls) == 1
         await pilot.press("m")  # free again once it finished
         await settle(app, pilot)
@@ -339,7 +347,7 @@ def test_quitting_while_a_command_runs_terminates_the_child(tmp_path, monkeypatc
     home = build_home(tmp_path, "apollo")
     proc = _Proc()
 
-    def long(argv, cwd, started):
+    def long(argv, cwd, started, env=None):
         started(proc)
         proc.ended.wait(5)
         yield "cut short"
@@ -407,7 +415,7 @@ def test_switching_while_a_command_runs_says_busy(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo")
     release = threading.Event()
 
-    def slow(argv, cwd, started):
+    def slow(argv, cwd, started, env=None):
         release.wait(5)
         yield "done"
 
@@ -418,7 +426,7 @@ def test_switching_while_a_command_runs_says_busy(tmp_path, monkeypatch):
         await pilot.pause()
         await pilot.press("G")
         await pilot.pause()
-        assert "busy: board" in _log(app)
+        assert "busy: board" in _notices(app)
         assert app.is_running
         release.set()
         await settle(app, pilot)
@@ -527,7 +535,7 @@ def test_enter_on_the_project_cell_runs_the_next_step(tmp_path, spawned, monkeyp
         await pilot.press("enter")
         await settle(app, pilot)
         assert len(spawned) == 1
-        assert "apollo: Monday done" in _log(app)
+        assert "apollo: Monday done" in _notices(app)
 
     run(tui.PerchTUI(home), script)
 
@@ -535,7 +543,7 @@ def test_enter_on_the_project_cell_runs_the_next_step(tmp_path, spawned, monkeyp
 def test_a_failing_run_logs_the_projects_fix_lines(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo", "beta", gitlab=False)
 
-    def fake(argv, cwd, started):
+    def fake(argv, cwd, started, env=None):
         yield "boom"
         yield "exited 2"
 
@@ -544,9 +552,10 @@ def test_a_failing_run_logs_the_projects_fix_lines(tmp_path, monkeypatch):
     async def script(app, pilot):
         await pilot.press("down", "m")  # beta has no gitlab_project
         await settle(app, pilot)
-        fixes = [x for x in _log(app) if "FIX" in x]
-        assert len(fixes) == 1 and fixes[0].startswith("beta: FIX  ")
-        assert "gitlab_project" in fixes[0] and "  ->  " in fixes[0]
+        title, body, state = _cards(app)[-1]
+        assert title == "monday · beta" and state.startswith("✗ exited 2")
+        assert body.startswith("boom\n▲ FIX  ") and body.count("FIX") == 1
+        assert "gitlab_project" in body and "→" in body
 
     run(tui.PerchTUI(home), script)
 
@@ -557,7 +566,8 @@ def test_a_passing_run_logs_no_fix_lines(tmp_path, spawned):
     async def script(app, pilot):
         await pilot.press("m")
         await settle(app, pilot)
-        assert not [x for x in _log(app) if "FIX" in x]
+        _, body, state = _cards(app)[-1]
+        assert "FIX" not in body and state.startswith("✓ ")
 
     run(tui.PerchTUI(home), script)
 
@@ -613,5 +623,43 @@ def test_monday_all_refreshes_every_row_even_with_a_project_named_all(
         await pilot.press("a")
         await settle(app, pilot)
         assert calls == ["all", "beta"]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_run_card_keeps_the_tools_colours(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    seen = {}
+
+    def fake(argv, cwd, started, env=None):
+        seen.update(env)
+        yield "\x1b[32mok\x1b[0m    weekly.csv"
+
+    monkeypatch.setattr(tui, "_spawn", fake)
+
+    async def script(app, pilot):
+        await pilot.press("d")
+        await settle(app, pilot)
+        card = app.query_one(tui.RunCard)
+        assert card.body.plain == "ok    weekly.csv"
+        assert [s.style.color.number for s in card.body.spans] == [2]  # ANSI green
+        assert seen["FORCE_COLOR"] == "1" and int(seen["COLUMNS"]) >= 40
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_only_the_last_runs_keep_a_card(tmp_path, spawned, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.setattr(tui, "KEEP", 3)
+
+    async def script(app, pilot):
+        for key in "bdfw":
+            await pilot.press(key)
+            await settle(app, pilot)
+        assert [c[0] for c in _cards(app)] == [
+            "doctor · apollo",
+            "forecast · apollo",
+            "watch · apollo",
+        ]
 
     run(tui.PerchTUI(home), script)
