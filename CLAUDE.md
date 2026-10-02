@@ -95,7 +95,9 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   readings, budget revisions and plan plus the board dump (never
   history.jsonl). The forecast is Budgie's `at_completion` + `simulate` +
   `evaluate`; booked hours interpolate readings like Budgie's `monthly`.
-  Team level only: names appear only in staffing changes.
+  Team level only: names appear only in staffing changes. Quarters are
+  Budgie's `YearSpan.quarters` (fiscal when the Budgie project sets
+  `year_start`), named `2026-Q3` or `FY27-Q1`.
 - `core/report_mail.py` -- a `Quarter` as markdown and as an `.eml` draft
   (multipart/alternative, `X-Unsent: 1`, table HTML with inline styles only).
 - `core/command.py` -- the TUI command line's grammar: `parse(text, projects,

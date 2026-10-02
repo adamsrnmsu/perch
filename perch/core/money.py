@@ -1,8 +1,9 @@
 """The Budgie side: everything perch reads out of a Budgie project.
 
-This module, join.rollup, cut.parse_change (a `PlanEntry`) and watch's working-day
-count are the only places that import budgie.core, so a Budgie refactor has a
-short list of things it can break here.
+This module, estimates (csvio), join (rollup, `YearSpan`), rate and cut (`YearSpan`;
+cut also `PlanEntry`), quarterly (the forecast, `YearSpan`) and watch (working days)
+are the only places that import budgie.core, so a Budgie refactor has a short list
+of things it can break here.
 """
 
 from __future__ import annotations

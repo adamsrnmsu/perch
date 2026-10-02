@@ -988,7 +988,7 @@ def _write_quarterly(config_path: Path, quarter: str | None, out: Path | None):
         estimates,
         rates,
         config.people,
-        quarter or last_complete_quarter(money.span.year, today),  # bridge: budgie-bvd
+        quarter or last_complete_quarter(money.span, today),
         today,
         config.root.name,
     )
@@ -1012,7 +1012,9 @@ def _write_quarterly(config_path: Path, quarter: str | None, out: Path | None):
     help="Every project, in name order; a failure moves on to the next.",
 )
 @click.option(
-    "--quarter", default=None, help="e.g. 2026-Q3; default the last complete one."
+    "--quarter",
+    default=None,
+    help="e.g. 2026-Q3, or FY27-Q1 for a fiscal year; default the last complete one.",
 )
 @click.option(
     "--out",
