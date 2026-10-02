@@ -59,6 +59,9 @@ def test_budgie_core_names_perch_uses():
     assert callable(year_span) and {"first", "last"} <= set(
         YearSpan.__dataclass_fields__
     )
+    # What perch reads off a span: quarters, label, zero, contains.
+    for name in ("quarters", "label", "zero", "contains"):
+        assert hasattr(YearSpan, name), name
     assert callable(Budget.amount_on)
     for name in ("entries", "fte_on", "allocated_hours"):
         assert (

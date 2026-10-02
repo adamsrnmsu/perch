@@ -56,9 +56,8 @@ def last_complete_quarter(span: YearSpan, today: date) -> str:
 @dataclass(frozen=True)
 class Position:
     spent_quarter: float | None  # labor only; None: no readings in the quarter
-    spent_year: (
-        float | None
-    )  # labor only, the year's first day to the quarter's last reading
+    # labor only, the year's first day to the quarter's last reading
+    spent_year: float | None
     budget_start: float | None
     budget_end: float | None
     revisions: tuple[BudgetRevision, ...]  # dated inside the quarter
