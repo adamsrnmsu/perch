@@ -111,10 +111,11 @@ class Quarter:
     as_of: date | None  # the latest hours reading
     read_to: date | None  # where spent stops: the earlier of through and as_of
     position: Position
-    # MODELLED. Labels whose last issue closed in the quarter, compared whole;
+    # MODELLED. Labels whose last issue closed in the quarter (as the board
+    # stood at its end), compared whole;
     # None when there are no estimates or no board to compare them with.
     misses: tuple[LabelAccuracy, ...] | None
-    in_progress: tuple[tuple[str, int, int], ...]  # (label, closed, issues)
+    in_progress: tuple[tuple[str, int, int], ...]  # (label, closed by then, issues)
     issue_misses: tuple[IssueMiss, ...]  # `#iid` estimates closed in the quarter
     weeks: tuple[Week, ...]
     blocked_days: int | None
@@ -298,19 +299,24 @@ def _since(board: Board) -> date:
 def _misses(board, estimates, rates, people, money, start, through):
     """(finished labels, labels in progress, `#iid` rows), all MODELLED.
 
+    Judged by the board as of `through`: an issue closed after it was open then.
     A label is compared whole, and only once its last issue closed in the
-    quarter; a label still in progress gets no comparison yet, never a prorated
-    one. An `#iid` estimate is compared on its own issue.
+    quarter; a label still in progress at `through` gets no comparison, never a
+    prorated one. An issue created after the quarter still counts towards it:
+    perch's `Issue` has no creation date. An `#iid` estimate is compared on its
+    own issue.
     """
     finished, going = [], []
     for a in by_label(estimates, board, rates, people, money):
-        days = [i.closed_on for i in board.closed if a.label in i.labels]
-        if not days or not any(start <= d <= through for d in days):
+        under = [i for i in board.issues if a.label in i.labels]
+        # As the board stood on `through`, not at the fetch: closed later is open.
+        days = [i.closed_on for i in under if i.closed_on and i.closed_on <= through]
+        if not any(start <= d for d in days):
             continue
-        if a.open == 0 and start <= max(days) <= through:
+        if len(days) == len(under):  # by_label's whole-label figures are as of now
             finished.append(a)
-        elif a.open:
-            going.append((a.label, a.issues - a.open, a.issues))
+        else:
+            going.append((a.label, len(days), len(under)))
     issues = []
     for i in board.closed:
         estimate = estimates.get(issue_key(i.iid))

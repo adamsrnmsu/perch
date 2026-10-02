@@ -34,8 +34,13 @@ def test_the_markdown_has_every_section(quarter_world):
 def test_coverage_and_missing_inputs_are_said_where_they_matter(world):
     text = render_md(make(world, "2026-Q1"))
     assert "covers Jan 20 – Mar 31; the board dump keeps 90 days" in text
-    assert "In progress, no comparison yet: epic::billing (4 of 5 closed)." in text
+    assert (
+        "In progress, no comparison yet: epic::billing (4 of 5 closed by Mar 31)."
+        in text
+    )
     assert "| #1 | 15 | 25 | +$1,000 |" in text
+    assert "Issues with their own estimate, total: +$2,000." in text
+    assert "hourly cost" not in text
     assert "| 2026-W02 | Jan 5 – Jan 11 | — |" in text  # before the dump: unknown
     assert "The budget is a flat number; no revisions." in text
     bare = render_md(make(world, "2026-Q1", estimates=False))
@@ -134,3 +139,22 @@ def test_a_finished_quarter_whose_readings_stop_early_says_through(world):
     text = render_md(q)
     assert "was spent this quarter through Apr 19" in text
     assert "| Forecast at completion as of 2026-04-19, P50 |" in text
+
+
+def test_issues_without_an_hourly_cost_are_named_as_left_out(world):
+    q = make(world, "2026-Q1")
+    one, two = q.issue_misses  # #1 and #2, +$1,000 each
+    q = replace(q, issue_misses=(one, replace(two, dollars=None)))
+    left_out = "1 issue without a known hourly cost is not in the dollar total"
+    assert (
+        f"Issues with their own estimate came in +$1,000 (modelled; {left_out})."
+        in opening(q)
+    )
+    text = render_md(q)
+    assert "| #2 | 15 | 25 | — |" in text
+    assert f"Issues with their own estimate, total: +$1,000; {left_out}." in text
+    none = replace(q, issue_misses=tuple(replace(m, dollars=None) for m in (one, two)))
+    assert (
+        "Issues with their own estimate came in — (modelled; 2 issues without a "
+        "known hourly cost are not in the dollar total)."
+    ) in opening(none)
