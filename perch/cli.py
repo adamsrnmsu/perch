@@ -472,7 +472,7 @@ def hours(project):
     from perch.core import steps
 
     console.print("One row per person: name,week,hours_to_date (cumulative).")
-    editor = os.environ.get("EDITOR") or "vi"
+    editor = os.environ.get("EDITOR") or "vim"
     _one(project, lambda home, name, config: steps.hours(editor, config))
 
 

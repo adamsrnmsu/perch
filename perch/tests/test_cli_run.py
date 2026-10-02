@@ -46,6 +46,15 @@ def test_each_step_command_runs_its_one_step(tmp_path, monkeypatch, command, ste
     assert [s.name for s in ran] == [step]
 
 
+def test_hours_falls_back_to_vim_when_editor_is_unset(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(home.root)
+    monkeypatch.delenv("EDITOR", raising=False)
+    ran = recorder(monkeypatch)
+    assert run("hours").exit_code == 0
+    assert ran[0].argv[0] == "vim"
+
+
 def test_a_failing_step_is_a_clean_error_naming_the_project(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo")
     monkeypatch.chdir(home.root)

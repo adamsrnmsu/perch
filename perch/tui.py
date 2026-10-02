@@ -329,7 +329,7 @@ class PerchTUI(App):
             return
         try:  # a bad config or a missing editor is a line in the pane
             config = load_config(self.home.config_path(name), require_dump=False)
-            step = hours(os.environ.get("EDITOR") or "vi", config)
+            step = hours(os.environ.get("EDITOR") or "vim", config)
             with self.suspend():
                 subprocess.run(step.argv, cwd=step.cwd, check=False)
         except _ERRORS as exc:
