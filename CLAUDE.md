@@ -89,7 +89,8 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `core/watch.py` -- `perch watch`: four own-baseline signals per person, each
   flagging only when out of line 3 of the last 4 weeks. Private to the lead:
   nothing from it goes into a draft, an email or a report, and no output uses
-  a ranking word (a test checks). `monday` writes it in-process after its steps.
+  a ranking word (a test checks). `monday` writes it in-process after its steps;
+  `perch watch -p NAME` writes the same week's file.
 - `core/quarterly.py` -- `perch quarterly`: one quarter rebuilt from Budgie's
   readings, budget revisions and plan plus the board dump (never
   history.jsonl). The forecast is Budgie's `at_completion` + `simulate` +

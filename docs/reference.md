@@ -27,6 +27,9 @@ Everything under `perch.core` is UI-free; `perch.cli` is a thin adapter over it.
 .. automodule:: perch.core.doctor
    :members:
 
+.. automodule:: perch.core.status
+   :members:
+
 .. automodule:: perch.core.board
    :members:
 
