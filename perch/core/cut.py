@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date
 
+from budgie.core.calendar import YearSpan
 from budgie.core.plan import PlanEntry
 
 from perch.core.board import Board
@@ -28,7 +29,7 @@ from perch.core.money import Money
 
 
 def parse_change(
-    flag: str, names: set[str], year: int, *, leaves: bool = False
+    flag: str, names: set[str], span: YearSpan, *, leaves: bool = False
 ) -> PlanEntry:
     """`--leaves NAME:YYYY-MM-DD` (0 FTE from then) or `--fte NAME:YYYY-MM-DD:FTE`."""
     option = "--leaves" if leaves else "--fte"
@@ -48,8 +49,8 @@ def parse_change(
         when = date.fromisoformat(day)
     except ValueError:
         raise refuse(f"{day!r} is not a YYYY-MM-DD date") from None
-    if when.year != year:
-        raise refuse(f"{when} is outside {year}")
+    if not span.contains(when):
+        raise refuse(f"{when} is outside {span.label}")
     try:
         fte = 0.0 if leaves else float(parts[2])
     except ValueError:

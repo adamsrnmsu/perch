@@ -1,6 +1,7 @@
 from datetime import date
 
 import pytest
+from budgie.core.calendar import year_span
 from budgie.core.plan import PlanEntry
 
 from perch.core.money import load_money, load_snapshot, money_from, what_if
@@ -8,7 +9,7 @@ from perch.core.money import load_money, load_snapshot, money_from, what_if
 
 def test_the_budgie_side(world):
     money = load_money(world.parent / "fy26")
-    assert money.year == 2026
+    assert money.span == year_span(2026)
     assert money.hourly_cost == {"Alice": 100, "Bob": 50}
     assert money.as_of == date(2026, 4, 19)  # ISO week 16 ends on that Sunday
     # 0.5 FTE x 1,992 h = 996 allocated; the latest reading is what is spent.

@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
+from budgie.core.calendar import YearSpan
 from budgie.core.montecarlo import simulate
 from budgie.core.person import HoursEstimate, Person
 from budgie.core.signals import SignalResult, evaluate
@@ -37,7 +38,10 @@ class Rates:
 
 
 def calibrate(
-    readings: dict[str, list[Reading]], board: Board, people: dict[str, str], year: int
+    readings: dict[str, list[Reading]],
+    board: Board,
+    people: dict[str, str],
+    span: YearSpan,
 ) -> Rates:
     """Rates from the year's readings and the issues each mapped person closed.
 
@@ -46,9 +50,9 @@ def calibrate(
     closed: list[Closed] = [
         (people[i.assignee], i.closed_on, i.type)
         for i in board.closed
-        if i.assignee in people and i.closed_on.year == year
+        if i.assignee in people and span.contains(i.closed_on)
     ]
-    intervals = build_intervals(readings, closed, year, board.since)
+    intervals = build_intervals(readings, closed, span, board.since)
     return Rates(person_rates(intervals), team_rate(intervals), fit_types(intervals))
 
 

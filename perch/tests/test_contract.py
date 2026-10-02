@@ -26,7 +26,7 @@ def test_budgie_core_names_perch_uses():
     )
     # What money.load_money reads off the snapshot: fields and properties.
     for name in (
-        "year",
+        "span",
         "people",
         "readings",
         "non_labor",
@@ -48,11 +48,16 @@ def test_budgie_core_names_perch_uses():
     )
     assert set(PlanEntry.__dataclass_fields__) == {"name", "effective_date", "fte"}
     assert {"observations", "plan"} <= set(inspect.signature(burndown).parameters)
-    assert {"series", "day", "year"} == set(inspect.signature(spent_at).parameters)
+    assert {"series", "day", "span"} == set(inspect.signature(spent_at).parameters)
     assert callable(BurndownStatus.expected_on) and callable(workdays_between)
     # What quarterly.build calls on them.
-    assert {"people", "observations", "year", "as_of", "plan"} <= set(
+    assert {"people", "observations", "span", "as_of", "plan"} <= set(
         inspect.signature(at_completion).parameters
+    )
+    from budgie.core.calendar import YearSpan, year_span
+
+    assert callable(year_span) and {"first", "last"} <= set(
+        YearSpan.__dataclass_fields__
     )
     assert callable(Budget.amount_on)
     for name in ("entries", "fte_on", "allocated_hours"):

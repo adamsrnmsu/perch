@@ -9,6 +9,7 @@ import json
 from datetime import date
 
 import pytest
+from budgie.core.calendar import year_span
 from budgie.core.eac import at_completion
 from budgie.core.montecarlo import simulate
 from budgie.core.signals import evaluate
@@ -29,7 +30,7 @@ def make(world, quarter, today=FETCH_DAY, board=True, estimates=True):
     the_board = load_board(config.board_dump) if board else None
     money = load_money(config.budgie_project)
     rates = (
-        calibrate(money.readings, the_board, config.people, money.year)
+        calibrate(money.readings, the_board, config.people, money.span)
         if the_board
         else None
     )
@@ -74,7 +75,9 @@ def test_budget_position_for_a_quarter_to_date(quarter_world):
     ]
     # Budgie's own estimate at completion, as `budgie forecast --as-of` runs it.
     money = load_money(quarter_world.parent / "fy26")
-    eac = at_completion(money.people, money.readings, 2026, q.through, money.plan)
+    eac = at_completion(
+        money.people, money.readings, year_span(2026), q.through, money.plan
+    )
     # The cost lines go in as `budgie forecast` passes them: the laptops, $5,000.
     sim = simulate(
         eac.people, iterations=money.iterations, seed=money.seed, costs=money.costs
@@ -98,7 +101,9 @@ def test_a_cost_line_with_a_range_is_sampled_as_budgie_forecast_does(quarter_wor
     q = make(quarter_world, "2026-Q2")
     snap = load_snapshot(quarter_world.parent / "fy26")
     assert [(c.low, c.high) for c in snap.costs] == [(4000, 7000)]
-    eac = at_completion(snap.people, snap.readings, 2026, q.through, snap.plan)
+    eac = at_completion(
+        snap.people, snap.readings, year_span(2026), q.through, snap.plan
+    )
     sim = simulate(eac.people, iterations=snap.iterations, seed=1, costs=snap.costs)
     p = q.position
     assert (p.p10, p.p50, p.p90) == (

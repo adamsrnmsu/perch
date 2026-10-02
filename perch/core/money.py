@@ -9,11 +9,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 
 from budgie.core.budget import Budget
 from budgie.core.burndown import BurndownStatus, burndown
+from budgie.core.calendar import YearSpan
 from budgie.core.costs import CostItem
 from budgie.core.monthly import spent_at
 from budgie.core.person import Person
@@ -26,7 +27,7 @@ Reading = tuple[date, float]
 
 @dataclass(frozen=True)
 class Money:
-    year: int
+    span: YearSpan
     hourly_cost: dict[str, float]
     readings: dict[str, list[Reading]] = field(default_factory=dict)
     allocated: dict[str, float] = field(default_factory=dict)
@@ -74,10 +75,9 @@ class Money:
         series = self.readings.get(name)
         if not series:
             return None
-        before_year = date(self.year, 1, 1) - timedelta(days=1)  # the curve's 0
 
         def at(day: date) -> float:
-            return spent_at(series, max(day, before_year), self.year)
+            return spent_at(series, max(day, self.span.zero), self.span)
 
         return at(end) - at(start)
 
@@ -90,7 +90,7 @@ def load_money(project: str | Path) -> Money:
 def money_from(snap: Snapshot) -> Money:
     """Money from an already-loaded (or what-if) Budgie snapshot."""
     return Money(
-        year=snap.year,
+        span=snap.span,
         hourly_cost={p.name: p.hourly_cost for p in snap.people},
         readings=snap.readings,
         allocated=snap.allocated,
@@ -102,7 +102,7 @@ def money_from(snap: Snapshot) -> Money:
         seed=snap.seed,
         pace={
             a.name: burndown(
-                a, snap.year, observations=snap.readings.get(a.name), plan=snap.plan
+                a, snap.span, observations=snap.readings.get(a.name), plan=snap.plan
             )
             for a in snap.allocations
         },
@@ -117,6 +117,6 @@ def what_if(
     snap: Snapshot, budget: float | None = None, changes: Sequence[PlanEntry] = ()
 ) -> Snapshot:
     """Budgie's what-if: a new budget and/or plan changes. Budgie carries a
-    changed person who is only in allocations.csv at their flat FTE from Jan 1,
+    changed person who is only in allocations.csv at their flat FTE from the year's first day,
     so `Bob leaves in July` keeps January to June as it was."""
     return snap.what_if(budget=budget, plan_entries=changes)

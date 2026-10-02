@@ -185,13 +185,13 @@ def _position(
     # Budgie's estimate at completion, as `budgie forecast --as-of` computes it.
     # The cost lines go in as it passes them: a low/high line is sampled too.
     eac = at_completion(
-        money.people, money.readings, money.year, as_of=through, plan=money.plan
+        money.people, money.readings, money.span, as_of=through, plan=money.plan
     )
     sim = simulate(
         eac.people, iterations=money.iterations, seed=money.seed, costs=money.costs
     )
     budget = budget_on(end)
-    year_start = date(money.year, 1, 1)
+    year_start = money.span.first
     return Position(
         spent_quarter=_team(money, start, read_to, cost=True)
         if read_to and read_to >= start
@@ -268,13 +268,13 @@ def _staffing(money: Money, start: date, end: date) -> tuple[Staffing, ...]:
     out = []
     for n, entry in enumerate(plan.entries):
         day = entry.effective_date
-        if not start <= day <= end or day <= date(money.year, 1, 1):
+        if not start <= day <= end or day <= money.span.first:
             continue
         without = AllocationPlan(plan.entries[:n] + plan.entries[n + 1 :])
         name = entry.name
         before_fte = plan.fte_on(name, day - timedelta(days=1))
-        hours = plan.allocated_hours(name, money.year, money.pto) - (
-            without.allocated_hours(name, money.year, money.pto)
+        hours = plan.allocated_hours(name, money.span, money.pto) - (
+            without.allocated_hours(name, money.span, money.pto)
         )
         rate = money.hourly_cost.get(name)
         if before_fte == 0:
@@ -401,9 +401,9 @@ def build(
 ) -> Quarter:
     """The quarter's report. `board` is None when there is no dump yet."""
     start, end = parse_quarter(quarter)
-    if start.year != money.year:
+    if start.year != money.span.year:  # bridge: budgie-bvd
         raise ValueError(
-            f"{quarter} is outside the Budgie project's year, {money.year}"
+            f"{quarter} is outside the Budgie project's year, {money.span.year}"
         )
     to_date = today <= end
     through = min(end, money.as_of or today) if to_date else end
