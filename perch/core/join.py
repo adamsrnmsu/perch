@@ -39,13 +39,16 @@ class Rates:
 def calibrate(
     readings: dict[str, list[Reading]], board: Board, people: dict[str, str], year: int
 ) -> Rates:
-    """Rates from the year's readings and the issues each mapped person closed."""
+    """Rates from the year's readings and the issues each mapped person closed.
+
+    Only from where the dump's history starts: earlier closes are not in it.
+    """
     closed: list[Closed] = [
         (people[i.assignee], i.closed_on, i.type)
         for i in board.closed
         if i.assignee in people and i.closed_on.year == year
     ]
-    intervals = build_intervals(readings, closed, year)
+    intervals = build_intervals(readings, closed, year, board.since)
     return Rates(person_rates(intervals), team_rate(intervals), fit_types(intervals))
 
 

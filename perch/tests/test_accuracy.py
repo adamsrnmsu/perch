@@ -6,6 +6,7 @@ from perch.core.config import load_config
 from perch.core.estimates import load_estimates
 from perch.core.join import calibrate
 from perch.core.money import load_money
+from perch.tests.conftest import since
 
 
 @pytest.fixture
@@ -42,3 +43,15 @@ def test_a_person_needs_half_their_issues_estimated(loaded, world):
     # Half her issues were estimated, so half her 200 booked hours: 100 / 60.
     assert alice.coverage == 0.5
     assert alice.ratio == pytest.approx(100 / 60)
+
+
+def test_a_person_is_measured_from_where_the_dump_history_starts(world):
+    since(world, "2026-02-01")  # between Alice's week 4 and week 8 readings
+    config = load_config(world)
+    board = load_board(config.board_dump)
+    money = load_money(config.budgie_project)
+    alice, bob = by_person({}, board, config.people, money)
+    # From the day after week 8: Alice's 3 + 1 closes on 200 - 100 booked hours.
+    assert (alice.closed, alice.booked) == (4, 100)
+    # Bob's first reading is week 8 too, so his Feb 1 closes fall before it.
+    assert (bob.closed, bob.booked) == (1, 40)

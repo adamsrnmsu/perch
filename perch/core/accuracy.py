@@ -9,12 +9,12 @@ the issues they closed.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
 
 from perch.core.board import Board
 from perch.core.estimates import Estimate, issue_key
 from perch.core.join import Rates, hours_for
 from perch.core.money import Money
+from perch.core.rate import window
 
 MIN_COVERAGE = 0.5
 
@@ -73,7 +73,7 @@ class PersonAccuracy:
     name: str
     closed: int
     covered: int  # closed issues that had their own estimate
-    booked: float
+    booked: float  # from where the dump's history starts (see rate.window)
     estimated: float
 
     @property
@@ -97,12 +97,12 @@ def by_person(
 ) -> list[PersonAccuracy]:
     out = []
     for name, series in sorted(money.readings.items()):
+        start, before = window(series, money.year, board.since)
         through, booked = series[-1]
         closed = [
             i
             for i in board.closed
-            if people.get(i.assignee) == name
-            and date(money.year, 1, 1) <= i.closed_on <= through
+            if people.get(i.assignee) == name and start <= i.closed_on <= through
         ]
         covered = [estimates[k] for i in closed if (k := issue_key(i.iid)) in estimates]
         out.append(
@@ -110,7 +110,7 @@ def by_person(
                 name=name,
                 closed=len(closed),
                 covered=len(covered),
-                booked=booked,
+                booked=booked - before,
                 estimated=sum(e.hours for e in covered),
             )
         )

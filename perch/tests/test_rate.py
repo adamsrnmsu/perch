@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 
@@ -56,6 +56,21 @@ def test_an_interval_with_nothing_closed_merges_into_its_neighbour():
     ]
     assert build_intervals({"A": [(week(4), 10)]}, [], 2026) == []
     assert person_rates([]) == {} and team_rate([]) is None
+
+
+def test_intervals_open_where_the_dump_history_starts():
+    # History from Feb 1, between Alice's week 4 and week 8 readings: the
+    # week 4 interval and the one straddling Feb 1 are both dropped, rather
+    # than piled onto the first interval with closes the dump can see.
+    intervals = build_intervals(READINGS, CLOSED, 2026, since=date(2026, 2, 1))
+    assert [(i.name, i.start, i.hours, i.issues) for i in intervals] == [
+        ("Alice", week(8) + timedelta(days=1), 60, 3),
+        ("Alice", week(12) + timedelta(days=1), 40, 1),
+        ("Bob", week(8) + timedelta(days=1), 40, 1),
+    ]  # fmt: skip
+    assert build_intervals(READINGS, CLOSED, 2026, since=date(2026, 1, 1)) == (
+        build_intervals(READINGS, CLOSED, 2026)
+    )
 
 
 def _two_type_world(extra=()):

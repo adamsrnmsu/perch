@@ -44,21 +44,43 @@ class Rate:
     basis: str
 
 
+def window(series: list[Reading], year: int, since: date | None) -> Reading:
+    """Where a person's measurable work opens: (first day, hours booked before it).
+
+    January 1 with nothing booked, unless the board dump's history starts
+    later. Then it is the day after the first reading that leaves no gap
+    before ``since``: hours booked before that were spent on issues the dump
+    cannot see, so they would inflate hours per issue. ``since`` None (dumps
+    from before gitboard wrote it) means no clip.
+    """
+    start, booked = date(year, 1, 1), 0.0
+    for when, cumulative in sorted(series):
+        if since is None or start >= since:
+            break
+        start, booked = when + timedelta(days=1), cumulative
+    return start, booked
+
+
 def build_intervals(
-    readings: dict[str, list[Reading]], closed: list[Closed], year: int
+    readings: dict[str, list[Reading]],
+    closed: list[Closed],
+    year: int,
+    since: date | None = None,
 ) -> list[Interval]:
     """Cut each person's year into reading-to-reading intervals.
 
-    The first interval opens on January 1. An interval in which the person
-    closed nothing is merged into the next one (its hours were still spent
-    getting the next issues done); a trailing one is merged backwards.
+    The first interval opens where ``window`` says. An interval in which the
+    person closed nothing is merged into the next one (its hours were still
+    spent getting the next issues done); a trailing one is merged backwards.
     """
     out: list[Interval] = []
     for name, series in readings.items():
         series = sorted(series)
-        start, previous = date(year, 1, 1), 0.0
+        start, previous = window(series, year, since)
         mine: list[Interval] = []
         for when, cumulative in series:
+            if when < start:
+                continue
             counts = Counter(
                 kind
                 for who, day, kind in closed
