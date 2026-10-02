@@ -23,6 +23,14 @@ from perch.core.quarterly import build, last_complete_quarter, parse_quarter
 FETCH_DAY = date(2026, 4, 20)
 
 
+def since(world, day):
+    """Give the world's dump gitboard's `since`: where its history starts."""
+    dump = world.parent / "dump.json"
+    meta = json.loads(dump.read_text())
+    meta["since"] = f"{day}T08:00:00+00:00"
+    dump.write_text(json.dumps(meta))
+
+
 def make(world, quarter, today=FETCH_DAY, board=True, estimates=True):
     config = load_config(world)
     the_board = load_board(config.board_dump) if board else None
@@ -276,3 +284,39 @@ def test_readings_that_stop_early_say_so(world):
     assert q3.position.spent_quarter is None
     assert q3.position.spent_year == 200 * 100 + 120 * 50
     assert make(world, "2026-Q1").hours_note is None
+
+
+def test_the_dumps_since_is_where_its_coverage_starts(world):
+    since(world, "2026-02-01")
+    q = make(world, "2026-Q1")
+    assert q.board_note == "covers Feb 1 – Mar 31; the board dump starts Feb 1"
+    assert q.board_span == (date(2026, 2, 1), date(2026, 3, 31))
+    # W05 (Jan 26 - Feb 1) starts before the dump: unknown; W06 on is counted.
+    assert [w.closed for w in q.weeks[:6]] == [None] * 5 + [0]
+    assert q.total.closed == 5  # Alice 2 + 3; Bob's 4 on Feb 1 are in the unknown W05
+
+
+def test_the_previous_quarter_sits_beside_it_when_the_dump_covers_it(world):
+    """Q1, all of it: Alice closed 2 + 2 + 3, Bob 4; Alice booked 160 + 90/7
+    and Bob 80 + 185/7 h by Mar 31; every Blocked move is in April."""
+    since(world, "2026-01-01")
+    q = make(world, "2026-Q2")
+    prev = q.previous
+    assert (prev.label, prev.start, prev.end) == (
+        "2026-Q1",
+        date(2026, 1, 1),
+        date(2026, 3, 31),
+    )
+    assert prev.closed == 11
+    assert prev.hours == pytest.approx(240 + 275 / 7)
+    assert prev.per_issue == pytest.approx((240 + 275 / 7) / 11)
+    assert q.previous_blocked == 0
+    # Q1's previous quarter is outside the Budgie year.
+    assert make(world, "2026-Q1").previous is None
+
+
+def test_no_previous_quarter_unless_the_dump_covers_all_of_it(world):
+    assert make(world, "2026-Q2").previous is None  # an old dump: no since
+    since(world, "2026-01-02")
+    q = make(world, "2026-Q2")
+    assert q.previous is None and q.previous_blocked is None

@@ -66,6 +66,10 @@ def fetch(home: Home, project: str, config: Config) -> Step:
         "fetch",
         "stats",
         config.gitlab_project,
+        # 2 x 138 = 276 days: a quarter and the one before it, for most of the
+        # quarter after, so `perch quarterly` can set them side by side.
+        "--days",
+        "138",
         "--dump",
         str(config.board_dump),
         makes=(config.board_dump.parent,),

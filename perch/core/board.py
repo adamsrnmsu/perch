@@ -63,6 +63,7 @@ class Board:
     fetched_on: date
     issues: tuple[Issue, ...]
     columns: tuple[str, ...] = ()  # the board's lists; no column label is Backlog
+    since: date | None = None  # where the dump's history starts; None in old dumps
 
     @property
     def open(self) -> list[Issue]:
@@ -151,6 +152,7 @@ def load_board(path: str | Path) -> Board:
             fetched_on=_day(meta["fetched_at"]),
             issues=tuple(issues),
             columns=tuple(meta.get("columns") or ()),
+            since=_day(meta["since"]) if meta.get("since") else None,
         )
     except (AttributeError, KeyError, TypeError, json.JSONDecodeError) as exc:
         raise ValueError(f"{path}: {bad} ({exc!r})") from exc

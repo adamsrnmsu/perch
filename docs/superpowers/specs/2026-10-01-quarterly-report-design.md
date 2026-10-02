@@ -25,7 +25,8 @@ sent: the lead reviews the draft and sends it.
   - Budgie's weekly readings (hours);
   - `budget.csv` (dated revisions);
   - `plan.csv` (joins, leaves, FTE changes);
-  - gitboard's board dump (90 days of issue history).
+  - gitboard's board dump (its issue history from `since`; `perch fetch`
+    pulls 276 days).
 - **Form:** an `.eml` draft for Outlook (an HTML part and a text part), plus a
   `.md` copy for review.
 - **Scope:** one draft per project. `--all` writes every project's draft.
@@ -111,7 +112,7 @@ When a source does not cover the whole quarter, the section affected says
 what it does cover and what to run, and the report is still written:
 
 - The dump starts after the quarter does: "covers Jul 15 – Sep 30; the board
-  dump keeps 90 days".
+  dump starts Jul 15" ("keeps 90 days" for a dump without `since`).
 - There are no readings: "no hours readings; run `perch hours`".
 - There is no dump: "no board dump; run `perch fetch`".
 
@@ -193,10 +194,25 @@ What they cover:
   are left out (`at_completion(as_of=...)`, as `budgie forecast --as-of`), and
   the signal tests the budget in force at the quarter's end, the same figure
   the subject line quotes. `budgie forecast` itself tests `latest`.
-- **No previous-quarter column.** The dump does not record how far back it
-  reaches, so perch takes gitboard's 90 days from `fetched_at`; under that, a
-  previous quarter is never wholly covered once the next one has started.
-  Follow-up: gitboard to write its window (`since`) into the dump.
+- **The previous quarter's column needs the dump's `since`** (perch-v2b).
+  gitboard writes where the dump's history starts as `since`; perch's
+  `Board.since` is its date, and it is the coverage start (an old dump without
+  it is assumed to keep 90 days from `fetched_at`, and the note says "keeps 90
+  days" instead of "starts <date>"). The previous quarter's totals (issues
+  closed, hours, hours per issue, blocked issue-days) are shown only when
+  `since` is on or before its first day and the fetch after its last; never
+  from the 90-day guess, and never for Q1, whose previous quarter is outside
+  the Budgie year. They sit as a row under the throughput Total and a line in
+  Waiting. `since` is a mid-day timestamp, so its own day counts as covered,
+  as the 90-day guess always did.
+- **`perch fetch` passes `--days 138`** (ruling: the bead said 92). gitboard
+  fetches `max(2 x days, 90)` days back, and the default report is the last
+  complete quarter, run some days into the next: covering it and the one
+  before needs up to 92 + 92 days plus that lag, so 2 x 92 = 184 covers only a
+  fetch on the day after the quarter ends. 276 days covers the previous
+  quarter for the whole of the following quarter; the cost is about half as
+  many closed issues again for gitboard to read, and `calibrate` sees nine
+  months of closes rather than three.
 - **`build` takes `today` and the project name.** Whether a quarter is still
   running depends on the date; the name is the project folder's.
 - **A quarter still running** stops at the latest reading. A finished one runs

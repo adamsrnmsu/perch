@@ -54,7 +54,8 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `core/board.py` -- a `gitboard stats --dump` file to `Board`/`Issue`.
   `closed_on` follows gitboard's `done_at` (closed_at, else the last move into
   Done) so the two tools agree on what is finished. Type is the first
-  `type::` label.
+  `type::` label. `Board.since` is where the dump's history starts (gitboard's
+  `since`; None in old dumps).
 - `core/estimates.py` -- estimates.csv (`#iid` or label keys), via Budgie's csvio.
 - `core/money.py` -- everything read out of a Budgie project, via Budgie's
   `load_snapshot`. Which input wins (weekly over monthly, a reading over

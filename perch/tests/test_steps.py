@@ -24,7 +24,7 @@ def test_monday_is_five_steps_in_order_each_in_its_tool(tmp_path):
     gb = home.gitboard_dir
     assert fetch.argv == (
         str(gb / ".venv/bin/python"), "-m", "gitboard.cli",
-        "stats", "grp/apollo", "--dump", str(config.board_dump),
+        "stats", "grp/apollo", "--days", "138", "--dump", str(config.board_dump),
     )  # fmt: skip
     assert fetch.cwd == gb and fetch.env == {"PYTHONPATH": str(gb / "src")}
     assert fetch.makes == (config.board_dump.parent,)

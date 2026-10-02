@@ -47,6 +47,17 @@ def test_coverage_and_missing_inputs_are_said_where_they_matter(world):
     assert "No `estimates:` in perch.yaml" in bare
 
 
+def test_the_previous_quarter_is_a_row_beside_the_total(world):
+    from perch.tests.test_quarterly import since
+
+    assert "Previous quarter" not in render_md(make(world, "2026-Q2"))
+    since(world, "2026-01-01")
+    text = render_md(make(world, "2026-Q2"))
+    # 240 + 275/7 = 279.3 h over 11 issues = 25.4 h each.
+    assert "| Previous quarter, 2026-Q1 | Jan 1 – Mar 31 | 11 | 279 | 25 |" in text
+    assert "Previous quarter, 2026-Q1: 0 issue-days in Blocked." in text
+
+
 def test_a_pipe_in_a_cell_is_escaped(quarter_world):
     budget = quarter_world.parent / "fy26" / "budget.csv"
     budget.write_text(budget.read_text().replace("Q2 increase", "Q2 | up"))

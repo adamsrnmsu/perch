@@ -25,7 +25,7 @@ from perch.core.estimates import Estimate, issue_key
 from perch.core.join import Rates, hours_for
 from perch.core.money import Money
 
-DUMP_DAYS = 90  # how far back a board dump reaches (gitboard's HISTORY_DAYS)
+DUMP_DAYS = 90  # how far back a dump without `since` reaches (gitboard's HISTORY_DAYS)
 NO_DUMP = "no board dump; run `perch fetch`"
 RUN_HOURS = "run `perch hours`"
 NO_READINGS = f"no hours readings; {RUN_HOURS}"
@@ -124,6 +124,10 @@ class Quarter:
     hours_note: str | None
     board_note: str | None
     board_span: tuple[date, date] | None = None  # what the dump covers of it
+    # The quarter before, when the dump's `since` covers all of it (never for Q1,
+    # whose previous quarter is outside the Budgie year).
+    previous: Week | None = None
+    previous_blocked: int | None = None
 
     @property
     def board_partial(self) -> bool:
@@ -294,7 +298,24 @@ def _staffing(money: Money, start: date, end: date) -> tuple[Staffing, ...]:
 
 
 def _since(board: Board) -> date:
-    return board.fetched_on - timedelta(days=DUMP_DAYS)
+    """Where the dump's history starts: gitboard's `since`, else its 90 days."""
+    return board.since or board.fetched_on - timedelta(days=DUMP_DAYS)
+
+
+def _previous(board: Board, money: Money, start: date):
+    """(totals, blocked issue-days) for the quarter before `start`, or (None,
+    None) unless the dump's recorded `since` covers all of it."""
+    end = start - timedelta(days=1)
+    first = date(end.year, end.month - 2, 1)
+    covered = board.since is not None and board.since <= first
+    if start.month == 1 or not covered or end > board.fetched_on:
+        return None, None
+    closed = sum(1 for i in board.closed if first <= i.closed_on <= end)
+    read = money.as_of is not None and end <= money.as_of
+    hours = _team(money, first, end, cost=False) if read else None
+    name = f"{end.year}-Q{(first.month + 2) // 3}"
+    blocked = _blocked_days(board, first, end, board.since)
+    return Week(name, first, end, closed, hours), blocked
 
 
 def _misses(board, estimates, rates, people, money, start, through):
@@ -395,6 +416,7 @@ def build(
         hours_note = None
 
     board_note = misses = blocked = reopened = board_span = None
+    previous = previous_blocked = None
     in_progress = issue_misses = ()
     if board is None:
         board_note = NO_DUMP
@@ -406,9 +428,14 @@ def build(
         if not reaches:
             board_note = f"the board dump is from {board.fetched_on}; run `perch fetch`"
         elif covered != (start, through):
+            reach = (
+                f"starts {_day(board.since)}"
+                if board.since
+                else f"keeps {DUMP_DAYS} days"
+            )
             board_note = (
                 f"covers {_day(covered[0])} – {_day(covered[1])}; "
-                f"the board dump keeps {DUMP_DAYS} days"
+                f"the board dump {reach}"
             )
         if estimates and rates is not None:
             misses, in_progress, issue_misses = _misses(
@@ -417,6 +444,7 @@ def build(
         if reaches:
             blocked = _blocked_days(board, start, covered[1], since)
             reopened = _reopened(board, start, through)
+        previous, previous_blocked = _previous(board, money, start)
 
     return Quarter(
         project=project,
@@ -438,4 +466,6 @@ def build(
         hours_note=hours_note,
         board_note=board_note,
         board_span=board_span,
+        previous=previous,
+        previous_blocked=previous_blocked,
     )

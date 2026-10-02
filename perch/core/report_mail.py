@@ -251,8 +251,8 @@ def _blocks(q: Quarter) -> list[tuple]:
                     "Modelled, not measured: nobody books hours per issue, so an "
                     "issue's hours are its closer's rate. A label is compared whole, "
                     "once its last issue has closed; its early issues may have closed "
-                    "before the board dump's 90 days and be missing from the modelled "
-                    "hours."
+                    "before the board dump's history starts and be missing from the "
+                    "modelled hours."
                 ),
             )
         )
@@ -275,6 +275,16 @@ def _blocks(q: Quarter) -> list[tuple]:
     if q.board_partial and q.closed_span:
         total = f"Total, closes counted {_span(*q.closed_span)}"
     rows[-1] = (total, *rows[-1][1:4], _hours(q.total_per_issue))
+    if (w := q.previous) is not None:
+        rows.append(
+            (
+                f"Previous quarter, {w.label}",
+                _span(w.start, w.end),
+                _count(w.closed),
+                _hours(w.hours),
+                _hours(w.per_issue),
+            )
+        )
     header = ("Week", "Dates", "Closed", "Hours booked", "Hours per issue")
     out.append(("table", 2, header, rows))
     out.append(
@@ -299,6 +309,16 @@ def _blocks(q: Quarter) -> list[tuple]:
                 (
                     f"{q.blocked_days} issue-days in Blocked; {q.reopened} {moved} "
                     "moved back out of Done."
+                ),
+            )
+        )
+    if q.previous is not None:
+        out.append(
+            (
+                "p",
+                (
+                    f"Previous quarter, {q.previous.label}: {q.previous_blocked} "
+                    "issue-days in Blocked."
                 ),
             )
         )

@@ -67,11 +67,14 @@ gitboard checkout with the project's `gitlab_project`.
    the file) and add `gitlab_project`.
 
 `perch doctor` names what is still wrong; `perch fetch` rewrites the board dump.
+It asks gitboard for about nine months of history (`gitboard stats --days 138`,
+twice that back from the fetch), so `perch quarterly` can set a quarter beside
+the one before it.
 
 ## Use
 
 ```bash
-gitboard stats group/project --dump dumps/team.json    # in the gitboard repo
+gitboard stats group/project --days 138 --dump dumps/team.json   # gitboard repo
 perch board [-p NAME]                                 # or --config FILE
 perch accuracy
 perch weekly [--person NAME] [--out FILE]        # markdown drafts, nothing sent
@@ -94,6 +97,9 @@ issues closed and hours booked per ISO week, blocked issue-days, and the
 quarter's `plan.csv` changes. The default is the last complete quarter of the
 Budgie year. It is rebuilt from the readings, budget.csv, plan.csv and the
 board dump, so a source that does not cover the quarter says so in the report.
+When the dump's history (gitboard's `since`) reaches back over the whole
+previous quarter of the same year, its totals (issues closed, hours, hours per
+issue, blocked issue-days) sit beside this quarter's.
 Team level only; nothing is sent.
 
 `perch.yaml`:

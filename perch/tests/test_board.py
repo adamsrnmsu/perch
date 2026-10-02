@@ -15,6 +15,15 @@ def test_open_and_closed_issues(world):
     assert board.closed[0].closed_on == date(2026, 1, 10)
 
 
+def test_since_is_where_the_dumps_history_starts(world):
+    dump = world.parent / "dump.json"
+    assert load_board(dump).since is None  # dumps from before gitboard wrote it
+    meta = json.loads(dump.read_text())
+    meta["since"] = "2026-01-01T08:00:00.123456+00:00"
+    dump.write_text(json.dumps(meta))
+    assert load_board(dump).since == date(2026, 1, 1)
+
+
 def _dump(tmp_path, record):
     path = tmp_path / "d.json"
     base = {"iid": 1, "title": "t", "assignee": None, "labels": [], "transitions": []}
