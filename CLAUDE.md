@@ -98,11 +98,19 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   Team level only: names appear only in staffing changes.
 - `core/report_mail.py` -- a `Quarter` as markdown and as an `.eml` draft
   (multipart/alternative, `X-Unsent: 1`, table HTML with inline styles only).
+- `core/command.py` -- the TUI command line's grammar: `parse(text, projects,
+  current)` turns `apollo CUT 700k` / `ALL MON` into a `Command(project,
+  args)`, or raises `ValueError` saying what is wrong. Text in, argv out.
+- `core/trend.py` -- read-only arithmetic over the team rows of history.jsonl:
+  `spark`, `series`, `change` (last two recorded weeks: signal flip, deltas),
+  `describe` and `team_lines`. No person row, no simulation.
 - `tui.py` -- `perch tui` (Textual): the projects table from what is on disk
   (the last recorded team row, `status` step cells, the watch's flag count only)
   and keys that run `perch <command> -p NAME` through `_spawn`, which tests fake.
   Enter on a step cell runs `monday --from` that step; after a run only that
-  project's row is redrawn.
+  project's row is redrawn. `:` opens the command line (`c` prefilled `CUT `),
+  `i` explains the cursor's cell in an info card, the Trend column and the
+  `#changes` strip read `core/trend.py`, and a stoplight flip toasts once.
   Display and key handling only, like cli.py.
 
 ## Testing

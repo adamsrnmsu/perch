@@ -1,19 +1,22 @@
 """`perch tui`: every project in one table, and single keys that run perch on one.
 
 Display and key handling only. The table reads what is already on disk: the
-last week `perch board` recorded (never a new simulation), one cell per Monday
-step (`perch.core.status`: done, stale, todo, FAIL, ERR), and how many flags
-the private watch has. Only the count shows here; the watch itself goes to the
-output pane, and only when the lead presses `w`. The output pane is a stack of
-run cards: one per command, in the tool's own colours, with a live status. The cursor is a cell: Enter on
-a step runs it (and what follows), on any other column runs the next step.
+last week `perch board` recorded (never a new simulation), the team's headroom
+trend, one cell per Monday step (`perch.core.status`: done, stale, todo, FAIL,
+ERR), and how many flags the private watch has. Only the count shows here; the
+watch itself goes to the output pane, and only when the lead presses `w`. The
+output pane is a stack of run cards: one per command, in the tool's own colours,
+with a live status. The cursor is a cell: Enter on a step runs it (and what
+follows), on any other column runs the next step; `i` explains the cell in an
+info card. `:` opens the command line (`perch.core.command`), `c` prefilled with
+CUT. A line above the table says what changed since last week, and a stoplight
+that flipped toasts once. All of it reads the team row of history.jsonl.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import shlex
 import subprocess
 import sys
 import time
@@ -31,14 +34,16 @@ from textual.message import Message
 from textual.widgets import DataTable, Footer, Input, Static
 
 from perch.cli import _bin_dir, _label, _money, _watch
+from perch.core import history
+from perch.core.command import parse
 from perch.core.config import load_config
 from perch.core.doctor import project_checks
-from perch.core.history import latest_week
 from perch.core.status import STEPS, next_command, next_step, status
+from perch.core.trend import Change, change, describe, series, spark, team_lines
 from perch.core.workspace import Home
 
 _ERRORS = (OSError, TypeError, ValueError, KeyError)  # doctor's, for a bad config
-COLUMNS = ("Project", "GitLab", "Stoplight", "Headroom", *STEPS, "Flags")
+COLUMNS = ("Project", "GitLab", "Stoplight", "Headroom", "Trend", *STEPS, "Flags")
 _SHOWN = {  # cell state -> (text, rich style)
     "done": ("✓", "green"),
     "stale": ("stale", "yellow"),
@@ -100,23 +105,41 @@ def _step_cells(cells) -> tuple[Text, ...]:
     return tuple(Text(*_SHOWN[cells[step].state]) for step in STEPS)
 
 
-def row(home: Home, name: str) -> tuple[str | Text, ...]:
-    """One project's cells; a config or history that fails to load shows its error."""
+def snapshot(home: Home, name: str) -> tuple[tuple[str | Text, ...], Change | None]:
+    """One project's cells and its week-on-week change, from one read of history."""
     steps = _step_cells(status(home, name, date.today()))  # noqa: DTZ011 -- never raises
     try:
         config = load_config(home.config_path(name), require_dump=False)
-        week = latest_week(config.history)
+        rows = history.load(config.history)
     except Exception as exc:  # noqa: BLE001 -- a display boundary: show, never crash
-        return (name, f"error: {type(exc).__name__}: {exc}", "", "", *steps, "")
-    team = next((r for r in week if r["kind"] == "team"), {})
+        return (
+            name,
+            f"error: {type(exc).__name__}: {exc}",
+            "",
+            "",
+            "",
+            *steps,
+            "",
+        ), None
+    last = max((r["week"] for r in rows), default=None)
+    team = next((r for r in rows if r["week"] == last and r["kind"] == "team"), {})
+    moved = change(rows)
+    stoplight = Text(
+        _label(team.get("signal")), style="reverse" if moved and moved.signal else ""
+    )
     return (
         name,
         config.gitlab_project or "not set",
-        _label(team.get("signal")),
+        stoplight,
         _money(team.get("headroom")),
+        spark(series(rows, "headroom").values()),
         *steps,
         _flags(home.config_path(name)),
-    )
+    ), moved
+
+
+def row(home: Home, name: str) -> tuple[str | Text, ...]:
+    return snapshot(home, name)[0]
 
 
 SUITE = "PI_SUITE"  # JSON: app -> {"cwd", "argv"}; Budgie and gitboard read it
@@ -173,14 +196,18 @@ class RunCard(Static):
     RunCard.failed { border: round $error; border-subtitle-color: $error; }
     """
 
-    def __init__(self, title: str):
+    def __init__(self, title: str, info: bool = False):
         super().__init__()
         self.border_title = title
+        self.info = info  # a card of facts: no spinner, nothing to finish
         self.body = Text()
         self.began = time.monotonic()
         self.frame = 0
 
     def on_mount(self) -> None:
+        if self.info:
+            self.border_subtitle = "info"
+            return
         self.ticker = self.set_interval(0.1, self._tick)
         self._tick()
 
@@ -220,19 +247,22 @@ class PerchTUI(App):
     CSS = """
     #projects { width: 3fr; }
     #output { width: 2fr; border-left: solid $panel; padding: 0 1; }
-    #flags { display: none; dock: bottom; }
+    #changes { display: none; padding: 0 1; }
+    #command { display: none; dock: bottom; }
     """
     BINDINGS = [  # noqa: RUF012 -- Textual reads it off the class
         *((key, f"run('{key}')", command) for key, command in COMMANDS.items()),
         ("a", "run('a')", "monday --all"),
-        ("c", "cut", "cut"),
+        ("colon", "command('')", "command"),
+        ("c", "command('CUT ')", "cut"),
+        ("i", "info", "info"),
         ("h", "hours", "hours"),
         ("r", "refresh", "refresh"),
         ("B", "switch('budgie')", "budgie"),
         ("G", "switch('gitboard')", "gitboard"),
         ("question_mark", "show_help_panel", "help"),
         ("q", "quit", "quit"),
-        Binding("escape", "close_cut", show=False),
+        Binding("escape", "close_command", show=False),
     ]
 
     def __init__(self, home: Home):
@@ -241,12 +271,15 @@ class PerchTUI(App):
         self.names = home.projects()
         self.busy: str | None = None
         self.child: subprocess.Popen | None = None  # the running command's process
+        self.changes: dict[str, Change | None] = {}  # project -> its latest change
+        self.alerted: set[tuple[str, str]] = set()  # (project, week) already toasted
 
     def compose(self) -> ComposeResult:
+        yield Static(id="changes")
         with Horizontal():
             yield Grid(id="projects", cursor_type="cell")
             yield VerticalScroll(id="output")
-        yield Input(id="flags", placeholder="cut flags, e.g. --budget 700000")
+        yield Input(id="command", placeholder="apollo CUT 700k · ALL MON · MON weekly")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -258,9 +291,28 @@ class PerchTUI(App):
         at = table.cursor_coordinate
         table.clear()
         self.names = self.home.projects()  # a project made meanwhile shows up
+        self.changes = {}
         for name in self.names:
-            table.add_row(*row(self.home, name), key=name)
+            cells, self.changes[name] = snapshot(self.home, name)
+            table.add_row(*cells, key=name)
         table.move_cursor(row=at.row, column=at.column)
+        self._report()
+
+    def _report(self) -> None:
+        """The what-changed line, and one toast per stoplight flip."""
+        lines = [describe(n, self.changes.get(n)) for n in self.names]
+        strip = self.query_one("#changes", Static)
+        strip.update(Text("  ·  ".join(line for line in lines if line)))
+        strip.display = any(lines)
+        for name in self.names:
+            moved = self.changes.get(name)
+            if moved and moved.signal and (name, moved.after) not in self.alerted:
+                self.alerted.add((name, moved.after))
+                old, new = (s.upper() for s in moved.signal)
+                self.notify(
+                    f"{name}: stoplight {old} → {new} ({moved.after[5:]})",
+                    severity="error" if new == "RED" else "warning",
+                )
 
     def _selected(self) -> str | None:
         if not self.names:
@@ -285,16 +337,22 @@ class PerchTUI(App):
         command = COMMANDS.get(key, key)  # `cut` comes here by name
         self._start(name, command, [command, "-p", name, *extra])
 
-    def _start(self, name: str | None, action: str, args: list[str]) -> None:
-        """Run perch on one project, or on every project when ``name`` is None."""
-        self.busy = action
+    def _show(self, card: RunCard) -> RunCard:
+        """Add a card to the output pane, dropping the oldest beyond KEEP."""
         pane = self.query_one("#output", VerticalScroll)
-        card = RunCard(f"{action} · {name}" if name else action)
         pane.mount(card)
         for old in list(pane.query(RunCard))[:-KEEP]:
             old.remove()
         pane.scroll_end(animate=False)
-        width = max(pane.size.width - 4, 40)  # the card's inside: tables fit it
+        return card
+
+    def _start(self, name: str | None, action: str, args: list[str]) -> None:
+        """Run perch on one project, or on every project when ``name`` is None."""
+        self.busy = action
+        card = self._show(RunCard(f"{action} · {name}" if name else action))
+        width = max(
+            self.query_one("#output").size.width - 4, 40
+        )  # the card's inside: tables fit it
         env = {"FORCE_COLOR": "1", "COLUMNS": str(width)}
         self._stream(card, name, [str(_bin_dir() / "perch"), *args], env)
 
@@ -369,8 +427,10 @@ class PerchTUI(App):
             return
         table = self.query_one(DataTable)
         at = self.names.index(name)
-        for col, cell in enumerate(row(self.home, name)):
+        cells, self.changes[name] = snapshot(self.home, name)
+        for col, cell in enumerate(cells):
             table.update_cell_at(Coordinate(at, col), cell, update_width=True)
+        self._report()
         if code:  # ponytail: `a` (monday --all) gets no FIX lines
             for check in project_checks(self.home, name):
                 if not check.ok:
@@ -378,26 +438,61 @@ class PerchTUI(App):
                     fix.append(f"\n       → {check.fix}", style="yellow")
                     card.add(fix)
 
-    def action_cut(self) -> None:
-        if self._free() and self.names:
-            box = self.query_one(Input)
-            box.display = True
-            box.focus()
+    def action_command(self, text: str) -> None:
+        box = self.query_one("#command", Input)
+        box.value = text
+        box.cursor_position = len(text)
+        box.display = True
+        box.focus()
 
-    def action_close_cut(self) -> None:
-        box = self.query_one(Input)
+    def action_close_command(self) -> None:
+        box = self.query_one("#command", Input)
         box.display = False
         box.value = ""
         self.query_one(DataTable).focus()
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
-        self.action_close_cut()
+        self.action_close_command()
         try:
-            flags = tuple(shlex.split(event.value))
+            command = parse(event.value, self.names, self._selected())
         except ValueError as exc:
-            self.notify(f"cut: {exc}", severity="error")
+            self.notify(str(exc), severity="error")
             return
-        self.action_run("cut", flags)
+        if command.args[0] == "hours":
+            self.query_one(DataTable).move_cursor(row=self.names.index(command.project))
+            self.action_hours()
+        elif self._free():
+            self._start(command.project, " ".join(command.args), list(command.args))
+
+    def action_info(self) -> None:
+        """Explain the cursor's cell in an info card; Flags runs the watch."""
+        name = self._selected()
+        if name is None:
+            return
+        column = COLUMNS[self.query_one(Grid).cursor_coordinate.column]
+        if column == "Flags":
+            self.action_run("w")
+            return
+        try:
+            if column in ("Project", "GitLab"):
+                checks = project_checks(self.home, name)
+                lines = [
+                    f"✓ {c.what}" if c.ok else f"✗ {c.what} → {c.fix}" for c in checks
+                ]
+            elif column in STEPS:
+                cell = status(self.home, name, date.today())[column]  # noqa: DTZ011
+                lines = [
+                    f"{cell.state} · {cell.when}",
+                    *([cell.why] if cell.why else []),
+                ]
+            else:
+                config = load_config(self.home.config_path(name), require_dump=False)
+                lines = team_lines(history.load(config.history))
+        except _ERRORS as exc:
+            self.notify(f"{name}: {exc}", severity="error")
+            return
+        card = self._show(RunCard(f"{column} · {name}", info=True))
+        card.add(Text("\n".join(lines)))
 
     def action_hours(self) -> None:
         from perch.core.steps import hours

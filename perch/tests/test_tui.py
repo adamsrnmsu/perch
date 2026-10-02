@@ -82,8 +82,8 @@ def test_the_table_has_every_project_and_its_last_recorded_week(tmp_path):
         assert rows[0][1] == "grp/apollo"
         assert rows[0][2:4] == ["YELLOW", "$12,345"]
         assert rows[1][2:4] == ["—", "—"]  # no history yet
-        assert [c for c in tui.COLUMNS[4:11]] == list(tui.STEPS)
-        assert rows[0][11] == "—"  # under 4 weeks of history: no watch yet
+        assert [c for c in tui.COLUMNS[5:12]] == list(tui.STEPS)
+        assert rows[0][12] == "—"  # under 4 weeks of history: no watch yet
 
     run(tui.PerchTUI(home), script)
 
@@ -94,7 +94,7 @@ def test_the_flag_column_counts_the_watch_flags(tmp_path, monkeypatch):
     monkeypatch.setattr(tui, "_watch", lambda path: page)
 
     async def script(app, pilot):
-        assert _cells(app)[0][11] == "1"
+        assert _cells(app)[0][12] == "1"
 
     run(tui.PerchTUI(home), script)
 
@@ -105,8 +105,8 @@ def test_a_project_without_a_dump_has_no_flag_count(tmp_path):
 
     async def script(app, pilot):
         row = _cells(app)[0]
-        assert row[5] == "·"  # fetch: no dump
-        assert row[11] == "—"
+        assert row[6] == "·"  # fetch: no dump
+        assert row[12] == "—"
 
     run(tui.PerchTUI(home), script)
 
@@ -160,24 +160,6 @@ def test_moving_the_cursor_changes_the_project(tmp_path, spawned):
             ["board", "-p", "beta"],
             ["forecast", "-p", "beta"],
         ]
-
-    run(tui.PerchTUI(home), script)
-
-
-def test_c_passes_the_typed_flags_to_cut(tmp_path, spawned):
-    home = build_home(tmp_path, "apollo")
-
-    async def script(app, pilot):
-        await pilot.press("c")
-        box = app.query_one(Input)
-        assert box.display and box.has_focus
-        box.value = "--leaves Bob:2026-11-01 --budget 700000"
-        await pilot.press("enter")
-        await settle(app, pilot)
-        assert spawned[0][0][1:] == [
-            "cut", "-p", "apollo", "--leaves", "Bob:2026-11-01", "--budget", "700000",
-        ]  # fmt: skip
-        assert not box.display
 
     run(tui.PerchTUI(home), script)
 
@@ -281,7 +263,7 @@ def test_a_malformed_dump_is_an_error_row_and_the_others_still_render(tmp_path):
 
     async def script(app, pilot):
         rows = _cells(app)
-        assert rows[0][11] == "—"  # the watch cannot read that dump
+        assert rows[0][12] == "—"  # the watch cannot read that dump
         assert rows[1][1] == "grp/beta"
 
     run(tui.PerchTUI(home), script)
@@ -295,8 +277,8 @@ def test_a_row_that_raises_anything_shows_the_error(tmp_path, monkeypatch):
             raise AttributeError("no fetched_at")
         return original(path)
 
-    original = tui.latest_week
-    monkeypatch.setattr(tui, "latest_week", broken)
+    original = tui.history.load
+    monkeypatch.setattr(tui.history, "load", broken)
 
     async def script(app, pilot):
         rows = _cells(app)
@@ -310,9 +292,9 @@ def test_escape_closes_the_cut_input_without_running_anything(tmp_path, spawned)
     home = build_home(tmp_path, "apollo")
 
     async def script(app, pilot):
-        await pilot.press("c")
+        await pilot.press("colon")
         box = app.query_one(Input)
-        box.value = "--budget 700000"
+        box.value = "apollo CUT 700k"
         await pilot.press("escape")
         await settle(app, pilot)
         assert not box.display and box.value == ""
@@ -486,8 +468,8 @@ def test_a_recorded_failure_shows_a_fail_cell(tmp_path):
 
     async def script(app, pilot):
         row = _cells(app)[0]
-        assert row[6] == "FAIL"  # board
-        assert row[7] != "FAIL"
+        assert row[7] == "FAIL"  # board
+        assert row[8] != "FAIL"
 
     run(tui.PerchTUI(home), script)
 
@@ -577,8 +559,8 @@ def test_after_a_run_only_that_row_refreshes_and_the_cursor_stays(
 ):
     home = build_home(tmp_path, "apollo", "beta")
     calls = []
-    original = tui.row
-    monkeypatch.setattr(tui, "row", lambda h, n: calls.append(n) or original(h, n))
+    original = tui.snapshot
+    monkeypatch.setattr(tui, "snapshot", lambda h, n: calls.append(n) or original(h, n))
 
     async def script(app, pilot):
         calls.clear()
@@ -615,8 +597,8 @@ def test_monday_all_refreshes_every_row_even_with_a_project_named_all(
 ):
     home = build_home(tmp_path, "all", "beta")
     calls = []
-    original = tui.row
-    monkeypatch.setattr(tui, "row", lambda h, n: calls.append(n) or original(h, n))
+    original = tui.snapshot
+    monkeypatch.setattr(tui, "snapshot", lambda h, n: calls.append(n) or original(h, n))
 
     async def script(app, pilot):
         calls.clear()
@@ -661,5 +643,269 @@ def test_only_the_last_runs_keep_a_card(tmp_path, spawned, monkeypatch):
             "forecast · apollo",
             "watch · apollo",
         ]
+
+    run(tui.PerchTUI(home), script)
+
+
+# --- the command line, drill, trend, strip, alerts ---------------------------
+
+
+def _weeks(home, name, *figs):
+    """Team rows from W36, one per (headroom, signal[, budget]), plus a person row."""
+    rows = []
+    for i, (headroom, signal, *budget) in enumerate(figs):
+        week = {"week": f"2026-W{36 + i}", "date": "2026-09-01"}
+        team = {**week, "kind": "team", "name": "team", "headroom": headroom}
+        team["signal"] = signal
+        if budget:
+            team["budget"] = budget[0]
+        rows += [team, {**week, "kind": "person", "name": "Alice", "ratio": 1.0}]
+    path = home.projects_dir / name / "history.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+def _flips(app):
+    return {
+        n.message: n.severity for n in app._notifications if "stoplight" in n.message
+    }
+
+
+def test_colon_runs_a_typed_command_on_the_named_project(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo", "beta")
+
+    async def script(app, pilot):
+        await pilot.press("colon")
+        box = app.query_one("#command", Input)
+        assert box.display and box.has_focus and box.value == ""
+        box.value = "beta CUT 700k"
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert [a[1:] for a, _ in spawned] == [
+            ["cut", "-p", "beta", "--budget", "700000"]
+        ]
+        assert _cards(app)[-1][0] == "cut -p beta --budget 700000 · beta"
+        assert not box.display
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_bad_command_line_toasts_and_spawns_nothing(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        await pilot.press("colon")
+        app.query_one("#command", Input).value = "apollo NOPE"
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert spawned == []
+        toast = [n for n in app._notifications if "NOPE" in n.message]
+        assert toast and toast[0].severity == "error"
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_c_opens_the_command_line_prefilled_with_cut(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        await pilot.press("c")
+        box = app.query_one("#command", Input)
+        assert box.display and box.has_focus and box.value == "CUT "
+        box.value = "CUT 1.2m"
+        await pilot.press("enter")  # no project named: the cursor's
+        await settle(app, pilot)
+        assert spawned[0][0][1:] == ["cut", "-p", "apollo", "--budget", "1200000"]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_command_line_while_busy_says_busy(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    release = threading.Event()
+    calls = []
+
+    def slow(argv, cwd, started, env=None):
+        calls.append(argv)
+        release.wait(5)
+        yield "done"
+
+    monkeypatch.setattr(tui, "_spawn", slow)
+
+    async def script(app, pilot):
+        await pilot.press("b")
+        await pilot.pause()
+        await pilot.press("colon")
+        app.query_one("#command", Input).value = "apollo DOC"
+        await pilot.press("enter")
+        await pilot.pause()
+        assert "busy: board" in _notices(app)
+        release.set()
+        await settle(app, pilot)
+        assert len(calls) == 1
+
+    try:
+        run(tui.PerchTUI(home), script)
+    finally:
+        release.set()
+
+
+def test_hrs_opens_the_editor_on_that_projects_row(tmp_path, spawned, monkeypatch):
+    home = build_home(tmp_path, "apollo", "beta")
+    opened = []
+    monkeypatch.setattr(
+        tui.PerchTUI, "action_hours", lambda self: opened.append(self._selected())
+    )
+
+    async def script(app, pilot):
+        await pilot.press("colon")
+        app.query_one("#command", Input).value = "beta HRS"
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert opened == ["beta"] and spawned == []
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_the_trend_cell_is_a_sparkline_of_recorded_headroom(tmp_path):
+    home = build_home(tmp_path, "apollo", "beta")
+    _weeks(home, "apollo", (0, "red"), (50, "yellow"), (100, "green"))
+    _team_row(home, "beta", 5.0, "green")  # one week: no line yet
+
+    async def script(app, pilot):
+        rows = _cells(app)
+        assert tui.COLUMNS[4] == "Trend"
+        assert rows[0][4] == "▁▅█" and rows[1][4] == ""
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_the_changes_strip_describes_each_project_in_order(tmp_path):
+    home = build_home(tmp_path, "apollo", "beta", "gamma")
+    _weeks(home, "apollo", (100, "green"), (-50, "red", 10))
+    _weeks(home, "gamma", (100, "yellow"), (200, "yellow"))
+    _team_row(home, "beta", 5.0, "green")  # one week: nothing to say
+
+    async def script(app, pilot):
+        strip = app.query_one("#changes")
+        assert strip.display
+        assert str(strip.render()) == (
+            "apollo W36→W37: GREEN→RED, headroom −$150  ·  "
+            "gamma W36→W37: headroom +$100"
+        )
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_the_strip_is_hidden_with_one_week(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    _team_row(home, "apollo", 5.0, "green")
+
+    async def script(app, pilot):
+        assert not app.query_one("#changes").display
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_flipped_stoplight_is_reversed_and_toasts_once(tmp_path):
+    home = build_home(tmp_path, "apollo", "beta")
+    _weeks(home, "apollo", (100, "yellow"), (-5, "red"))
+    _weeks(home, "beta", (100, "green"), (90, "yellow"))
+
+    async def script(app, pilot):
+        assert app.query_one(DataTable).get_row_at(0)[2].style == "reverse"
+        assert _flips(app) == {
+            "apollo: stoplight YELLOW → RED (W37)": "error",
+            "beta: stoplight GREEN → YELLOW (W37)": "warning",
+        }
+        app.action_refresh()
+        app.action_refresh()
+        await pilot.pause()
+        assert len(_flips(app)) == 2
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_stoplight_that_did_not_flip_is_plain_and_silent(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    _weeks(home, "apollo", (100, "green"), (90, "green"))
+
+    async def script(app, pilot):
+        assert app.query_one(DataTable).get_row_at(0)[2].style == ""
+        assert not _flips(app)
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_flip_a_run_records_toasts_when_its_row_refreshes(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    _weeks(home, "apollo", (100, "green"), (90, "green"))
+
+    def fake(argv, cwd, started, env=None):
+        _weeks(home, "apollo", (100, "green"), (90, "green"), (-1, "red"))
+        yield "ran"
+
+    monkeypatch.setattr(tui, "_spawn", fake)
+
+    async def script(app, pilot):
+        await pilot.press("b")
+        await settle(app, pilot)
+        assert "apollo: stoplight GREEN → RED (W38)" in _notices(app)
+        assert "W37→W38" in str(app.query_one("#changes").render())
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_i_on_headroom_shows_the_team_lines(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo")
+    _weeks(home, "apollo", (100, "green"), (-5, "red"))
+
+    async def script(app, pilot):
+        app.query_one(DataTable).move_cursor(row=0, column=3)
+        await pilot.press("i")
+        await pilot.pause()
+        title, body, status = _cards(app)[-1]
+        assert status == "info" and "apollo" in title
+        assert body.startswith("red") and "2026-W36  $100  green" in body
+        assert "Alice" not in body and spawned == []
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_i_on_a_step_cell_shows_its_state(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        app.query_one(DataTable).move_cursor(row=0, column=tui.COLUMNS.index("board"))
+        await pilot.press("i")
+        await pilot.pause()
+        title, body, status = _cards(app)[-1]
+        assert status == "info" and "board" in title
+        assert "todo" in body and "never" in body
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_i_on_project_shows_the_checks(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo", gitlab=False)
+
+    async def script(app, pilot):
+        await pilot.press("i")  # the cursor starts on Project
+        await pilot.pause()
+        _, body, status = _cards(app)[-1]
+        assert status == "info"
+        assert "✓ apollo: perch.yaml" in body
+        assert "✗ apollo: gitlab_project not set → add gitlab_project:" in body
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_i_on_flags_runs_the_watch(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        app.query_one(DataTable).move_cursor(row=0, column=len(tui.COLUMNS) - 1)
+        await pilot.press("i")
+        await settle(app, pilot)
+        assert [a[1:] for a, _ in spawned] == [["watch", "-p", "apollo"]]
 
     run(tui.PerchTUI(home), script)
