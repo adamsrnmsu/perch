@@ -33,8 +33,10 @@ anywhere inside a workspace, or set `PERCH_HOME`.
 perch init apollo --home ~/work/pi --gitboard-dir ~/Documents/git/pi_suite/remote-gitboard
 perch projects                 # every project, its GitLab project, how fresh its data is
 perch doctor                   # tools, config, people names, freshness; FIX lines say what to run
+perch status                   # each project's Monday steps: ok, stale, todo or FAIL, and the next command
 perch hours -p apollo          # paste this week's apollo timesheet totals
 perch monday --all             # fetch, board, weekly, digest, emails for every project
+perch monday -p apollo --from weekly  # resume at a step after a failure
 perch watch -p apollo          # private: anyone out of line with their own last 8 weeks
 perch tui                      # every project in one table; single keys run the commands
 ```

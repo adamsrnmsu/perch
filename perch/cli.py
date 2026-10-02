@@ -5,13 +5,15 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import click
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
+
+from perch.core.steps import MONDAY_STEPS
 
 console = Console()
 
@@ -121,6 +123,7 @@ def _run(step) -> None:
 _SECTIONS = {
     "Set up": ["init", "projects", "doctor"],
     "Every Monday, in order": [
+        "status",
         "hours",
         "fetch",
         "board",
@@ -526,7 +529,14 @@ def budget(project):
     is_flag=True,
     help="Every project, in name order; a failure moves on to the next.",
 )
-def monday(project, all_projects):
+@click.option(
+    "--from",
+    "start",
+    type=click.Choice(MONDAY_STEPS),
+    default=None,
+    help="Resume at this step instead of fetch.",
+)
+def monday(project, all_projects, start):
     """Steps 1-5: fetch, board, weekly, digest, emails. Run `perch hours` first.
 
     Nothing is ever sent: you review the drafts and send them yourself. Last,
@@ -534,16 +544,26 @@ def monday(project, all_projects):
     """
     from perch.core import steps
     from perch.core.config import load_config
+    from perch.core.status import clear_failure, record_failure
 
     if project and all_projects:
         raise click.UsageError("give -p or --all, not both")
+    if start and all_projects:
+        raise click.UsageError("--from resumes one project: give -p, not --all")
     week = steps.iso_week(date.today())  # noqa: DTZ011 -- the lead's local Monday
 
     def run_one(home, name):
         config = load_config(home.config_path(name), require_dump=False)
         console.print(f"[bold]== {escape(name)}[/bold]", highlight=False)
-        for step in steps.monday(_bin_dir(), home, name, config, week):
-            _run(step)
+        try:
+            for step in steps.monday(_bin_dir(), home, name, config, week, start):
+                _run(step)
+        except steps.StepFailed as exc:
+            # local naive time: status.py reads `at` back with fromisoformat()
+            at = datetime.now()  # noqa: DTZ005
+            record_failure(home, name, week, exc.step.name, exc.code, at)
+            raise
+        clear_failure(home, name)
         console.print(f"\n[bold]{name}[/bold] done. Review, then send yourself:")
         for place in (
             home.weekly_path(name, week),
@@ -578,6 +598,47 @@ def monday(project, all_projects):
             )
     if any(error for _, error in results):
         raise click.exceptions.Exit(1)
+
+
+_CELL = {  # state -> (shown, markup colour)
+    "done": ("ok", "green"),
+    "stale": ("stale", "yellow"),
+    "todo": ("todo", "dim"),
+    "failed": ("FAIL", "red"),
+    "error": ("ERR", "red"),
+}
+
+
+@cli.command()
+@_project_option
+def status(project):
+    """Each project's Monday steps: ok, stale, todo or FAIL, and the next command."""
+    import shlex
+
+    from perch.core import status as st
+
+    home = _find_home()
+    names = [home.select(project, Path.cwd())] if project else home.projects()
+    if not names:
+        raise click.ClickException("no projects yet. Run: perch init <name>")
+    today = date.today()  # noqa: DTZ011 -- the lead's local Monday
+    width = max(len(n) for n in names)
+    console.print(" " * width + "".join(f"  {s:<6}" for s in st.STEPS), highlight=False)
+    grid = {n: st.status(home, n, today) for n in names}
+    for name, cells in grid.items():
+        row = ""
+        for step in st.STEPS:
+            word, colour = _CELL[cells[step].state]
+            row += f"  [{colour}]{word:<6}[/{colour}]"
+        console.print(f"{escape(name):<{width}}{row}", highlight=False)
+    for name, cells in grid.items():
+        if (step := st.next_step(cells)) is None:
+            continue
+        if cells[step].state == "error":
+            console.print(f"{escape(name)}: {escape(cells[step].why)}", highlight=False)
+        else:
+            cmd = shlex.join(st.next_command(name, step))
+            console.print(f"next: {escape('perch ' + cmd)}", highlight=False)
 
 
 def _runs(argv, cwd, env) -> bool:
