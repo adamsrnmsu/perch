@@ -47,9 +47,12 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `core/config.py` -- perch.yaml to a frozen `Config`; every error names the key.
 - `core/workspace.py` -- perch-home.yaml (walk up, else $PERCH_HOME), the
   projects under projects/, `-p` selection, and scaffolding a project.
-- `core/steps.py` -- every Budgie/gitboard/perch call as a `Step(argv, cwd,
+- `core/steps.py` -- every Budgie/gitboard/perch/claude call as a `Step(argv, cwd,
   env)`; nothing here executes. `run_projects` is `monday --all`'s
-  carry-on-past-a-failure loop.
+  carry-on-past-a-failure loop. `review` opens `claude "/board ..."` in the
+  gitboard checkout with `trend.team_lines` and `people_lines` (latest
+  week, name order, hours only: no rate, cost or accuracy) appended. Never
+  the watch.
 - `core/blocks.py` -- the PI_BLOCKS contract
   (`docs/superpowers/specs/2026-10-02-tui-blocks-design.md`): with `PI_BLOCKS=1`
   a command prints one JSON line per block instead of text. One builder per
@@ -102,7 +105,9 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   readings, budget revisions and plan plus the board dump (never
   history.jsonl). The forecast is Budgie's `at_completion` + `simulate` +
   `evaluate`; booked hours interpolate readings like Budgie's `monthly`.
-  Team level only: names appear only in staffing changes.
+  Team level only: names appear only in staffing changes. Quarters are
+  Budgie's `YearSpan.quarters` (fiscal when the Budgie project sets
+  `year_start`), named `2026-Q3` or `FY27-Q1`.
 - `core/report_mail.py` -- a `Quarter` as markdown and as an `.eml` draft
   (multipart/alternative, `X-Unsent: 1`, table HTML with inline styles only).
 - `core/command.py` -- the TUI command line's grammar: `parse(text, projects,

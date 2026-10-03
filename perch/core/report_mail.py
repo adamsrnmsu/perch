@@ -8,7 +8,6 @@ Outlook renders HTML through Word.
 
 from __future__ import annotations
 
-from datetime import date
 from email.message import EmailMessage
 from html import escape
 
@@ -156,7 +155,7 @@ def _blocks(q: Quarter) -> list[tuple]:
             [
                 (f"Labor spent {_span(q.start, to)}", _money(p.spent_quarter)),
                 (
-                    f"Labor spent {_span(date(q.start.year, 1, 1), to)} (year to date)",
+                    f"Labor spent {_span(q.year_start, to)} (year to date)",
                     _money(p.spent_year),
                 ),
                 (f"Budget on {q.start}", _money(p.budget_start)),

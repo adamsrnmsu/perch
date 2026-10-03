@@ -14,7 +14,7 @@ def loaded(world):
     config = load_config(world)
     board = load_board(config.board_dump)
     money = load_money(config.budgie_project)
-    rates = calibrate(money.readings, board, config.people, money.year)
+    rates = calibrate(money.readings, board, config.people, money.span)
     return config, board, money, rates
 
 

@@ -122,7 +122,7 @@ def _per_issue(
     closed = [
         i.closed_on
         for i in board.closed
-        if people.get(i.assignee) == name and i.closed_on.year == money.year
+        if people.get(i.assignee) == name and money.span.contains(i.closed_on)
     ]
 
     def window(start: date, end: date) -> tuple[float, int]:

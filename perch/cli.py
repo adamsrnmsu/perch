@@ -98,7 +98,7 @@ def _load(config_path: Path):
     board = load_board(config.board_dump)
     money = load_money(config.budgie_project)
     estimates = load_estimates(config.estimates) if config.estimates else {}
-    rates = calibrate(money.readings, board, config.people, money.year)
+    rates = calibrate(money.readings, board, config.people, money.span)
     return config, board, money, estimates, rates
 
 
@@ -184,6 +184,7 @@ _SECTIONS = {
         "budget",
         "forecast",
         "cut",
+        "review",
         "watch",
         "quarterly",
         "tui",
@@ -592,6 +593,20 @@ def budget(project):
 
 @cli.command()
 @_project_option
+def review(project):
+    """Claude's /board on the pulled board: labels, priority, flags, with the budget."""
+    from perch.core import history, steps
+
+    _one(
+        project,
+        lambda home, name, config: steps.review(
+            home, name, config, history.load(config.history)
+        ),
+    )
+
+
+@cli.command()
+@_project_option
 @click.option(
     "--all",
     "all_projects",
@@ -862,11 +877,11 @@ def cut(config_path, project, new_budget, leaves, fte):
         the_board = load_board(config.board_dump)
         snap = m.load_snapshot(config.budgie_project)
         names = {p.name for p in snap.people}
-        changes = [parse_change(f, names, snap.year, leaves=True) for f in leaves]
-        changes += [parse_change(f, names, snap.year) for f in fte]
+        changes = [parse_change(f, names, snap.span, leaves=True) for f in leaves]
+        changes += [parse_change(f, names, snap.span) for f in fte]
         now = m.money_from(snap)
         estimates = load_estimates(config.estimates) if config.estimates else {}
-        rates = calibrate(now.readings, the_board, config.people, now.year)
+        rates = calibrate(now.readings, the_board, config.people, now.span)
         since = None
         if changes or new_budget is not None:
             before, after = now, m.money_from(m.what_if(snap, new_budget, changes))
@@ -1084,7 +1099,7 @@ def _write_quarterly(config_path: Path, quarter: str | None, out: Path | None):
     money = load_money(config.budgie_project)
     estimates = load_estimates(config.estimates) if config.estimates else {}
     rates = (
-        calibrate(money.readings, board, config.people, money.year) if board else None
+        calibrate(money.readings, board, config.people, money.span) if board else None
     )
     today = date.today()  # noqa: DTZ011 -- the lead's local date
     report = build(
@@ -1093,7 +1108,7 @@ def _write_quarterly(config_path: Path, quarter: str | None, out: Path | None):
         estimates,
         rates,
         config.people,
-        quarter or last_complete_quarter(money.year, today),
+        quarter or last_complete_quarter(money.span, today),
         today,
         config.root.name,
     )
@@ -1117,7 +1132,9 @@ def _write_quarterly(config_path: Path, quarter: str | None, out: Path | None):
     help="Every project, in name order; a failure moves on to the next.",
 )
 @click.option(
-    "--quarter", default=None, help="e.g. 2026-Q3; default the last complete one."
+    "--quarter",
+    default=None,
+    help="e.g. 2026-Q3, or FY27-Q1 for a fiscal year; default the last complete one.",
 )
 @click.option(
     "--out",

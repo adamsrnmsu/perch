@@ -14,6 +14,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
+from budgie.core.calendar import year_span
 
 from perch.core.board import BLOCKED, Board, Issue, load_board
 from perch.core.estimates import Estimate
@@ -45,7 +46,7 @@ def history(first, last=16, ratio=lambda n: None):
 
 
 def run(board, money, rows=(), estimates=None):
-    rates = calibrate(money.readings, board, PEOPLE, money.year)
+    rates = calibrate(money.readings, board, PEOPLE, money.span)
     return watch(board, money, rates, estimates or {}, PEOPLE, list(rows))
 
 
@@ -121,7 +122,9 @@ def per_issue(heavy_from):
         friday = date.fromisocalendar(2026, n, 5)
         issues += [Issue(100 + 2 * n + k, "t", "asmith", (), friday) for k in (0, 1)]
     board = Board("grp/proj", "Dev", date(2026, 4, 20), tuple(issues))
-    money = Money(year=2026, hourly_cost={"Alice": 100}, readings={"Alice": readings})
+    money = Money(
+        span=year_span(2026), hourly_cost={"Alice": 100}, readings={"Alice": readings}
+    )
     return run(board, money, history(9))
 
 
