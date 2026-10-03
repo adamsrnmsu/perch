@@ -119,18 +119,24 @@ environment variable to carry through respawns.
 ### The hop (same rule in all three apps)
 
 `hop(name, entry, env)`: `entry` is the target's `{"cwd", "argv"}` from this
-app's `PI_SUITE`; `env` is that `PI_SUITE` string. Plain `tmux` reaches the
-suite's server because `$TMUX` is set.
+app's `PI_SUITE`; `env` is that `PI_SUITE` string. Every call names the server and session outright (`tmux -L pi ... -t pi:=NAME`)
+rather than leaning on `$TMUX`.
 
-1. `tmux show-options -wqv -t :=NAME @entry`.
-2. It fails (no such window: the app was quit): `tmux new-window -n NAME -c CWD
-   -e PI_SUITE=ENV ARGV... ; set-option -w -t :=NAME @entry ENTRY`.
+1. `tmux -L pi list-windows -t pi -F '#{window_name}<TAB>#{@entry}'`: one line
+   per window. (Probed: `show-options -q` exits 0 for a missing window too, and
+   `display-message` falls back to the current window, so neither can tell
+   "quit" from "running".)
+2. No line for NAME (the app was quit): `new-window -t pi: -n NAME -c CWD
+   -e PI_SUITE=ENV ARGV... ; set-option -w -t pi:=NAME @entry ENTRY`.
    `new-window` selects the new window.
-3. It prints the same `ENTRY`: `tmux select-window -t :=NAME`. This is the
-   instant path.
-4. It prints anything else (another project): `tmux respawn-window -k -t :=NAME
-   -c CWD -e PI_SUITE=ENV ARGV... ; set-option -w -t :=NAME @entry ENTRY ;
-   select-window -t :=NAME`. Only the target restarts.
+3. NAME's `@entry` is the same `ENTRY`: `select-window -t pi:=NAME`. This is
+   the instant path.
+4. Anything else (another project, or no `@entry` at all): `respawn-window -k
+   -t pi:=NAME -c CWD -e PI_SUITE=ENV ARGV... ; set-option -w -t pi:=NAME
+   @entry ENTRY ; select-window -t pi:=NAME`. Only the target restarts.
+
+Probed with tmux 3.7c: a JSON `@entry` comes back byte-identical, and a `cwd`
+or argv element with spaces, quotes or `$` arrives intact.
 
 A failing tmux call shows its stderr in the app (a toast in perch and Budgie,
 the status line in gitboard) and the app stays where it is.
@@ -162,7 +168,7 @@ existing `suite_entry`/`switch`.
 ## Quitting
 
 - `q` in **perch**, in the suite: after `run()` returns, `perch tui` runs
-  `tmux kill-session -t pi`. The whole suite closes and the terminal is back at
+  `tmux -L pi kill-session -t pi`. The whole suite closes and the terminal is back at
   the shell.
 - `q` in **Budgie or gitboard**: the app exits as today, its window closes
   (`remain-on-exit off`) and tmux shows another window. Its key reopens it
@@ -185,8 +191,9 @@ does not happen and `r` still works.
 
 - **perch:** `on_app_focus` starts a refresh in a worker. The hop is instant
   and the cells update about a second later; the cursor stays put. Measured
-  today: one project's `snapshot` takes 1.4 s on the UI thread, so this waits on
-  `perch-li8` (run `row()` off the UI thread). Blocked by it.
+  today: one project's `snapshot` takes 1.4 s on the UI thread (cold), so the
+  focus refresh gets its own thread worker. `perch-li8` (the same for `r` and
+  after a run) stays a separate bead.
 - **Budgie:** `on_app_focus` calls `recalculate()` only when an input file in
   the project is newer than the last calculation. A 10,000-iteration forecast on
   every hop would undo the point of the work.
@@ -195,7 +202,11 @@ does not happen and `r` still works.
 
 Only focus-in triggers a refresh. There is no timer.
 
-## Known limit
+## Known limits
+
+tmux strips one level of backslashes from an `-e` value (probed), so a path
+holding a backslash reaches the other apps' `PI_SUITE` mangled. macOS paths
+practically never hold one; not handled.
 
 If you switch budget inside Budgie, or board inside gitboard (`b`), that app's
 `PI_SUITE` still names the project perch sent, so its `B`/`G` hops follow
@@ -244,6 +255,6 @@ Epic `perch-a2b`:
    `perch suite`, perch's hop and suite quit. Defines the contract.
 2. Budgie: `in_suite`, hop, focus recalculate. Blocked by 1.
 3. gitboard: `in_suite`, hop in the key loop. Blocked by 1.
-4. perch: focus refresh in a worker. Blocked by 1 and `perch-li8`.
+4. perch: focus refresh in a worker. Blocked by 1.
 5. perch docs: `CLAUDE.md` architecture line for `core/suite.py`, README, the
    reference. Blocked by 1.
