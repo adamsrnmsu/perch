@@ -5,6 +5,7 @@ needs no pytest-asyncio.
 """
 
 import asyncio
+import io
 import json
 import os
 import subprocess
@@ -14,9 +15,10 @@ from contextlib import nullcontext
 from pathlib import Path
 
 import pytest
-from textual.widgets import DataTable, Input
+from textual.widgets import DataTable, Input, Static
 
 from perch import tui
+from perch.core import blocks as b
 from perch.core.watch import PLAN, PersonWatch, Signal, Watch
 from perch.tests.conftest import build_home
 
@@ -931,3 +933,177 @@ def test_i_on_flags_runs_the_watch(tmp_path, spawned):
         assert [a[1:] for a, _ in spawned] == [["watch", "-p", "apollo"]]
 
     run(tui.PerchTUI(home), script)
+
+
+# --- blocks: PI_BLOCKS output drawn as widgets --------------------------------
+
+
+def _j(block) -> str:
+    return json.dumps(block, ensure_ascii=False)
+
+
+def _block_run(monkeypatch, tmp_path, lines, seen=None):
+    home = build_home(tmp_path, "apollo")
+
+    def fake(argv, cwd, started, env=None):
+        if seen is not None:
+            seen.update(env)
+        yield from lines
+
+    monkeypatch.setattr(tui, "_spawn", fake)
+    return home
+
+
+def _texts(card) -> list[str]:
+    return [w.content.plain for w in card.query(Static) if hasattr(w.content, "plain")]
+
+
+def test_the_spawn_env_asks_for_blocks(tmp_path, monkeypatch):
+    seen = {}
+    home = _block_run(monkeypatch, tmp_path, ["x"], seen)
+
+    async def script(app, pilot):
+        await pilot.press("d")
+        await settle(app, pilot)
+        assert seen[b.ENV] == "1" and b.ENV == "PI_BLOCKS"
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_table_block_is_a_data_table_of_its_rows(tmp_path, monkeypatch):
+    rows = [["cycle", "4.0"], ["lead", "9.5"]]
+    lines = [_j(b.table(["days", "median"], rows, title="Time", align=["l", "r"]))]
+    home = _block_run(monkeypatch, tmp_path, lines)
+
+    async def script(app, pilot):
+        await pilot.press("d")
+        await settle(app, pilot)
+        card = app.query_one(tui.RunCard)
+        (table,) = card.query(DataTable)
+        assert [[str(c) for c in table.get_row_at(i)] for i in range(2)] == rows
+        assert [c.label.justify for c in table.columns.values()] == ["left", "right"]
+        assert table.styles.height.value == 3 and not table.show_cursor
+        assert "Time" in _texts(card)
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_long_table_stops_growing_at_twelve_rows(tmp_path, monkeypatch):
+    rows = [[str(i)] for i in range(30)]
+    home = _block_run(monkeypatch, tmp_path, [_j(b.table(["n"], rows))])
+
+    async def script(app, pilot):
+        await pilot.press("d")
+        await settle(app, pilot)
+        (table,) = app.query_one(tui.RunCard).query(DataTable)
+        assert table.styles.height.value == 13
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_bars_scale_to_the_largest_and_trim_whole_numbers(tmp_path, monkeypatch):
+    items = [("Review", 4), ("Backlog", 2.5), ("Done", 0)]
+    home = _block_run(monkeypatch, tmp_path, [_j(b.bars(items, title="By column"))])
+
+    async def script(app, pilot):
+        await pilot.press("d")
+        await settle(app, pilot)
+        card = app.query_one(tui.RunCard)
+        bars = card.query_one(tui.Bars).render().plain.split("\n")
+        assert [x.split()[0] for x in bars] == ["Review", "Backlog", "Done"]
+        assert bars[0].endswith(" 4") and bars[1].endswith(" 2.5")
+        counts = [x.count("█") for x in bars]
+        assert counts[0] > counts[1] > counts[2] == 0
+        assert bars[0].index("█") == bars[1].index("█")  # labels padded alike
+        assert counts[1] == round(counts[0] * 2.5 / 4)
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_bar_lines_scale_to_the_width_and_add_the_unit():
+    out = tui.bar_lines([("a", 10), ("bb", 5)], "d", 22).plain.split("\n")
+    assert out == ["a  " + "█" * 14 + " 10 d", "bb " + "█" * 7 + " 5 d"]
+
+
+def test_figures_tiles_show_value_label_and_note(tmp_path, monkeypatch):
+    items = [b.figure("Open", "41", "6 unassigned"), b.figure("Done", "7", tone="good")]
+    home = _block_run(monkeypatch, tmp_path, [_j(b.figures(items))])
+
+    async def script(app, pilot):
+        await pilot.press("d")
+        await settle(app, pilot)
+        (tiles,) = app.query_one(tui.RunCard).query(Static)
+        from rich.console import Console
+
+        con = Console(width=80, record=True, file=io.StringIO())
+        con.print(tiles.content)
+        out = con.export_text()
+        assert "41" in out and "Open" in out and "6 unassigned" in out
+        assert "Done" in out and "7" in out
+        assert tiles.content.renderables[1].style == "bold green"  # Done's tile
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_headings_text_and_lists(tmp_path, monkeypatch):
+    lines = [
+        _j(b.heading("Open", 2)),
+        _j(b.text("late", "bad")),
+        _j(b.bullets(["one", "two"])),
+    ]
+    home = _block_run(monkeypatch, tmp_path, lines)
+
+    async def script(app, pilot):
+        await pilot.press("d")
+        await settle(app, pilot)
+        card = app.query_one(tui.RunCard)
+        assert _texts(card) == ["Open", "late", "• one\n• two"]
+        heading, late, _ = card.query(Static)
+        assert heading.content.style == "bold" and heading.styles.border_bottom[0]
+        assert late.content.style == "red"
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_bad_block_stays_text_and_text_after_a_block_starts_a_new_widget(
+    tmp_path, monkeypatch
+):
+    bad = _j({"pi": 1, "block": "table", "columns": ["a"]})  # no rows
+    lines = ["before", "also", _j(b.heading("H", 1)), bad, "after"]
+    home = _block_run(monkeypatch, tmp_path, lines)
+
+    async def script(app, pilot):
+        await pilot.press("d")
+        await settle(app, pilot)
+        card = app.query_one(tui.RunCard)
+        assert _texts(card) == ["before\nalso", "H", bad + "\nafter"]
+        assert card.body.plain == f"before\nalso\n{bad}\nafter"
+        assert card.border_subtitle.startswith("✓")
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_o_maximizes_the_newest_card_and_escape_restores_it(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        await pilot.press("b")
+        await settle(app, pilot)
+        await pilot.press("f")
+        await settle(app, pilot)
+        await pilot.press("o")
+        await pilot.pause()
+        assert app.screen.maximized is list(app.query(tui.RunCard))[-1]
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.screen.maximized is None
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_o_with_no_cards_does_nothing(tmp_path):
+    async def script(app, pilot):
+        await pilot.press("o")
+        assert app.screen.maximized is None
+
+    run(tui.PerchTUI(build_home(tmp_path, "apollo")), script)
