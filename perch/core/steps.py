@@ -78,22 +78,54 @@ def fetch(home: Home, project: str, config: Config) -> Step:
 
 
 REVIEW_RULES = (
-    "perch's budget picture for this board follows: team level, from the last "
-    "`perch board` run (stoplight · chance the board breaks the budget · budget "
-    "· spent · headroom · hours left · cost to clear P10/P50/P90, then headroom "
-    "by week). Use it to weigh priority and milestones, and say plainly when the "
-    "open board does not fit the money left. Quote it; do not recompute it. Team "
-    "level only: never rank, compare or single out people."
+    "perch's budget picture for this board follows, from the last `perch board` "
+    "run. First the team (stoplight · chance the board breaks the budget · "
+    "budget · spent · headroom · hours left · cost to clear P10/P50/P90, then "
+    "headroom by week). Use it to weigh priority and milestones, and say plainly "
+    "when the open board does not fit the money left. Then each person in name "
+    "order (name, GitLab username · open cards · hours to clear them · planned "
+    "hours left · gap = left minus to clear). Use those only to say who has room "
+    "for an unowned or stuck card, or whose load will not fit. Quote the "
+    "figures; do not recompute them. Never rank, compare or judge people."
 )
 
 
-def review(home: Home, project: str, config: Config, team: list[str]) -> Step:
+def _h(value: float | None, signed: bool = False) -> str:
+    if value is None:
+        return "—"
+    sign = ("+" if signed else "") if value >= 0 else "−"
+    return f"{sign}{abs(value):,.0f}h"
+
+
+def people_lines(rows: list[dict], people: Mapping[str, str]) -> list[str]:
+    """The latest recorded week's person rows, in name order: load, not pay.
+
+    Hours only, as `perch board` shows them: no rate, cost or accuracy.
+    """
+    person = [r for r in rows if r["kind"] == "person"]
+    if not person:
+        return []
+    week = max(r["week"] for r in person)
+    login = {name: user for user, name in people.items()}
+    return [
+        r["name"]
+        + (f", @{login[r['name']]}" if r["name"] in login else "")
+        + f" · open {r['open']} · to clear {_h(r['hours'])}"
+        + f" · left {_h(r['left'])} · gap {_h(r['gap'], signed=True)}"
+        for r in sorted(person, key=lambda r: r["name"])
+        if r["week"] == week
+    ]
+
+
+def review(home: Home, project: str, config: Config, rows: list[dict]) -> Step:
     """Claude's /board on the pulled board, told what perch knows about the money.
 
-    `team` is `trend.team_lines` over history.jsonl: no person row, nothing
-    from the watch. /board stages edits in boards/<name>.yaml, so no pull, no
-    review.
+    `rows` is history.jsonl: the team lines and the latest week's person
+    lines, never the watch. /board stages edits in boards/<name>.yaml, so no
+    pull, no review.
     """
+    from perch.core.trend import team_lines
+
     if not config.gitlab_project:
         raise WorkspaceError(
             f"{project}: perch.yaml has no gitlab_project; "
@@ -109,7 +141,8 @@ def review(home: Home, project: str, config: Config, team: list[str]) -> Step:
             f"{project}: no {spec}; pull it first: (cd {shlex.quote(str(home.gitboard_dir))}"
             f" && gitboard pull {config.gitlab_project} --base)"
         )
-    context = "\n".join((REVIEW_RULES, *team))
+    people = people_lines(rows, config.people)
+    context = "\n".join((REVIEW_RULES, *team_lines(rows), *people))
     return Step(
         "review",
         (

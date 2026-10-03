@@ -531,8 +531,7 @@ class PerchTUI(App):
             return
         try:  # no pull yet is a toast, not a flash behind the suspended screen
             config = load_config(self.home.config_path(name), require_dump=False)
-            team = team_lines(history.load(config.history))
-            step = review(self.home, name, config, team)
+            step = review(self.home, name, config, history.load(config.history))
         except _ERRORS as exc:
             self.notify(f"{name}: {exc}", severity="error")
             return

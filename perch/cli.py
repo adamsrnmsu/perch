@@ -527,12 +527,11 @@ def budget(project):
 def review(project):
     """Claude's /board on the pulled board: labels, priority, flags, with the budget."""
     from perch.core import history, steps
-    from perch.core.trend import team_lines
 
     _one(
         project,
         lambda home, name, config: steps.review(
-            home, name, config, team_lines(history.load(config.history))
+            home, name, config, history.load(config.history)
         ),
     )
 

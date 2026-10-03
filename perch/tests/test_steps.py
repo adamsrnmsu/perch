@@ -117,19 +117,44 @@ def test_run_projects_carries_on_past_a_failure():
     ]
 
 
-def test_review_opens_claudes_board_command_in_gitboard_with_the_team_lines(tmp_path):
+def _person(week, name, gap, **extra):
+    return {"week": week, "kind": "person", "name": name, "open": 2,
+            "hours": 10.0, "left": 10.0 + gap, "gap": gap, **extra}  # fmt: skip
+
+
+def test_review_opens_claudes_board_command_in_gitboard_with_team_and_people(
+    tmp_path,
+):
     home, config = apollo(tmp_path)
     (home.gitboard_dir / "boards").mkdir(parents=True)
     (home.gitboard_dir / "boards" / "apollo.yaml").write_text("")
-    step = steps.review(home, "apollo", config, ["GREEN · over 5%", "2026-W40  $1"])
+    rows = [
+        _person("2026-W39", "Alice", 99.0),  # an older week: dropped
+        {"week": "2026-W40", "kind": "team", "name": "team", "headroom": 1.0},
+        _person("2026-W40", "Bob", -4.0, rate=150.0, cost=1500.0),
+        _person("2026-W40", "Alice", 1234.0),
+        _person("2026-W40", "Zed", 0.0),  # not in people: no @login
+    ]
+    step = steps.review(home, "apollo", config, rows)
     claude, flag, context, prompt = step.argv
     assert (claude, flag, prompt) == (
         "claude",
         "--append-system-prompt",
         "/board grp/apollo",
     )
-    assert context.endswith("\nGREEN · over 5%\n2026-W40  $1")
-    assert "never rank" in context and step.cwd == home.gitboard_dir
+    lines = context.split("\n")
+    assert lines[1].startswith("— · over — · budget — · spent — · headroom $1")
+    assert lines[-3:] == [
+        "Alice, @asmith · open 2 · to clear 10h · left 1,244h · gap +1,234h",
+        "Bob, @bjones · open 2 · to clear 10h · left 6h · gap −4h",
+        "Zed · open 2 · to clear 10h · left 10h · gap +0h",
+    ]
+    assert "150" not in context and "1,500" not in context  # load, not pay
+    assert "Never rank" in context and step.cwd == home.gitboard_dir
+
+
+def test_people_lines_is_empty_before_any_person_row():
+    assert steps.people_lines([], {}) == []
 
 
 def test_review_without_a_pulled_board_says_how_to_pull_it(tmp_path):

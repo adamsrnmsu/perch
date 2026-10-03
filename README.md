@@ -77,8 +77,11 @@ gitboard checkout with the project's `gitlab_project`.
 checkout on `/board <gitlab_project>` (label, prioritise, flag; stage the edits,
 show `plan`, push only on your yes) and appends perch's team line from
 history.jsonl (stoplight, budget, headroom, hours left, cost to clear, headroom
-by week) so the priority calls weigh the money. Team level only, nothing from
-the watch. It refuses until `boards/<name>.yaml` is pulled and names the
+by week) so the priority calls weigh the money, plus the latest week's person
+rows in name order (open cards, hours to clear, hours left, gap; no rate, cost
+or accuracy) so it can say who has room for a stuck or unowned card. Claude is
+told never to rank, compare or judge people; nothing from the watch goes in.
+It refuses until `boards/<name>.yaml` is pulled and names the
 `gitboard pull` to run; run `perch board` first or Claude is told there is no
 week recorded.
 
