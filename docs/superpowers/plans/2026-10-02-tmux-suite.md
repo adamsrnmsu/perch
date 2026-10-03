@@ -683,10 +683,11 @@ def test_switch_with_an_empty_program_says_why(tmp_path):
     assert "switch failed" in str(exc.value.code)
 ```
 
-The existing outside-the-suite tests (`test_b_and_g_set_pi_suite_and_exit_with_the_target`,
-`test_switching_while_a_command_runs_says_busy`) must keep passing unchanged.
-If the test run itself happens inside the suite's tmux, they would see
-`TMUX`; add `monkeypatch.delenv("TMUX", raising=False)` to those two tests.
+Add `monkeypatch.delenv("TMUX", raising=False)` as the first line of the
+existing outside-the-suite tests `test_b_and_g_set_pi_suite_and_exit_with_the_target`
+and `test_switching_while_a_command_runs_says_busy` (give the first a
+`monkeypatch` argument; it has one). Otherwise they fail whenever the tests
+are run from inside the suite.
 
 - [ ] **Step 10: Run them to see them fail**
 
@@ -767,10 +768,14 @@ them skipped; reformat anything else it flags.
 
 - [ ] **Step 13: Smoke test by hand**
 
+Never `pip install -e` the worktree: that repoints the shared venv for every
+other session and breaks `perch` when the worktree goes. Put the worktree
+first on the path instead; the tmux server inherits it, so the perch windows
+run worktree code and Budgie and gitboard stay as installed:
+
 ```bash
-cd /Users/ryanadams/Documents/git/pi_suite/perch
-~/Documents/tools/perch/bin/pip install -q -e .   # the worktree's perch, if testing from it
-perch suite
+tmux -L pi kill-server 2>/dev/null   # a suite left from an earlier try
+PYTHONPATH=/Users/ryanadams/Documents/git/pi_suite/perch/.claude/worktrees/tmux-suite perch suite
 ```
 
 Expected: perch fills the terminal, no tmux bar. `B`: Budgie at once. Quit
@@ -966,9 +971,9 @@ computes the Forecast tab there). If `on_mount` reaches the forecast some other
 way, set `self._calculated_at = self._inputs_mtime()` at the end of `on_mount`
 too.
 
-The existing `test_p_and_g_exit_with_the_target` runs outside the suite; add
-`monkeypatch.delenv("TMUX", raising=False)` to it so it holds even when the
-tests run inside tmux.
+Add `monkeypatch.delenv("TMUX", raising=False)` as the first line of the
+existing `test_p_and_g_exit_with_the_target`; otherwise it fails whenever the
+tests are run from inside the suite.
 
 - [ ] **Step 2: Run them to see them fail**
 
@@ -1227,10 +1232,25 @@ def test_switch_with_an_empty_program_exits_1(tmp_path):
         cli._switch({"cwd": str(tmp_path), "argv": [""]})
 ```
 
-Add `import typer` to the test imports if it is not there. The existing
+Add `import typer` to the test imports if it is not there. Add
+`monkeypatch.delenv("TMUX", raising=False)` as the first line of the existing
 `test_tui_shift_p_and_b_exec_the_target` and
-`test_tui_unreachable_shift_p_still_switches` run outside the suite; add
-`monkeypatch.delenv("TMUX", raising=False)` to both.
+`test_tui_unreachable_shift_p_still_switches`; otherwise they fail whenever
+the tests are run from inside the suite.
+
+Before running, `grep -n "subprocess.run" src/gitboard/cli.py src/gitboard/*.py`.
+The `hops` fixture replaces `subprocess.run` process-wide; if the `tui --from`
+path calls it for anything else (git, `open`), make the fake hand non-tmux
+argv to the real one:
+
+```python
+    real = subprocess.run
+
+    def run(argv, **kw):
+        if argv[:1] != ["tmux"]:
+            return real(argv, **kw)
+        ...  # as above
+```
 
 If `tui.text`'s frames do not carry the status line for the failed hop,
 assert on `tui.last` after the `P` frame instead; the status line is drawn by
@@ -1525,9 +1545,11 @@ bd close perch-dvq --reason "Folded into perch-a2b.1/.2/.3/.5"
 
 ## Finish
 
-After Task 5: run all three suites (`make test-all` from perch, or each
-repo's `make test`), do the manual check in a real terminal (the spec's Goal
-path; colours match outside tmux; Esc is immediate in Budgie's Plan form;
-`q` in perch leaves a clean shell; `tmux ls` on your own server is
-unchanged), then `bd close perch-a2b --reason "..."`. Branches stay local
-until the user pushes them.
+After Task 5: run each repo's tests in its worktree (`make test` in Budgie and
+gitboard, `~/Documents/tools/perch/bin/pytest -q` in perch). Task 1's smoke
+test is the only manual check that can run from worktrees: the installed
+`budgie` and `gitboard` are the main checkouts. The full manual check (the
+spec's Goal path; colours match outside tmux; Esc is immediate in Budgie's
+Plan form; `q` in perch leaves a clean shell; `tmux ls` on your own server is
+unchanged) happens after the user merges the three branches. Leave
+`perch-a2b` open until then. Branches stay local until the user pushes them.
