@@ -19,11 +19,14 @@ is one GitLab project + one Budgie project + one charge code, picked with
 ## Commands
 
 ```bash
-perch --help  # running the apps: projects, init, doctor, status, hours,
-              # monday [--all | --from STEP], quarterly [--all]
+perch --help  # running the apps: init, projects, doctor; status, hours, fetch,
+              # board, weekly, digest, emails, monday [--all | --from STEP];
+              # accuracy, budget, forecast, cut, review, watch, quarterly
+              # [--all], tui
 make venv     # ~/Documents/tools/perch; Budgie from GitHub, then ../budgie
 make test     # perch only: ~/Documents/tools/perch/bin/pytest
 make test-all # Budgie, perch and gitboard suites
+make docs     # sphinx -W into docs/_build/html
 make lint     # ruff check .
 make format   # ruff format .
 ```
