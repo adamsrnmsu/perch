@@ -19,7 +19,8 @@ is one GitLab project + one Budgie project + one charge code, picked with
 ## Commands
 
 ```bash
-perch --help  # running the apps: init, projects, doctor; status, hours, fetch,
+perch --help  # running the apps: init [--year Y --year-start MM-01],
+              # projects, doctor; status, hours, fetch,
               # board, weekly, digest, emails, monday [--all | --from STEP];
               # accuracy, budget, forecast, cut, review, watch, quarterly
               # [--all], tui

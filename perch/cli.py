@@ -470,8 +470,20 @@ def projects():
     type=click.Path(file_okay=False, path_type=Path),
     help="The remote-gitboard checkout; needed with --home the first time.",
 )
-def init(name, home_dir, gitboard_dir):
-    """Scaffold projects/NAME/perch.yaml and the Budgie project budget/NAME."""
+@click.option(
+    "--year", default=None, help="Budgie's budget year, e.g. 2027 (new project only)."
+)
+@click.option(
+    "--year-start",
+    default=None,
+    help="First month of the year as MM-01; federal fiscal is 10-01 "
+    "(Budgie checks it).",
+)
+def init(name, home_dir, gitboard_dir, year, year_start):
+    """Scaffold projects/NAME/perch.yaml and the Budgie project budget/NAME.
+
+    --year and --year-start go to `budgie init`, so a fiscal-year project
+    needs no hand edit of budgie.yaml."""
     from perch.core.steps import StepFailed, budgie_init
     from perch.core.workspace import HOME_NAME, check_name, create_home, load_home
 
@@ -493,7 +505,7 @@ def init(name, home_dir, gitboard_dir):
                 f"{home.config_path(name)} exists; edit it instead."
             )
         if not (home.budget_dir(name) / "budgie.yaml").is_file():
-            _run(budgie_init(_bin_dir(), home, name))
+            _run(budgie_init(_bin_dir(), home, name, year, year_start))
         path = home.scaffold(name)
     except StepFailed as exc:
         raise click.ClickException(f"{name}: {exc}") from exc

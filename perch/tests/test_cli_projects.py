@@ -90,6 +90,25 @@ def test_init_makes_the_workspace_runs_budgie_init_and_writes_perch_yaml(
     )
 
 
+def test_init_passes_year_and_year_start_to_budgie(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    ran = fake_budgie_init(monkeypatch, tmp_path / "ws")
+    result = run(
+        "init",
+        "fed",
+        "--year",
+        "2027",
+        "--year-start",
+        "10-01",
+        "--home",
+        "ws",
+        "--gitboard-dir",
+        str(tmp_path / "gb"),
+    )
+    assert result.exit_code == 0, result.output
+    assert ran == [("init", "--year", "2027", "--year-start", "10-01", "fed")]
+
+
 def test_init_skips_budgie_init_when_the_budgie_project_exists(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo")
     (home.budget_dir("gemini")).mkdir(parents=True)

@@ -206,9 +206,22 @@ def hours(editor: str, config: Config) -> Step:
     return Step("hours", (*shlex.split(editor), str(path)), config.budgie_project)
 
 
-def budgie_init(bin_dir: Path, home: Home, name: str) -> Step:
-    """`budgie init NAME` from the workspace root writes budget/NAME."""
-    return Step("budgie init", (str(bin_dir / "budgie"), "init", name), home.root)
+def budgie_init(
+    bin_dir: Path,
+    home: Home,
+    name: str,
+    year: str | None = None,
+    year_start: str | None = None,
+) -> Step:
+    """`budgie init NAME` from the workspace root writes budget/NAME.
+
+    `year` / `year_start` pass straight through; Budgie validates them."""
+    argv = [str(bin_dir / "budgie"), "init"]
+    if year:
+        argv += ["--year", year]
+    if year_start:
+        argv += ["--year-start", year_start]
+    return Step("budgie init", (*argv, name), home.root)
 
 
 MONDAY_STEPS = ("fetch", "board", "weekly", "digest", "emails")
