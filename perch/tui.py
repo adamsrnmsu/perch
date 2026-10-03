@@ -39,6 +39,7 @@ from perch.core.command import parse
 from perch.core.config import load_config
 from perch.core.doctor import project_checks
 from perch.core.status import STEPS, next_command, next_step, status
+from perch.core.suite import entry_of, hop, in_suite, windows
 from perch.core.trend import (
     Change,
     _money,
@@ -186,7 +187,7 @@ def switch(entry: dict) -> None:
     try:
         os.chdir(entry["cwd"])
         os.execvp(entry["argv"][0], entry["argv"])
-    except OSError as exc:
+    except (OSError, ValueError) as exc:  # ValueError: an empty program name
         sys.exit(f"switch failed: {exc}")
 
 
@@ -540,13 +541,35 @@ class PerchTUI(App):
         self.action_refresh()
 
     def action_switch(self, target: str) -> None:
-        """Hand the terminal to Budgie or gitboard for the selected project."""
-        name = self._selected() if self._free() else None
+        """Budgie or gitboard for the selected project: in perch suite a hop to
+        its window (perch keeps running, busy or not), else an exec."""
+        inside = in_suite(os.environ)
+        name = self._selected() if inside or self._free() else None
         if name is None:
             return
         try:  # a bad config is a line in the pane, not a crash
-            os.environ[SUITE] = json.dumps(suite_map(self.home, name))
+            apps = suite_map(self.home, name)
         except _ERRORS as exc:
             self.notify(f"{name}: {exc}", severity="error")
             return
+        if inside:
+            self._hop(target, apps)
+            return
+        os.environ[SUITE] = json.dumps(apps)
         self.exit(target)
+
+    def _hop(self, target: str, apps: dict) -> None:
+        try:
+            listing = subprocess.run(
+                windows(), capture_output=True, text=True, check=False
+            ).stdout
+            current = entry_of(listing, target)
+            argv = hop(target, apps[target], json.dumps(apps), current)
+            done = subprocess.run(argv, capture_output=True, text=True, check=False)
+        except OSError as exc:
+            self.notify(f"{target}: switch failed: {exc}", severity="error")
+            return
+        if done.returncode:
+            self.notify(
+                f"{target}: switch failed: {done.stderr.strip()}", severity="error"
+            )

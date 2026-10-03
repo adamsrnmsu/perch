@@ -141,6 +141,7 @@ _SECTIONS = {
         "watch",
         "quarterly",
         "tui",
+        "suite",
     ],
 }
 
@@ -1081,3 +1082,54 @@ def tui():
     target = tui_mod.PerchTUI(_home()).run()
     if target:
         tui_mod.switch(tui_mod.suite_entry(target))
+    elif tui_mod.in_suite(os.environ):  # q in perch suite closes the whole suite
+        from perch.core.suite import kill
+
+        subprocess.run(kill(), check=False)
+
+
+@cli.command()
+@_project_option
+def suite(project):
+    """perch, Budgie and gitboard side by side; P, B and G hop between them at once.
+
+    Runs them in a hidden tmux of their own. Closing the terminal leaves the
+    suite running: run this again to come back to it. q in perch closes it.
+    """
+    import shutil
+
+    from perch import tui as tui_mod
+    from perch.core import suite as suite_mod
+
+    if shutil.which("tmux") is None:
+        raise click.ClickException("needs tmux: brew install tmux")
+    env = {k: v for k, v in os.environ.items() if k != "TMUX"}  # from inside a tmux too
+    running = subprocess.run(
+        suite_mod.has_session(), capture_output=True, env=env, check=False
+    )
+    if running.returncode:
+        home = _home()
+        names = home.projects()
+        if project is not None:
+            try:
+                home.select(project)
+            except ValueError as exc:
+                raise click.ClickException(str(exc)) from exc
+        name = project or (names[0] if names else None)
+        perch = {"cwd": str(home.root), "argv": [str(_bin_dir() / "perch"), "tui"]}
+        suite_map = None
+        if name is not None:
+            try:
+                suite_map = tui_mod.suite_map(home, name)
+            except tui_mod._ERRORS as exc:
+                click.echo(f"{name}: {exc}; starting perch only", err=True)
+        started = subprocess.run(
+            suite_mod.launch(perch, suite_map),
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        if started.returncode:
+            raise click.ClickException(f"tmux: {started.stderr.strip()}")
+    os.execvpe("tmux", suite_mod.attach(), env)

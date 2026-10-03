@@ -401,6 +401,7 @@ def test_suite_map_without_a_gitlab_project_lets_gitboard_choose(tmp_path):
 
 
 def test_b_and_g_set_pi_suite_and_exit_with_the_target(tmp_path, monkeypatch):
+    monkeypatch.delenv("TMUX", raising=False)
     home = build_home(tmp_path, "apollo")
     for key, target in (("B", "budgie"), ("G", "gitboard")):
         monkeypatch.setenv("PI_SUITE", "")  # restored after the test
@@ -416,6 +417,7 @@ def test_b_and_g_set_pi_suite_and_exit_with_the_target(tmp_path, monkeypatch):
 
 
 def test_switching_while_a_command_runs_says_busy(tmp_path, monkeypatch):
+    monkeypatch.delenv("TMUX", raising=False)
     home = build_home(tmp_path, "apollo")
     release = threading.Event()
 
@@ -469,6 +471,130 @@ def test_perch_tui_execs_the_target_it_exited_with(tmp_path, monkeypatch):
     monkeypatch.setattr(tui, "switch", switched.append)
     assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
     assert switched == [entry]
+
+
+# --- in perch suite: hop to the window, never exit ---------------------------
+
+SUITE_TMUX = "/private/tmp/tmux-501/pi,123,0"
+
+
+@pytest.fixture
+def hops(monkeypatch):
+    """In the suite; every tmux argv run, list-windows answering .listing."""
+    calls = []
+
+    class Fake:
+        listing = ""
+        stderr = ""  # non-empty: the hop call fails with it
+
+    def run(argv, **kw):
+        calls.append(list(argv))
+        if "list-windows" in argv:
+            return subprocess.CompletedProcess(argv, 0, Fake.listing, "")
+        return subprocess.CompletedProcess(
+            argv, 1 if Fake.stderr else 0, "", Fake.stderr
+        )
+
+    Fake.calls = calls
+    monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setenv("TMUX", SUITE_TMUX)
+    monkeypatch.setenv("PI_SUITE", "untouched")
+    return Fake
+
+
+def test_in_suite_b_hops_and_perch_keeps_running(tmp_path, hops):
+    from perch.core import suite
+
+    home = build_home(tmp_path, "apollo")
+    m = tui.suite_map(home, "apollo")
+
+    async def script(app, pilot):
+        await pilot.press("B")
+        await pilot.pause()
+        assert app.is_running
+
+    run(tui.PerchTUI(home), script)
+    assert hops.calls == [
+        suite.windows(),
+        suite.hop("budgie", m["budgie"], json.dumps(m), None),
+    ]
+    assert os.environ["PI_SUITE"] == "untouched"
+
+
+def test_in_suite_hopping_while_a_command_runs_is_fine(tmp_path, hops, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    release = threading.Event()
+
+    def slow(argv, cwd, started, env=None):
+        release.wait(5)
+        yield "done"
+
+    monkeypatch.setattr(tui, "_spawn", slow)
+
+    async def script(app, pilot):
+        await pilot.press("b")
+        await pilot.pause()
+        await pilot.press("G")
+        await pilot.pause()
+        assert not any(n.startswith("busy") for n in _notices(app))
+        assert len(hops.calls) == 2
+        release.set()
+        await settle(app, pilot)
+
+    try:
+        run(tui.PerchTUI(home), script)
+    finally:
+        release.set()
+
+
+def test_in_suite_a_failed_hop_says_why(tmp_path, hops):
+    hops.stderr = "can't find window: gitboard"
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        await pilot.press("G")
+        await pilot.pause()
+        assert app.is_running
+        assert "gitboard: switch failed: can't find window: gitboard" in _notices(app)
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_q_in_perch_suite_closes_the_suite(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from perch.cli import cli
+    from perch.core import suite
+
+    build_home(tmp_path, "apollo")
+    monkeypatch.chdir(tmp_path / "ws")
+    monkeypatch.setenv("TMUX", SUITE_TMUX)
+    monkeypatch.setattr(tui.PerchTUI, "run", lambda self: None)
+    ran = []
+    monkeypatch.setattr(subprocess, "run", lambda argv, **kw: ran.append(argv))
+    assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
+    assert ran == [suite.kill()]
+
+
+def test_q_outside_the_suite_just_quits(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from perch.cli import cli
+
+    build_home(tmp_path, "apollo")
+    monkeypatch.chdir(tmp_path / "ws")
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.setattr(tui.PerchTUI, "run", lambda self: None)
+    ran = []
+    monkeypatch.setattr(subprocess, "run", lambda argv, **kw: ran.append(argv))
+    assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
+    assert ran == []
+
+
+def test_switch_with_an_empty_program_says_why(tmp_path):
+    with pytest.raises(SystemExit) as exc:
+        tui.switch({"cwd": str(tmp_path), "argv": [""]})
+    assert "switch failed" in str(exc.value.code)
 
 
 # --- the Monday grid: step cells, Enter, FAIL, one-row refresh ---------------
