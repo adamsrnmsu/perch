@@ -94,3 +94,46 @@ def test_to_md_renders_each_block_and_md_wins():
         "# T\n\nintro\n- a\n- b\n\n**Open:** 41 (6 unassigned)\n**Done:** 7\n\n"
         "| x | y |\n| --- | --- |\n| 1 | 2 |\n\n**plain**\n"
     )
+
+
+def test_non_finite_bar_values_are_not_a_block():
+    line = '{"pi": 1, "block": "bars", "items": [["a", 5], ["b", Infinity]]}'
+    assert b.parse(line) is None
+    assert b.parse(line.replace("Infinity", "NaN")) is None
+
+
+def test_bars_have_a_pipe_table_markdown_and_md_still_wins():
+    bars = b.bars([("a", 5), ("b", 2.5)])
+    assert b.to_md([bars]) == "| name | n |\n| --- | --- |\n| a | 5 |\n| b | 2.5 |\n"
+    assert b.to_md([{**bars, "md": "x"}]) == "x\n"
+
+
+def test_markup_in_strings_prints_literally_in_the_terminal(monkeypatch):
+    from rich.console import Console
+
+    from perch import cli
+
+    buf = io.StringIO()
+    monkeypatch.setattr(cli, "console", Console(file=buf, width=80))
+    for blk in (
+        b.table(["[/x]"], [["[bold]x[/bold]"]], title="[/t]"),
+        b.text("[red]hi"),
+        b.heading("[/h]"),
+        b.bullets(["[/i]"]),
+        b.figures([b.figure("[/l]", "[/v]", note="[/n]")]),
+        b.bars([("[/b]", 1)], title="[/t]"),
+    ):
+        cli._print_block(blk)
+    out = buf.getvalue()
+    for lit in (
+        "[/x]",
+        "[bold]x[/bold]",
+        "[red]hi",
+        "[/h]",
+        "[/i]",
+        "[/l]",
+        "[/v]",
+        "[/n]",
+        "[/b]",
+    ):
+        assert lit in out

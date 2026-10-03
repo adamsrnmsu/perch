@@ -1107,3 +1107,46 @@ def test_o_with_no_cards_does_nothing(tmp_path):
         assert app.screen.maximized is None
 
     run(tui.PerchTUI(build_home(tmp_path, "apollo")), script)
+
+
+def test_markup_in_block_strings_shows_literally(tmp_path, monkeypatch):
+    lines = [
+        _j(b.table(["[/x]"], [["[bold]x[/bold]"]])),
+        _j(b.text("[red]hi")),
+        _j(b.figures([b.figure("[/l]", "[/v]", note="[/n]")])),
+        _j(b.bullets(["[/i]"])),
+    ]
+    home = _block_run(monkeypatch, tmp_path, lines)
+
+    async def script(app, pilot):
+        await pilot.press("d")
+        await settle(app, pilot)
+        card = app.query_one(tui.RunCard)
+        (table,) = card.query(DataTable)
+        assert str(table.get_row_at(0)[0]) == "[bold]x[/bold]"
+        assert str(next(iter(table.columns.values())).label) == "[/x]"
+        assert "[red]hi" in _texts(card)
+        assert "[/i]" in "".join(_texts(card))
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_bar_lines_survive_zero_top_and_negatives():
+    assert tui.bar_lines([("a", 0), ("b", -3)], None, 30).plain.count("█") == 0
+    assert (
+        tui.bar_lines([("a", 4), ("b", -3)], None, 30).plain.split("\n")[1].count("█")
+        == 0
+    )
+
+
+def test_the_projects_grid_is_found_by_id_beside_card_tables(tmp_path, monkeypatch):
+    home = _block_run(monkeypatch, tmp_path, [_j(b.table(["n"], [["1"]]))])
+
+    async def script(app, pilot):
+        await pilot.press("d")
+        await settle(app, pilot)
+        await pilot.press("r")
+        await pilot.pause()
+        assert app.query_one("#projects", tui.Grid).row_count == 1
+
+    run(tui.PerchTUI(home), script)

@@ -63,7 +63,7 @@ BRD board, MON monday, DOC doctor, FCST forecast, WTCH watch, QTR quarterly,
 CUT cut, HRS hours, STAT status, FTCH fetch, DIG digest, MAIL emails, WKLY
 weekly, BUD budget; perch's own command names work too, and `ALL` takes MON,
 WTCH, QTR and STAT. `i` explains the cell under the cursor (checks, the team's
-recent weeks, a step's state). The Trend column is the team's headroom over its
+recent weeks, a step's state). `o` opens the newest output card full screen. The Trend column is the team's headroom over its
 last 8 recorded weeks, the line above the table says what moved since the week
 before, and a stoplight that flipped shows in reverse and toasts once per
 session. All of it comes from the team row of `history.jsonl`: no names, nothing

@@ -10,6 +10,7 @@ in a terminal, cli.py's).
 from __future__ import annotations
 
 import json
+import math
 import os
 import sys
 from collections.abc import Iterable
@@ -17,6 +18,12 @@ from typing import TextIO
 
 ENV = "PI_BLOCKS"
 TONES = ("good", "warn", "bad", "dim")
+TONE_STYLE = {
+    "good": "green",
+    "warn": "yellow",
+    "bad": "red",
+    "dim": "dim",
+}  # rich styles
 
 
 def wanted() -> bool:
@@ -114,6 +121,7 @@ def _bar(item) -> bool:
         and isinstance(item[0], str)
         and isinstance(item[1], int | float)
         and not isinstance(item[1], bool)
+        and math.isfinite(item[1])
     )
 
 
@@ -174,7 +182,12 @@ def _md(b: dict) -> str:
         cols = b["columns"]
         rows = [cols, ["---"] * len(cols), *b["rows"]]
         return "\n".join("| " + " | ".join(r) + " |" for r in rows)
-    return ""  # ponytail: bars have no generic markdown; give them an `md`
+    rows = [
+        ["name", "n"],
+        ["---", "---"],
+        *([k, str(n)] for k, n in b["items"]),
+    ]  # bars
+    return "\n".join("| " + " | ".join(r) + " |" for r in rows)
 
 
 def to_md(blocks: list[dict]) -> str:

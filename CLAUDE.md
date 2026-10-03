@@ -50,6 +50,13 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `core/steps.py` -- every Budgie/gitboard/perch call as a `Step(argv, cwd,
   env)`; nothing here executes. `run_projects` is `monday --all`'s
   carry-on-past-a-failure loop.
+- `core/blocks.py` -- the PI_BLOCKS contract
+  (`docs/superpowers/specs/2026-10-02-tui-blocks-design.md`): with `PI_BLOCKS=1`
+  a command prints one JSON line per block instead of text. One builder per
+  report, rendered three ways: rich in the terminal (`cli._print_block`),
+  widgets in the TUI, markdown (`to_md`) and the JSON lines. `parse` rejects
+  anything off-contract (the TUI shows that line as text). Strings are never
+  rich markup.
 - `core/doctor.py` -- `Check(ok, what, fix)` values for `perch doctor`.
 - `core/status.py` -- `perch status` and the TUI's step cells: done, stale,
   todo, failed or error per Monday step this ISO week, read only from the files
@@ -111,7 +118,9 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   project's row is redrawn. `:` opens the command line (`c` prefilled `CUT `),
   `i` explains the cursor's cell in an info card, the Trend column and the
   `#changes` strip read `core/trend.py`, and a stoplight flip toasts once.
-  Display and key handling only, like cli.py.
+  `o` maximizes the newest card. Blocks from a command's output mount as
+  widgets in its card (tables, bars, figures). Display and key handling only,
+  like cli.py.
 
 ## Testing
 

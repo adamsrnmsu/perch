@@ -20,7 +20,7 @@ from perch.core.steps import MONDAY_STEPS
 console = Console()
 
 _SIGNAL_TONE = {"GREEN": "good", "YELLOW": "warn", "RED": "bad", "BLUE": "dim"}
-_TONE_STYLE = {"good": "green", "warn": "yellow", "bad": "red", "dim": "dim"}
+_TONE_STYLE = bk.TONE_STYLE
 
 
 def _print_block(b: dict) -> None:
@@ -41,7 +41,7 @@ def _print_block(b: dict) -> None:
         align = b.get("align") or ["l"] * len(b["columns"])
         t = Table(title=Text(b["title"]) if b.get("title") else None)
         for head, a in zip(b["columns"], align, strict=True):
-            t.add_column(head, justify="right" if a == "r" else "left")
+            t.add_column(Text(head), justify="right" if a == "r" else "left")
         for row in b["rows"]:
             t.add_row(*map(Text, row))
         console.print(t)

@@ -197,7 +197,7 @@ def switch(entry: dict) -> None:
         sys.exit(f"switch failed: {exc}")
 
 
-_TONE = {"good": "green", "warn": "yellow", "bad": "red", "dim": "dim"}
+_TONE = blocks.TONE_STYLE
 TABLE_ROWS = 12  # a table shows this many rows, then scrolls
 
 
@@ -212,7 +212,7 @@ def bar_lines(items: list, unit: str | None, width: int) -> Text:
     room = max(width - pad - max(map(len, nums), default=0) - 2, 1)
     top = max((n for _, n in items), default=0)
     lines = [
-        f"{label:<{pad}} {'█' * (round(room * n / top) if top > 0 else 0)} {num}"
+        f"{label:<{pad}} {'█' * (round(room * n / top) if top > 0 and n > 0 else 0)} {num}"
         for (label, n), num in zip(items, nums, strict=True)
     ]
     return Text("\n".join(lines))
@@ -411,11 +411,11 @@ class PerchTUI(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.query_one(DataTable).add_columns(*COLUMNS)
+        self.query_one("#projects", Grid).add_columns(*COLUMNS)
         self.action_refresh()
 
     def action_refresh(self) -> None:
-        table = self.query_one(DataTable)
+        table = self.query_one("#projects", Grid)
         at = table.cursor_coordinate
         table.clear()
         self.names = self.home.projects()  # a project made meanwhile shows up
@@ -446,7 +446,7 @@ class PerchTUI(App):
         if not self.names:
             self.notify("no projects yet. Run: perch init <name>", severity="warning")
             return None
-        return self.names[self.query_one(DataTable).cursor_coordinate.row]
+        return self.names[self.query_one("#projects", Grid).cursor_coordinate.row]
 
     def _free(self) -> bool:
         if self.busy:
@@ -553,7 +553,7 @@ class PerchTUI(App):
         if name not in self.names:  # None (`a`), or a project gone meanwhile
             self.action_refresh()
             return
-        table = self.query_one(DataTable)
+        table = self.query_one("#projects", Grid)
         at = self.names.index(name)
         cells, self.changes[name] = snapshot(self.home, name)
         for col, cell in enumerate(cells):
@@ -577,7 +577,7 @@ class PerchTUI(App):
         box = self.query_one("#command", Input)
         box.display = False
         box.value = ""
-        self.query_one(DataTable).focus()
+        self.query_one("#projects", Grid).focus()
         self.screen.minimize()  # Escape also restores a maximized card
 
     def action_open(self) -> None:
@@ -594,7 +594,9 @@ class PerchTUI(App):
             self.notify(str(exc), severity="error")
             return
         if command.args[0] == "hours":
-            self.query_one(DataTable).move_cursor(row=self.names.index(command.project))
+            self.query_one("#projects", Grid).move_cursor(
+                row=self.names.index(command.project)
+            )
             self.action_hours()
         elif self._free():
             self._start(command.project, " ".join(command.args), list(command.args))
