@@ -807,6 +807,22 @@ def test_rev_hands_the_terminal_to_review_on_that_projects_row(
     run(tui.PerchTUI(home), script)
 
 
+def test_review_without_a_pulled_board_toasts_and_keeps_the_screen(
+    tmp_path, monkeypatch
+):
+    home = build_home(tmp_path, "apollo")
+    suspended = []
+    monkeypatch.setattr(tui.PerchTUI, "suspend", lambda self: suspended.append(1))
+
+    async def script(app, pilot):
+        await pilot.press("R")
+        await settle(app, pilot)
+        assert suspended == []
+        assert any("gitboard pull grp/apollo" in n for n in _notices(app))
+
+    run(tui.PerchTUI(home), script)
+
+
 def test_the_trend_cell_is_a_sparkline_of_recorded_headroom(tmp_path):
     home = build_home(tmp_path, "apollo", "beta")
     _weeks(home, "apollo", (0, "red"), (50, "yellow"), (100, "green"))
