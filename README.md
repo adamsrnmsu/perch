@@ -35,6 +35,11 @@ perch projects                 # every project, its GitLab project, how fresh it
 perch doctor                   # tools, config, people names, freshness; FIX lines say what to run
 perch status                   # each project's Monday steps: ok, stale, todo or FAIL, and the next command
 perch hours -p apollo          # paste this week's apollo timesheet totals
+perch fetch -p apollo          # refresh the board dump (one GitLab read)
+perch digest -p apollo         # gitboard's team and per-person digest, from the same dump
+perch emails -p apollo         # Budgie's per-person hours-left drafts (.eml)
+perch budget -p apollo         # which input files Budgie reads, and what each feeds
+perch forecast -p apollo       # Budgie's cost forecast with P10/P50/P90
 perch monday --all             # fetch, board, weekly, digest, emails for every project
 perch monday -p apollo --from weekly  # resume at a step after a failure
 perch watch -p apollo          # private: anyone out of line with their own last 8 weeks
@@ -70,7 +75,7 @@ before, and a stoplight that flipped shows in reverse and toasts once per
 session. All of it comes from the team row of `history.jsonl`: no names, nothing
 from the watch, nothing sent.
 
-Board edits (pull, plan, land, tui) are `gitboard` commands, run from the
+Board edits (pull, plan, push, tui) are `gitboard` commands, run from the
 gitboard checkout with the project's `gitlab_project`.
 
 `perch review` is the review after a pull: it opens Claude in the gitboard
@@ -122,7 +127,8 @@ each milestone's open work. It never says which issues to drop.
 and Budgie's forecast at completion, estimate misses in dollars (MODELLED),
 issues closed and hours booked per ISO week, blocked issue-days, and the
 quarter's `plan.csv` changes. The default is the last complete quarter of the
-Budgie year. It is rebuilt from the readings, budget.csv, plan.csv and the
+Budgie year. Quarters follow the Budgie project's `year_start`: a calendar year
+names them `2026-Q3`, a fiscal year `FY27-Q1`. It is rebuilt from the readings, budget.csv, plan.csv and the
 board dump, so a source that does not cover the quarter says so in the report.
 When the dump's history (gitboard's `since`) reaches back over the whole
 previous quarter of the same year, its totals (issues closed, hours, hours per
