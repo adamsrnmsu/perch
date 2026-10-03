@@ -7,8 +7,11 @@ book 40, 45, 50, 55 h (interpolated between 160 at 03-22 and 200), so 3 of 4
 are out of line. Bob books 40 h in 8 weeks, 20 h in any four: 4 of 4.
 """
 
+import json
+import os
 from dataclasses import replace
 from datetime import date
+from pathlib import Path
 
 import pytest
 
@@ -17,7 +20,7 @@ from perch.core.estimates import Estimate
 from perch.core.history import week_key
 from perch.core.join import calibrate
 from perch.core.money import Money, load_money
-from perch.core.watch import render, summary, watch
+from perch.core.watch import render, summary, watch, watch_blocks
 from perch.tests.conftest import week
 
 PEOPLE = {"asmith": "Alice", "bjones": "Bob"}
@@ -286,3 +289,45 @@ def test_watch_all_with_no_projects_says_init(tmp_path, monkeypatch):
     result = CliRunner().invoke(cli, ["watch", "--all"])
     assert result.exit_code != 0
     assert "no projects yet. Run: perch init <name>" in result.output
+
+
+# -- markdown stays byte-identical to the pre-blocks render --------------------
+
+GOLDEN = Path(__file__).parent / "golden"
+
+
+def check_golden(name, text):
+    path = GOLDEN / name
+    if os.environ.get("GOLDEN_WRITE"):
+        path.write_text(text)
+    assert text == path.read_text()
+
+
+@pytest.mark.parametrize("n", [5, 13, 14])
+def test_markdown_is_byte_identical(world, n):
+    check_golden(f"watch_{n}.md", render(world_watch(world, history(n))))
+
+
+def test_blocks_are_valid_and_have_no_ranking_words(world):
+    from perch.core import blocks
+
+    for rows in (history(14), history(13)):
+        made = watch_blocks(world_watch(world, rows))
+        assert all(blocks.parse(json.dumps(b)) == b for b in made)
+        assert not [w for w in BANNED if w in json.dumps(made).lower()]
+    flagged = watch_blocks(world_watch(world, history(13)))
+    assert {"pi": 1, "block": "text", "text": "1 flag(s).", "tone": "warn"} in flagged
+
+
+def test_cli_emits_blocks_when_asked_and_markdown_otherwise(world, monkeypatch):
+    from click.testing import CliRunner
+
+    from perch.cli import cli
+    from perch.core import blocks
+
+    args = ["watch", "--config", str(world)]
+    md = CliRunner().invoke(cli, args).output
+    assert md.startswith("# Watch, ")
+    monkeypatch.setenv("PI_BLOCKS", "1")
+    lines = CliRunner().invoke(cli, args).output.splitlines()
+    assert lines and all(blocks.parse(x) for x in lines)

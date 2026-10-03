@@ -63,3 +63,31 @@ def test_board_on_a_malformed_dump_is_a_clean_error(world):
     assert result.exit_code == 1
     assert "stats --dump" in result.output and "Traceback" not in result.output
     assert isinstance(result.exception, SystemExit)
+
+
+def blocks_of(result):
+    from perch.core.blocks import parse
+
+    out = [parse(line) for line in result.stdout.splitlines()]
+    assert all(out), result.output  # every line is a block
+    return out
+
+
+def test_board_as_blocks(world):
+    result = CliRunner().invoke(
+        cli, ["board", "--config", str(world), "--no-history"], env={"PI_BLOCKS": "1"}
+    )
+    assert result.exit_code == 0, result.output
+    out = blocks_of(result)
+    assert [b["block"] for b in out[:2]] == ["table", "table"]
+    assert out[0]["title"].endswith("the open board")
+    assert out[0]["rows"][0][0] == "Alice"
+    figures = next(b for b in out if b["block"] == "figures")["items"]
+    by = {f["label"]: f for f in figures}
+    assert by["Spent to date"]["value"] == "$26,000"
+    assert by["Cost to clear the board"]["value"].startswith("$")
+    assert by["Cost to clear the board"]["note"].startswith("P10 ")
+    assert by["Budget (latest)"]["value"] == "$100,000"
+    stoplight = next(b for b in out if b["block"] == "text" and "GOOD" in b["text"])
+    assert stoplight["tone"] == "good"
+    assert any(b["block"] == "text" and "cdoe" in b["text"] for b in out)

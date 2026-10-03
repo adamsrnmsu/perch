@@ -151,3 +151,44 @@ def parse(line: str) -> dict | None:
     if obj.get("title") is not None and not isinstance(obj["title"], str):
         return None
     return obj
+
+
+def _md(b: dict) -> str:
+    """One block as markdown; the block's own `md` wins."""
+    if b.get("md") is not None:
+        return b["md"]
+    kind = b["block"]
+    if kind == "heading":
+        return f"{'#' * b['level']} {b['text']}"
+    if kind == "text":
+        return b["text"]
+    if kind == "list":
+        return "\n".join(f"- {i}" for i in b["items"])
+    if kind == "figures":
+        return "\n".join(
+            f"**{f['label']}:** {f['value']}"
+            + (f" ({f['note']})" if "note" in f else "")
+            for f in b["items"]
+        )
+    if kind == "table":
+        cols = b["columns"]
+        rows = [cols, ["---"] * len(cols), *b["rows"]]
+        return "\n".join("| " + " | ".join(r) + " |" for r in rows)
+    return ""  # ponytail: bars have no generic markdown; give them an `md`
+
+
+def to_md(blocks: list[dict]) -> str:
+    """Markdown for a block list: paragraphs split by a blank line, except a
+    list straight after text, which hugs it."""
+    out = ""
+    prev = None
+    for b in blocks:
+        out += (
+            ""
+            if prev is None
+            else "\n"
+            if (prev, b["block"]) == ("text", "list")
+            else "\n\n"
+        ) + _md(b)
+        prev = b["block"]
+    return out + "\n"

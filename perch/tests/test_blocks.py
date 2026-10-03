@@ -75,3 +75,22 @@ def test_wanted_reads_the_env(monkeypatch):
 def test_a_block_may_carry_md():
     line = json.dumps({**b.text("x"), "md": "**x**"})
     assert b.parse(line)["md"] == "**x**"
+
+
+def test_to_md_renders_each_block_and_md_wins():
+    got = b.to_md(
+        [
+            b.heading("T", 1),
+            b.text("intro"),
+            b.bullets(["a", "b"]),
+            b.figures(
+                [b.figure("Open", "41", note="6 unassigned"), b.figure("Done", "7")]
+            ),
+            b.table(["x", "y"], [["1", "2"]]),
+            {**b.text("plain"), "md": "**plain**"},
+        ]
+    )
+    assert got == (
+        "# T\n\nintro\n- a\n- b\n\n**Open:** 41 (6 unassigned)\n**Done:** 7\n\n"
+        "| x | y |\n| --- | --- |\n| 1 | 2 |\n\n**plain**\n"
+    )

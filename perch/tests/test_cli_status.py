@@ -128,3 +128,21 @@ def test_watch_for_a_project_writes_the_weeks_copy(tmp_path, monkeypatch):
     monkeypatch.chdir(home.root)
     assert run("watch", "-p", "apollo").exit_code == 0
     assert home.watch_path("apollo", iso_week(date.today())).is_file()  # noqa: DTZ011
+
+
+def test_status_as_blocks(tmp_path, monkeypatch):
+    from perch.core.blocks import parse
+
+    home = build_home(tmp_path, "apollo", "gemini")
+    monkeypatch.chdir(home.root)
+    recorder(monkeypatch, fail=lambda s: s.name == "weekly")
+    run("monday", "-p", "apollo")
+    result = CliRunner().invoke(cli, ["status"], env={"PI_BLOCKS": "1"})
+    assert result.exit_code == 0, result.output
+    out = [parse(line) for line in result.stdout.splitlines()]
+    assert all(out), result.output
+    table, nxt = out
+    assert table["block"] == "table" and table["columns"][0] == "project"
+    assert [r[0] for r in table["rows"]] == ["apollo", "gemini"]
+    assert "FAIL" in table["rows"][0]
+    assert nxt["block"] == "list" and "next: perch hours -p apollo" in nxt["items"]
