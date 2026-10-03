@@ -54,13 +54,16 @@ nothing there executes). `perch suite` in `cli.py` runs them.
    project in perch.
 3. Otherwise build the map with `suite_map(home, name)` (`name` from `-p`, else
    the first project; no project at all: the same error `perch tui` gives) and
-   start the server with one chained command:
+   start the server with one chained command. The options come first: tmux
+   applies `default-terminal` when a pane is spawned, so a window made before
+   it would run with the wrong `TERM`.
 
    ```
    tmux -L pi -f /dev/null
-     new-session -d -s pi -n perch -c CWD -e PI_SUITE=MAP ARGV...
-     ; set-option -w -t pi:=perch @entry ENTRY
+     start-server
      ; <the options below>
+     ; new-session -d -s pi -n perch -c CWD -e PI_SUITE=MAP ARGV...
+     ; set-option -w -t pi:=perch @entry ENTRY
      ; new-window -d -n budgie -c CWD -e PI_SUITE=MAP ARGV...
      ; set-option -w -t pi:=budgie @entry ENTRY
      ; new-window -d -n gitboard ...   (same)
@@ -71,13 +74,21 @@ nothing there executes). `perch suite` in `cli.py` runs them.
    (`-d`), so gitboard's fetch happens while you look at perch and the first
    hop is already warm.
 
+   If `suite_map` raises (a bad `perch.yaml` or `budgie_project`), start the
+   session with the perch window only, its `PI_SUITE` unset, and print the
+   error. perch opens as `perch tui` would, and hops create the other windows
+   later (step 2 of the hop). Warming them up first is a nicety; it never
+   stops the suite starting.
+
 `ENTRY` is `json.dumps(entry, sort_keys=True)` of that app's `{"cwd", "argv"}`.
 It is how a window says what it is running (see Hopping).
 
 ### The options (no config file)
 
-Sent as `set-option -g` commands in the chain above, so there is no file to
-ship or find:
+Sent as `set-option` commands in the chain above, so there is no file to
+ship or find. `escape-time`, `focus-events` and `terminal-features` are server
+options (`-s`); `remain-on-exit` is a window option (`-gw`); the rest are
+session options (`-g`).
 
 | Option | Value | Why |
 |---|---|---|
@@ -162,6 +173,15 @@ existing `suite_entry`/`switch`.
 tmux sends a focus-in sequence when a window comes to the front, because
 `focus-events` is on. Textual already turns on focus reporting and posts
 `events.AppFocus`.
+
+Probed on 2026-10-02 with tmux 3.7c and Textual 8.2.8: a Textual app in one
+window and an empty second window, with a client attached through a pty that
+sent the terminal focus-in sequence. Each `select-window` delivered `AppBlur`
+to the app as it was left and `AppFocus` as it came back. It depends on the
+outer terminal reporting focus to tmux; Terminal.app, iTerm2, Ghostty and
+the VS Code terminal do. Without that report the app got one `AppFocus` and
+then nothing, so on a terminal without focus reporting the refresh simply
+does not happen and `r` still works.
 
 - **perch:** `on_app_focus` starts a refresh in a worker. The hop is instant
   and the cells update about a second later; the cursor stays put. Measured
