@@ -2,8 +2,9 @@ from dataclasses import replace
 from datetime import date
 
 import pytest
+from budgie.core.calendar import year_span
 
-from perch.core.board import load_board
+from perch.core.board import Board, Issue, load_board
 from perch.core.config import load_config
 from perch.core.estimates import load_estimates
 from perch.core.join import Rates, calibrate, hours_for, notes, person_rows, rollup
@@ -16,7 +17,7 @@ def loaded(world):
     board = load_board(config.board_dump)
     money = load_money(config.budgie_project)
     estimates = load_estimates(config.estimates)
-    rates = calibrate(money.readings, board, config.people, money.year)
+    rates = calibrate(money.readings, board, config.people, money.span)
     return config, board, money, estimates, rates
 
 
@@ -77,7 +78,7 @@ def test_the_rollup_uses_budgies_simulation_and_signal(loaded):
 
 def test_no_actuals_means_no_basis_not_a_made_up_number(loaded):
     config, board, money, estimates, _ = loaded
-    rates = calibrate({}, board, config.people, money.year)
+    rates = calibrate({}, board, config.people, money.span)
     rows = {
         r.name: r for r in person_rows(board, estimates, rates, config.people, money)
     }
@@ -98,3 +99,16 @@ def test_notes_name_what_the_lead_should_distrust(loaded):
     said = " ".join(notes(stale, rows, people, money))
     assert "Not in Budgie's people.csv, so uncosted: Carol" in said
     assert "different moments" in said
+
+
+def test_calibrate_counts_a_december_close_inside_a_fiscal_year():
+    fy27 = year_span(2027, "10-01")
+    board = Board(
+        "grp/proj", "Dev", date(2026, 12, 31),
+        (Issue(1, "t", "asmith", (), date(2026, 12, 15)),),
+    )  # fmt: skip
+    rates = calibrate(
+        {"Alice": [(date(2026, 12, 27), 40.0)]}, board, {"asmith": "Alice"}, fy27
+    )
+    # Oct 1 to Dec 27: 40 h for 1 issue. A calendar-year filter dropped the close.
+    assert rates.people["Alice"].mode == 40.0
