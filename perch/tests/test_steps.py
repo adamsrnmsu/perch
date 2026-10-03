@@ -115,3 +115,27 @@ def test_run_projects_carries_on_past_a_failure():
         ("b", "fetch exited 2"),
         ("c", None),
     ]
+
+
+def test_review_opens_claudes_board_command_in_gitboard_with_the_team_lines(tmp_path):
+    home, config = apollo(tmp_path)
+    (home.gitboard_dir / "boards").mkdir(parents=True)
+    (home.gitboard_dir / "boards" / "apollo.yaml").write_text("")
+    step = steps.review(home, "apollo", config, ["GREEN · over 5%", "2026-W40  $1"])
+    claude, flag, context, prompt = step.argv
+    assert (claude, flag, prompt) == (
+        "claude",
+        "--append-system-prompt",
+        "/board grp/apollo",
+    )
+    assert context.endswith("\nGREEN · over 5%\n2026-W40  $1")
+    assert "never rank" in context and step.cwd == home.gitboard_dir
+
+
+def test_review_without_a_pulled_board_says_how_to_pull_it(tmp_path):
+    home, config = apollo(tmp_path)
+    with pytest.raises(WorkspaceError, match="gitboard pull grp/apollo --base"):
+        steps.review(home, "apollo", config, [])
+    _, bare = apollo(tmp_path / "bare", gitlab=False)
+    with pytest.raises(WorkspaceError, match="gitlab_project"):
+        steps.review(home, "apollo", bare, [])

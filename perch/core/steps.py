@@ -77,6 +77,51 @@ def fetch(home: Home, project: str, config: Config) -> Step:
     )
 
 
+REVIEW_RULES = (
+    "perch's budget picture for this board follows: team level, from the last "
+    "`perch board` run (stoplight · chance the board breaks the budget · budget "
+    "· spent · headroom · hours left · cost to clear P10/P50/P90, then headroom "
+    "by week). Use it to weigh priority and milestones, and say plainly when the "
+    "open board does not fit the money left. Quote it; do not recompute it. Team "
+    "level only: never rank, compare or single out people."
+)
+
+
+def review(home: Home, project: str, config: Config, team: list[str]) -> Step:
+    """Claude's /board on the pulled board, told what perch knows about the money.
+
+    `team` is `trend.team_lines` over history.jsonl: no person row, nothing
+    from the watch. /board stages edits in boards/<name>.yaml, so no pull, no
+    review.
+    """
+    if not config.gitlab_project:
+        raise WorkspaceError(
+            f"{project}: perch.yaml has no gitlab_project; "
+            f"add e.g. `gitlab_project: group/{project}`"
+        )
+    spec = (
+        home.gitboard_dir
+        / "boards"
+        / f"{config.gitlab_project.rsplit('/', 1)[-1]}.yaml"
+    )
+    if not spec.is_file():
+        raise WorkspaceError(
+            f"{project}: no {spec}; pull it first: (cd {shlex.quote(str(home.gitboard_dir))}"
+            f" && gitboard pull {config.gitlab_project} --base)"
+        )
+    context = "\n".join((REVIEW_RULES, *team))
+    return Step(
+        "review",
+        (
+            "claude",
+            "--append-system-prompt",
+            context,
+            f"/board {config.gitlab_project}",
+        ),
+        home.gitboard_dir,
+    )
+
+
 def board(bin_dir: Path, home: Home, project: str) -> Step:
     config = str(home.config_path(project))
     return Step(

@@ -788,6 +788,25 @@ def test_hrs_opens_the_editor_on_that_projects_row(tmp_path, spawned, monkeypatc
     run(tui.PerchTUI(home), script)
 
 
+def test_rev_hands_the_terminal_to_review_on_that_projects_row(
+    tmp_path, spawned, monkeypatch
+):
+    home = build_home(tmp_path, "apollo", "beta")
+    opened = []
+    monkeypatch.setattr(
+        tui.PerchTUI, "action_review", lambda self: opened.append(self._selected())
+    )
+
+    async def script(app, pilot):
+        await pilot.press("colon")
+        app.query_one("#command", Input).value = "beta REV"
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert opened == ["beta"] and spawned == []
+
+    run(tui.PerchTUI(home), script)
+
+
 def test_the_trend_cell_is_a_sparkline_of_recorded_headroom(tmp_path):
     home = build_home(tmp_path, "apollo", "beta")
     _weeks(home, "apollo", (0, "red"), (50, "yellow"), (100, "green"))

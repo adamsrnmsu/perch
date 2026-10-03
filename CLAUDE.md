@@ -47,9 +47,11 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `core/config.py` -- perch.yaml to a frozen `Config`; every error names the key.
 - `core/workspace.py` -- perch-home.yaml (walk up, else $PERCH_HOME), the
   projects under projects/, `-p` selection, and scaffolding a project.
-- `core/steps.py` -- every Budgie/gitboard/perch call as a `Step(argv, cwd,
+- `core/steps.py` -- every Budgie/gitboard/perch/claude call as a `Step(argv, cwd,
   env)`; nothing here executes. `run_projects` is `monday --all`'s
-  carry-on-past-a-failure loop.
+  carry-on-past-a-failure loop. `review` opens `claude "/board ..."` in the
+  gitboard checkout with `trend.team_lines` appended: never a person row,
+  never the watch.
 - `core/doctor.py` -- `Check(ok, what, fix)` values for `perch doctor`.
 - `core/status.py` -- `perch status` and the TUI's step cells: done, stale,
   todo, failed or error per Monday step this ISO week, read only from the files
