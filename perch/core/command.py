@@ -26,6 +26,7 @@ MNEMONICS = {
     "MAIL": "emails",
     "WKLY": "weekly",
     "BUD": "budget",
+    "REV": "review",
 }
 ALL = {"monday", "watch", "quarterly", "status"}  # what ALL accepts
 FROM = ("fetch", "board", "weekly", "digest", "emails")  # monday --from

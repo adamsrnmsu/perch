@@ -137,6 +137,7 @@ _SECTIONS = {
         "budget",
         "forecast",
         "cut",
+        "review",
         "watch",
         "quarterly",
         "tui",
@@ -519,6 +520,20 @@ def budget(project):
     from perch.core import steps
 
     _one(project, lambda home, name, config: steps.budget(_bin_dir(), config))
+
+
+@cli.command()
+@_project_option
+def review(project):
+    """Claude's /board on the pulled board: labels, priority, flags, with the budget."""
+    from perch.core import history, steps
+
+    _one(
+        project,
+        lambda home, name, config: steps.review(
+            home, name, config, history.load(config.history)
+        ),
+    )
 
 
 @cli.command()

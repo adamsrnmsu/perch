@@ -38,6 +38,7 @@ perch hours -p apollo          # paste this week's apollo timesheet totals
 perch monday --all             # fetch, board, weekly, digest, emails for every project
 perch monday -p apollo --from weekly  # resume at a step after a failure
 perch watch -p apollo          # private: anyone out of line with their own last 8 weeks
+perch review -p apollo         # Claude's /board on the pulled board, told the budget picture
 perch tui                      # every project in one table; single keys run the commands
 ```
 
@@ -61,7 +62,7 @@ In `perch tui`, `:` opens a command line: `apollo CUT 700k`, `ALL MON`, `MON wee
 (the project defaults to the cursor's; `c` opens it with `CUT `). Mnemonics:
 BRD board, MON monday, DOC doctor, FCST forecast, WTCH watch, QTR quarterly,
 CUT cut, HRS hours, STAT status, FTCH fetch, DIG digest, MAIL emails, WKLY
-weekly, BUD budget; perch's own command names work too, and `ALL` takes MON,
+weekly, BUD budget, REV review (`R` too: it hands the terminal to Claude); perch's own command names work too, and `ALL` takes MON,
 WTCH, QTR and STAT. `i` explains the cell under the cursor (checks, the team's
 recent weeks, a step's state). The Trend column is the team's headroom over its
 last 8 recorded weeks, the line above the table says what moved since the week
@@ -71,6 +72,18 @@ from the watch, nothing sent.
 
 Board edits (pull, plan, land, tui) are `gitboard` commands, run from the
 gitboard checkout with the project's `gitlab_project`.
+
+`perch review` is the review after a pull: it opens Claude in the gitboard
+checkout on `/board <gitlab_project>` (label, prioritise, flag; stage the edits,
+show `plan`, push only on your yes) and appends perch's team line from
+history.jsonl (stoplight, budget, headroom, hours left, cost to clear, headroom
+by week) so the priority calls weigh the money, plus the latest week's person
+rows in name order (open cards, hours to clear, hours left, gap; no rate, cost
+or accuracy) so it can say who has room for a stuck or unowned card. Claude is
+told never to rank, compare or judge people; nothing from the watch goes in.
+It refuses until `boards/<name>.yaml` is pulled and names the
+`gitboard pull` to run; run `perch board` first or Claude is told there is no
+week recorded.
 
 ### Moving a single-team setup in
 

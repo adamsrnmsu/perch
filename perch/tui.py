@@ -266,6 +266,7 @@ class PerchTUI(App):
         ("c", "command('CUT ')", "cut"),
         ("i", "info", "info"),
         ("h", "hours", "hours"),
+        ("R", "review", "review"),
         ("r", "refresh", "refresh"),
         ("B", "switch('budgie')", "budgie"),
         ("G", "switch('gitboard')", "gitboard"),
@@ -467,9 +468,12 @@ class PerchTUI(App):
         except ValueError as exc:
             self.notify(str(exc), severity="error")
             return
-        if command.args[0] == "hours":
+        if command.args[0] in ("hours", "review"):
             self.query_one(DataTable).move_cursor(row=self.names.index(command.project))
-            self.action_hours()
+            if command.args[0] == "hours":
+                self.action_hours()
+            else:
+                self.action_review()
         elif self._free():
             self._start(command.project, " ".join(command.args), list(command.args))
 
@@ -516,6 +520,23 @@ class PerchTUI(App):
                 subprocess.run(step.argv, cwd=step.cwd, check=False)
         except _ERRORS as exc:
             self.notify(f"{name}: {exc}", severity="error")
+        self.action_refresh()
+
+    def action_review(self) -> None:
+        """Hand the terminal to Claude's /board for the selected project."""
+        from perch.core.steps import review
+
+        name = self._selected() if self._free() else None
+        if name is None:
+            return
+        try:  # no pull yet is a toast, not a flash behind the suspended screen
+            config = load_config(self.home.config_path(name), require_dump=False)
+            step = review(self.home, name, config, history.load(config.history))
+        except _ERRORS as exc:
+            self.notify(f"{name}: {exc}", severity="error")
+            return
+        with self.suspend():
+            subprocess.run(step.argv, cwd=step.cwd, check=False)
         self.action_refresh()
 
     def action_switch(self, target: str) -> None:
