@@ -127,7 +127,8 @@ each milestone's open work. It never says which issues to drop.
 and Budgie's forecast at completion, estimate misses in dollars (MODELLED),
 issues closed and hours booked per ISO week, blocked issue-days, and the
 quarter's `plan.csv` changes. The default is the last complete quarter of the
-Budgie year. It is rebuilt from the readings, budget.csv, plan.csv and the
+Budgie year. Quarters follow the Budgie project's `year_start`: a calendar year
+names them `2026-Q3`, a fiscal year `FY27-Q1`. It is rebuilt from the readings, budget.csv, plan.csv and the
 board dump, so a source that does not cover the quarter says so in the report.
 When the dump's history (gitboard's `since`) reaches back over the whole
 previous quarter of the same year, its totals (issues closed, hours, hours per
