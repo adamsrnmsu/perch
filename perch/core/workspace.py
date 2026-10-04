@@ -1,7 +1,7 @@
 """The perch workspace: a perch-home.yaml, and the projects beside it.
 
     ~/work/pi/
-      perch-home.yaml     gitboard_dir: ~/Documents/git/pi_suite/remote-gitboard
+      perch-home.yaml     gitboard_dir: ~/Documents/git/perch/apps/remote-gitboard
       projects/apollo/    perch.yaml, history.jsonl, dumps/, weekly/, watch/
       budget/apollo/      the Budgie project (Budgie's own budget/ container)
 

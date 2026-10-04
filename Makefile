@@ -2,11 +2,12 @@
 #   perch projects | init | doctor | hours | monday [--all] | forecast | ...
 # (`perch --help`). This file only builds, tests and links.
 #
-# The other apps are looked for beside this checkout. Anywhere else:
+# Budgie and gitboard live in apps/ (scripts/bootstrap.sh clones them there).
+# Anywhere else:
 #   make BUDGIE_DIR=/path/to/budgie GB_DIR=/path/to/remote-gitboard <target>
 PERCH_DIR  := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-BUDGIE_DIR ?= $(abspath $(PERCH_DIR)/../budgie)
-GB_DIR     ?= $(abspath $(PERCH_DIR)/../remote-gitboard)
+BUDGIE_DIR ?= $(PERCH_DIR)/apps/budgie
+GB_DIR     ?= $(PERCH_DIR)/apps/remote-gitboard
 # A relative override would break after the first cd.
 override BUDGIE_DIR := $(abspath $(BUDGIE_DIR))
 override GB_DIR     := $(abspath $(GB_DIR))
@@ -31,6 +32,7 @@ help: ## This menu. Running the apps: perch --help
 ##@ Setup (once, or after moving the folders)
 
 install: ## (Re)install all three tools. Fixes "No module named perch/budgie"
+	test -x $(BUDGIE_VENV)/bin/pip || $(MAKE) -C $(BUDGIE_DIR) venv VENV=$(BUDGIE_VENV)
 	$(MAKE) -C $(BUDGIE_DIR) install VENV=$(BUDGIE_VENV)
 	test -x $(BIN)/pip || python3 -m venv $(PERCH_VENV)
 	$(BIN)/pip install -q -e '$(PERCH_DIR)[dev]'
