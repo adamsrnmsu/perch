@@ -4,7 +4,7 @@
 #   BUDGIE_URL=... GB_URL=...   clone from somewhere else
 #   BOOTSTRAP_NO_INSTALL=1      clone only (the tests use this)
 set -eu
-PERCH_DIR=$(cd "$(dirname "$0")/.." && pwd)
+PERCH_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 BUDGIE_URL=${BUDGIE_URL:-git@github.com:adamsrnmsu/budgie.git}
 GB_URL=${GB_URL:-https://github.com/adamsrnmsu/remote-gitboard.git}
 

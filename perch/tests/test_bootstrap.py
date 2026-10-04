@@ -4,6 +4,7 @@ Runs the real script against throwaway local repos (file:// URLs) in a copy of
 it, with the install step off, so nothing outside tmp_path is touched.
 """
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -32,7 +33,7 @@ def perch(tmp_path):
     (root / "scripts").mkdir(parents=True)
     shutil.copy(SCRIPT, root / "scripts" / "bootstrap.sh")
     env = {
-        "PATH": "/usr/bin:/bin:/usr/local/bin:/opt/homebrew/bin",
+        "PATH": os.environ["PATH"],
         "HOME": str(tmp_path),
         "BUDGIE_URL": _repo(tmp_path / "budgie-src"),
         "GB_URL": _repo(tmp_path / "gb-src"),

@@ -140,6 +140,7 @@ differs from perch's copy). `perch` must be on the session's PATH.
 It asks gitboard for about nine months of history (`gitboard stats
 --history-days 276`; the stats summary stays 7 days), so `perch quarterly` can
 set a quarter beside the one before it.
+
 ### Layout and cross-repo work
 
     ~/Documents/git/perch/        this repo
