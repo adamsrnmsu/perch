@@ -995,10 +995,27 @@ def test_review_without_a_pulled_board_toasts_and_keeps_the_screen(
     monkeypatch.setattr(tui.PerchTUI, "suspend", lambda self: suspended.append(1))
 
     async def script(app, pilot):
-        await pilot.press("R")
+        await pilot.press("colon")
+        app.query_one("#command", Input).value = "apollo REV"
+        await pilot.press("enter")
         await settle(app, pilot)
         assert suspended == []
         assert any("gitboard pull grp/apollo" in n for n in _notices(app))
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_capital_r_hands_the_terminal_to_the_walk(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    opened = []
+    monkeypatch.setattr(
+        tui.PerchTUI, "action_walk", lambda self: opened.append(self._selected())
+    )
+
+    async def script(app, pilot):
+        await pilot.press("R")
+        await settle(app, pilot)
+        assert opened == ["apollo"]
 
     run(tui.PerchTUI(home), script)
 

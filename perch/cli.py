@@ -187,6 +187,7 @@ _SECTIONS = {
         "review",
         "brief",
         "gb",
+        "walk",
         "watch",
         "quarterly",
         "tui",
@@ -647,6 +648,21 @@ def gb(sub, project, args):
     from perch.core import steps
 
     _one(project, lambda home, name, config: steps.gb(home, name, config, sub, args))
+
+
+@cli.command()
+@_project_option
+def walk(project):
+    """Claude walks you through the project's money, board and watch (/walk)."""
+    from perch.core import steps
+    from perch.core import walk as command
+
+    def build(home, name, config):
+        for line in command.install(home):
+            _show([bk.text(line, "dim")])
+        return steps.walk(home, name)
+
+    _one(project, build)
 
 
 @cli.command()

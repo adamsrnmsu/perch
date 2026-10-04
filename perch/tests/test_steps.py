@@ -214,6 +214,13 @@ def test_gb_fills_in_the_projects_target(tmp_path, sub, tail):
     assert step.cwd == gb and step.env == {"PYTHONPATH": str(gb / "src")}
 
 
+def test_walk_opens_claude_on_the_slash_command_in_the_workspace(tmp_path):
+    home, _ = apollo(tmp_path)
+    step = steps.walk(home, "apollo")
+    assert step.argv == ("claude", "/walk apollo")
+    assert step.cwd == home.root
+
+
 def test_gb_passes_extra_args_through(tmp_path):
     home, config = apollo(tmp_path)
     step = steps.gb(home, "apollo", config, "push", ("--yes",))

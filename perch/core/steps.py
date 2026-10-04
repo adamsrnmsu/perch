@@ -195,6 +195,11 @@ def review(home: Home, project: str, config: Config, rows: list[dict]) -> Step:
     )
 
 
+def walk(home: Home, project: str) -> Step:
+    """Claude on /walk in the workspace, where .claude/commands/walk.md lives."""
+    return Step("walk", ("claude", f"/walk {project}"), home.root)
+
+
 def board(bin_dir: Path, home: Home, project: str) -> Step:
     config = str(home.config_path(project))
     return Step(

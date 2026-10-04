@@ -280,6 +280,16 @@ def test_gb_runs_one_gitboard_step_with_passthrough_args(tmp_path, monkeypatch):
     assert ran[0].argv[-2:] == ("-M", "v1")
 
 
+def test_walk_installs_the_command_then_runs_claude(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(home.root)
+    ran = recorder(monkeypatch)
+    result = run("walk", "-p", "apollo")
+    assert result.exit_code == 0, result.output
+    assert [s.argv for s in ran] == [("claude", "/walk apollo")]
+    assert (home.root / ".claude" / "commands" / "walk.md").is_file()
+
+
 def test_gb_refuses_sync(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo")
     monkeypatch.chdir(home.root)

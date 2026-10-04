@@ -386,7 +386,7 @@ class PerchTUI(App):
         ("i", "info", "info"),
         ("o", "open", "open"),
         ("h", "hours", "hours"),
-        ("R", "review", "review"),
+        ("R", "walk", "walk"),
         ("r", "refresh", "refresh"),
         ("B", "switch('budgie')", "budgie"),
         ("G", "switch('gitboard')", "gitboard"),
@@ -687,6 +687,24 @@ class PerchTUI(App):
         except _ERRORS as exc:
             self.notify(f"{name}: {exc}", severity="error")
             return
+        with self.suspend():
+            subprocess.run(step.argv, cwd=step.cwd, check=False)
+        self.action_refresh()
+
+    def action_walk(self) -> None:
+        """Hand the terminal to Claude's /walk for the selected project."""
+        from perch.core import walk as command
+        from perch.core.steps import walk
+
+        name = self._selected() if self._free() else None
+        if name is None:
+            return
+        try:  # a workspace perch cannot write to is a toast, not a crash
+            command.install(self.home)
+        except _ERRORS as exc:
+            self.notify(f"{name}: {exc}", severity="error")
+            return
+        step = walk(self.home, name)
         with self.suspend():
             subprocess.run(step.argv, cwd=step.cwd, check=False)
         self.action_refresh()
