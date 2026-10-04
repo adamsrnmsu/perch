@@ -1038,6 +1038,33 @@ def test_capital_r_hands_the_terminal_to_the_walk(tmp_path, monkeypatch):
     run(tui.PerchTUI(home), script)
 
 
+def test_walk_toasts_a_settings_file_perch_left_alone(tmp_path, monkeypatch):
+    from perch.core import walk as command
+
+    home = build_home(tmp_path, "apollo")
+    line = "left x/settings.json alone (not a settings object); add y by hand"
+    monkeypatch.setattr(command, "install", lambda home: ["kept z", line])
+    monkeypatch.setattr(tui.PerchTUI, "suspend", lambda self: nullcontext())
+    events = []
+    monkeypatch.setattr(tui.subprocess, "run", lambda *a, **k: events.append("walk"))
+    notify = tui.PerchTUI.notify
+
+    def spy(self, message, **kw):
+        events.append(("notify", kw.get("timeout")))
+        return notify(self, message, **kw)
+
+    monkeypatch.setattr(tui.PerchTUI, "notify", spy)
+
+    async def script(app, pilot):
+        await pilot.press("R")
+        await settle(app, pilot)
+        assert _notices(app) == [line]
+        # a toast posted before the walk would expire while Claude owns the terminal
+        assert events == ["walk", ("notify", 30)]
+
+    run(tui.PerchTUI(home), script)
+
+
 def test_the_trend_cell_is_a_sparkline_of_recorded_headroom(tmp_path):
     home = build_home(tmp_path, "apollo", "beta")
     _weeks(home, "apollo", (0, "red"), (50, "yellow"), (100, "green"))

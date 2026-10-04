@@ -703,13 +703,16 @@ class PerchTUI(App):
         if name is None:
             return
         try:  # a workspace perch cannot write to is a toast, not a crash
-            command.install(self.home)
+            lines = command.install(self.home)
         except _ERRORS as exc:
             self.notify(f"{name}: {exc}", severity="error")
             return
         step = walk(self.home, name)
         with self.suspend():
             subprocess.run(step.argv, cwd=step.cwd, check=False)
+        for line in lines:  # after the walk: a toast posted earlier expires unseen
+            if line.startswith("left"):
+                self.notify(line, severity="warning", timeout=30)
         self.action_refresh()
 
     def action_switch(self, target: str) -> None:
