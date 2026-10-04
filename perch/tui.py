@@ -309,6 +309,29 @@ class PerchTUI(App):
         table.move_cursor(row=at.row, column=at.column)
         self._report()
 
+    def on_app_focus(self) -> None:
+        """Back in front (a hop in perch suite): refresh behind the table, so the
+        hop is instant and the cells catch up a moment later."""
+        self._refresh_behind()
+
+    @work(thread=True, exclusive=True, group="focus")
+    def _refresh_behind(self) -> None:
+        snaps = {name: snapshot(self.home, name) for name in self.names}
+        self.call_from_thread(self._fill, snaps)
+
+    def _fill(self, snaps: dict) -> None:
+        """Rewrite the rows in place: the cursor stays. A project made meanwhile
+        shows on `r`."""
+        table = self.query_one(DataTable)
+        for name, (cells, moved) in snaps.items():
+            if name not in self.names:  # removed while the worker ran
+                continue
+            self.changes[name] = moved
+            at = self.names.index(name)
+            for col, cell in enumerate(cells):
+                table.update_cell_at(Coordinate(at, col), cell, update_width=True)
+        self._report()
+
     def _report(self) -> None:
         """The what-changed line, and one toast per stoplight flip."""
         lines = [describe(n, self.changes.get(n)) for n in self.names]

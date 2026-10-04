@@ -1092,3 +1092,35 @@ def test_i_on_flags_runs_the_watch(tmp_path, spawned):
         assert [a[1:] for a, _ in spawned] == [["watch", "-p", "apollo"]]
 
     run(tui.PerchTUI(home), script)
+
+
+def test_coming_to_the_front_refreshes_the_table_in_a_worker(tmp_path):
+    from textual import events
+
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        assert _cells(app)[0][2] == "—"
+        _team_row(home, "apollo", 500.0, "green")  # written by another app meanwhile
+        app.post_message(events.AppFocus())
+        await pilot.pause()  # deliver the event: the worker starts
+        await settle(app, pilot)
+        assert _cells(app)[0][2:4] == ["GREEN", "$500"]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_focus_refresh_keeps_the_cursor(tmp_path):
+    from textual import events
+
+    home = build_home(tmp_path, "apollo", "beta")
+
+    async def script(app, pilot):
+        await pilot.press("down")
+        at = app.query_one(DataTable).cursor_coordinate
+        app.post_message(events.AppFocus())
+        await pilot.pause()  # deliver the event: the worker starts
+        await settle(app, pilot)
+        assert app.query_one(DataTable).cursor_coordinate == at
+
+    run(tui.PerchTUI(home), script)
