@@ -513,7 +513,10 @@ def init(name, home_dir, gitboard_dir, year, year_start):
         path = home.scaffold(name)
         from perch.core import walk
 
-        installed = walk.install(home)
+        try:
+            installed = walk.install(home)
+        except OSError as exc:
+            installed = [f"could not install /walk: {exc}; perch walk retries"]
     except StepFailed as exc:
         raise click.ClickException(f"{name}: {exc}") from exc
     except (OSError, ValueError) as exc:

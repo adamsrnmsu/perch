@@ -114,3 +114,11 @@ def test_doctor_names_the_walk_fix(tmp_path, monkeypatch):
     monkeypatch.setattr("perch.cli._show_gitboard_config", lambda home: True)
     result = CliRunner().invoke(cli, ["doctor"])
     assert "walk: no .claude/commands/walk.md" in result.output
+
+
+def test_checks_unparseable_settings_say_fix_by_hand_not_perch_walk(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    walk.install(home)
+    settings_path(home).write_text("{oops")
+    _, board = walk.checks(home)
+    assert not board.ok and "by hand" in board.fix and "perch walk," not in board.fix
