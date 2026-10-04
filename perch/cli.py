@@ -1316,7 +1316,12 @@ def suite(project):
                 home.select(project)
             except ValueError as exc:
                 raise click.ClickException(str(exc)) from exc
-        name = project or (names[0] if names else None)
+        name = project
+        if name is None and names:
+            try:
+                name = home.select(None, Path.cwd())
+            except ValueError:  # several projects and cwd in none: the first
+                name = names[0]
         perch = {"cwd": str(home.root), "argv": [str(_bin_dir() / "perch"), "tui"]}
         suite_map = None
         if name is not None:
