@@ -73,3 +73,20 @@ Everything under `perch.core` is UI-free; `perch.cli` is a thin adapter over it.
 .. automodule:: perch.core.report_mail
    :members:
 ```
+
+## Commands
+
+### perch suite
+
+```bash
+perch suite        # or: perch suite -p apollo
+```
+
+perch, Budgie and gitboard open side by side. `B` and `G` in perch (and `P`,
+`B`, `G` in the others) jump between them at once, and each stays where you
+left it. Close the terminal and the suite keeps running: `perch suite` again
+picks it up. `q` in perch closes everything. It runs on tmux, which you never
+have to touch (`brew install tmux` once).
+
+Without tmux it says `needs tmux: brew install tmux`. A project whose config
+is broken opens perch alone; the others open on the first hop.

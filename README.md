@@ -23,6 +23,16 @@ the private repo. `make venv`
 then installs the sibling checkout editable on top (`BUDGIE_DIR=../budgie` to
 override), so local Budgie edits show up in perch at once.
 
+## The suite
+
+    perch suite        # or: perch suite -p apollo
+
+perch, Budgie and gitboard open side by side. `B` and `G` in perch (and `P`,
+`B`, `G` in the others) jump between them at once, and each stays where you
+left it. Close the terminal and the suite keeps running: `perch suite` again
+picks it up. `q` in perch closes everything. It runs on tmux, which you never
+have to touch (`brew install tmux` once).
+
 ## One entry point for every pi app
 
 `perch` is the single place you run things from. It drives gitboard and Budgie

@@ -21,6 +21,7 @@ is one GitLab project + one Budgie project + one charge code, picked with
 ```bash
 perch --help  # running the apps: projects, init, doctor, status, hours,
               # monday [--all | --from STEP], quarterly [--all]
+perch suite   # perch, Budgie and gitboard in a hidden tmux; P/B/G hop instantly
 make venv     # ~/Documents/tools/perch; Budgie from GitHub, then ../budgie
 make test     # perch only: ~/Documents/tools/perch/bin/pytest
 make test-all # Budgie, perch and gitboard suites
@@ -53,6 +54,11 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   gitboard checkout with `trend.team_lines` and `people_lines` (latest
   week, name order, hours only: no rate, cost or accuracy) appended. Never
   the watch.
+- `core/suite.py` -- `perch suite`'s tmux argv, built and never run here: a
+  private server (`-L pi`, no config file, options sent as commands), one
+  window per app, each window's `@entry` = the `{"cwd", "argv"}` it runs. The
+  hop rule: same entry, select; another, respawn that window; none, open it.
+  Budgie and gitboard carry their own copy; a change goes in all three.
 - `core/doctor.py` -- `Check(ok, what, fix)` values for `perch doctor`.
 - `core/status.py` -- `perch status` and the TUI's step cells: done, stale,
   todo, failed or error per Monday step this ISO week, read only from the files
@@ -114,7 +120,9 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   project's row is redrawn. `:` opens the command line (`c` prefilled `CUT `),
   `i` explains the cursor's cell in an info card, the Trend column and the
   `#changes` strip read `core/trend.py`, and a stoplight flip toasts once.
-  Display and key handling only, like cli.py.
+  Display and key handling only, like cli.py. In `perch suite` (`$TMUX` on the
+  `pi` socket) `B`/`G` hop to the running window instead of exiting, `q` closes
+  the whole suite, and coming to the front refreshes the rows in a worker.
 
 ## Testing
 

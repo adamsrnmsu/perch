@@ -1,7 +1,7 @@
 # Switching between the suite's TUIs
 
 Date: 2026-10-02
-Status: approved in chat, awaiting spec review
+Status: implemented (perch-2gr); in-suite hops superseded by 2026-10-02-tmux-suite-design.md
 
 ## Goal
 
