@@ -269,6 +269,13 @@ def test_suite_without_p_opens_on_the_first_project(tmp_path, monkeypatch, tmux)
     assert tmux.calls[1][0] == suite.launch(_perch(home), tui.suite_map(home, "apollo"))
 
 
+def test_suite_without_p_opens_the_project_the_cwd_is_in(tmp_path, monkeypatch, tmux):
+    home = build_home(tmp_path, "apollo", "beta")
+    monkeypatch.chdir(home.projects_dir / "beta")
+    assert CliRunner().invoke(cli, ["suite"]).exit_code == 0
+    assert tmux.calls[1][0] == suite.launch(_perch(home), tui.suite_map(home, "beta"))
+
+
 def test_suite_p_picks_the_project(tmp_path, monkeypatch, tmux):
     home = build_home(tmp_path, "apollo", "beta")
     monkeypatch.chdir(tmp_path / "ws")
