@@ -73,7 +73,8 @@ Prints everything the walk needs as one block, in this order:
    `evaluate`): P10/P50/P90 against the year-end budget, the signal and
    chance over, the as-of date and non-labor. Not `budgie forecast`'s
    printed table, which shows rate and cost per person.
-5. **Watch**: this ISO week's `projects/<name>/watch/<week>.md`, verbatim.
+5. **Watch**: this ISO week's `projects/<name>/watch/<week>.md`, its headings
+   two levels down so they nest under the section.
 6. **Follow-ups**: issues in `<gitboard_dir>/boards/<name>.yaml` labelled
    `followup`: `#iid`, title, column, assignee, due date. `gitboard pull`
    lists only open issues, so a follow-up leaves the brief when it is closed

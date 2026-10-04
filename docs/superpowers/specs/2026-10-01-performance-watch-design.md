@@ -21,6 +21,11 @@ flag is a prompt for a conversation, never a verdict.
   - the emails;
   - the quarterly report;
   - anything gitboard or Budgie writes.
+
+  The one reader besides the lead is Claude in `/walk`
+  (`2026-10-04-walk-design.md`), for conversation with the lead: `perch
+  brief` prints this week's watch file. It still never appears in anything
+  gitboard or Budgie writes: `/walk` stages nothing from it.
 - **Read-only.** Nothing is sent.
 
 ## Where it shows

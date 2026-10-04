@@ -22,7 +22,8 @@ is one GitLab project + one Budgie project + one charge code, picked with
 perch --help  # running the apps: init [--year Y --year-start MM-01],
               # projects, doctor; status, hours, fetch,
               # board, weekly, digest, emails, monday [--all | --from STEP];
-              # accuracy, budget, forecast, cut, review, watch, quarterly
+              # accuracy, budget, forecast, cut, review, brief, gb, walk,
+              # watch, quarterly
               # [--all], tui, suite
 perch tui     # starts perch suite (hidden tmux, P/B/G hop instantly) when
               # tmux is installed; inside the suite or --no-suite: the TUI alone
@@ -58,7 +59,14 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   carry-on-past-a-failure loop. `review` opens `claude "/board ..."` in the
   gitboard checkout with `trend.team_lines` and `people_lines` (latest
   week, name order, hours only: no rate, cost or accuracy) appended. Never
-  the watch.
+  the watch. `gb` runs gitboard with the project's target filled in;
+  `GB_OFFLINE` (read only pulled files) is all `/walk` may run, `push` and
+  `pull` need GitLab. `walk` opens `claude "/walk NAME"` in the workspace.
+- `core/brief.py` -- `perch brief`: what `/walk` reads, team level only
+  (Budgie's forecast in-process, never its per-person table), local files only.
+- `core/walk.py` -- installs `perch/commands/walk.md` into the workspace
+  (never over the lead's copy) and the gitboard checkout into
+  `.claude/settings.json`'s `additionalDirectories`; doctor's walk checks.
 - `core/suite.py` -- `perch suite`'s tmux argv, built and never run here: a
   private server (`-L pi`, no config file, options sent as commands), one
   window per app, each window's `@entry` = the `{"cwd", "argv"}` it runs. The

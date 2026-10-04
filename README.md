@@ -58,6 +58,9 @@ perch monday --all             # fetch, board, weekly, digest, emails for every 
 perch monday -p apollo --from weekly  # resume at a step after a failure
 perch watch -p apollo          # private: anyone out of line with their own last 8 weeks
 perch review -p apollo         # Claude's /board on the pulled board, told the budget picture
+perch brief -p apollo          # everything /walk reads: freshness, team, people, forecast, watch, follow-ups
+perch gb plan -p apollo        # gitboard for the project, from its checkout (show, plan, ...; push/pull need GitLab)
+perch walk -p apollo           # Claude walks you through money, board and watch (/walk)
 perch tui                      # every project in one table, inside the suite; single keys run the commands
 ```
 
@@ -81,7 +84,7 @@ In `perch tui`, `:` opens a command line: `apollo CUT 700k`, `ALL MON`, `MON wee
 (the project defaults to the cursor's; `c` opens it with `CUT `). Mnemonics:
 BRD board, MON monday, DOC doctor, FCST forecast, WTCH watch, QTR quarterly,
 CUT cut, HRS hours, STAT status, FTCH fetch, DIG digest, MAIL emails, WKLY
-weekly, BUD budget, REV review (`R` too: it hands the terminal to Claude); perch's own command names work too, and `ALL` takes MON,
+weekly, BUD budget, REV review (it hands the terminal to Claude; `R` hands it to the walk instead); perch's own command names work too, and `ALL` takes MON,
 WTCH, QTR and STAT. `i` explains the cell under the cursor (checks, the team's
 recent weeks, a step's state). `o` opens the newest output card full screen. The Trend column is the team's headroom over its
 last 8 recorded weeks, the line above the table says what moved since the week
@@ -103,6 +106,21 @@ told never to rank, compare or judge people; nothing from the watch goes in.
 It refuses until `boards/<name>.yaml` is pulled and names the
 `gitboard pull` to run; run `perch board` first or Claude is told there is no
 week recorded.
+
+`perch walk` (or `/walk apollo` in a Claude session opened in the workspace)
+is the Monday walk-through. Claude reads `perch brief`, then goes money →
+board → watch, stopping after each for your call, and ends by staging your
+calls as `followup` cards and notes in the pulled board file, with gitboard's
+plan table. The session needs no GitLab: it works from what `perch monday`
+and `perch gb pull` already wrote. Push later where GitLab is reachable:
+`perch gb push -p apollo`. Next week's brief lists the follow-ups still open;
+close one in GitLab and the next pull drops it. Money calls end as the file
+and row for you to edit (perch never writes Budgie's files), and the watch is
+talked through, never written anywhere. `perch init` and `perch walk` install
+`.claude/commands/walk.md` into the workspace and add the gitboard checkout to
+`.claude/settings.json` so Claude can edit the board file; an installed
+`walk.md` is yours and is never overwritten (`perch doctor` says when it
+differs from perch's copy). `perch` must be on the session's PATH.
 
 ### Moving a single-team setup in
 
