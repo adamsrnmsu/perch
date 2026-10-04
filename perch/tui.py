@@ -700,10 +700,13 @@ class PerchTUI(App):
         if name is None:
             return
         try:  # a workspace perch cannot write to is a toast, not a crash
-            command.install(self.home)
+            lines = command.install(self.home)
         except _ERRORS as exc:
             self.notify(f"{name}: {exc}", severity="error")
             return
+        for line in lines:  # the lead must see what to add by hand
+            if line.startswith("left"):
+                self.notify(line, severity="warning")
         step = walk(self.home, name)
         with self.suspend():
             subprocess.run(step.argv, cwd=step.cwd, check=False)
