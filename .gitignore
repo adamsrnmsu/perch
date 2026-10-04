@@ -25,3 +25,7 @@ projects/
 perch-home.yaml
 .claude/worktrees/
 uv.lock
+
+# Budgie and gitboard checkouts, put here by scripts/bootstrap.sh. Their own
+# repos; perch never records them.
+apps/
