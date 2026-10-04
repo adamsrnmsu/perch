@@ -41,6 +41,8 @@ $ cd ~/work/pi && claude
   change is one allowed label. Board rules stay single-sourced in gitboard's
   `.claude/commands/board.md`.
 - **`perch review` is unchanged**, so nobody's current habit breaks.
+- **`budgie status` is left out of the brief**: it is an input-file inventory,
+  not the money.
 
 ## Pieces
 
@@ -56,20 +58,20 @@ Prints everything the walk needs as one block, in this order:
    clear P10/P50/P90, headroom by week).
 3. **People**: `people_lines(rows, config.people)`: name order, open cards,
    hours to clear, planned hours left, gap. No rate, cost or accuracy.
-4. **Forecast**: Budgie's `forecast` output for the project (the same step
-   `perch forecast` runs), captured.
-5. **Budget status**: Budgie's `status` output (the step `perch budget` runs),
-   captured.
-6. **Watch**: this ISO week's `projects/<name>/watch/<week>.md`, verbatim.
-7. **Follow-ups**: issues in `<gitboard_dir>/boards/<name>.yaml` labelled
+4. **Forecast**: Budgie's estimate at completion for the team, computed
+   in-process as `perch quarterly` does (`at_completion` → `simulate` →
+   `evaluate`): P10/P50/P90 against the year-end budget, the signal and
+   chance over, the as-of date and non-labor. Not `budgie forecast`'s
+   printed table, which shows rate and cost per person.
+5. **Watch**: this ISO week's `projects/<name>/watch/<week>.md`, verbatim.
+6. **Follow-ups**: issues in `<gitboard_dir>/boards/<name>.yaml` labelled
    `followup`: `#iid`, title, column, assignee, due date. `gitboard pull`
    lists only open issues, so a follow-up leaves the brief when it is closed
    in GitLab and the board is pulled again.
 
 Each part that cannot be produced prints one line saying why and what to run
 (`watch: none for 2026-W41; run perch monday`, `board: no boards/apollo.yaml;
-run perch gb pull -p apollo`), and the rest still prints. A failed Budgie step
-prints its last stderr line, not a traceback. perch reads only local files and
+run perch gb pull -p apollo`), and the rest still prints. perch reads only local files and
 runs Budgie; it never calls GitLab, as today.
 
 ### `perch gb SUB [-p NAME] [ARGS...]` (new, thin passthrough)
