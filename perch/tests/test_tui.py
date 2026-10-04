@@ -390,10 +390,12 @@ def test_suite_map_points_each_app_at_the_selected_project(tmp_path):
     assert m["budgie"] == {
         "cwd": str((home.projects_dir / "apollo" / "fy26").resolve()),
         "argv": [str(BIN / "budgie"), "tui"],
+        "project": "apollo",
     }
     assert m["gitboard"] == {
         "cwd": str(home.gitboard_dir),
         "argv": ["gitboard", "tui", "grp/apollo"],
+        "project": "apollo",
     }
 
 
@@ -489,17 +491,25 @@ def hops(monkeypatch):
         listing = ""
         stderr = ""  # non-empty: the hop call fails with it
         fail = False  # True: fails even with empty stderr
+        list_fail = ""  # non-empty: list-windows itself fails with it
+        dies = False  # True: a spawned window is gone when looked at again
 
     def run(argv, **kw):
         calls.append(list(argv))
         if "list-windows" in argv:
-            return subprocess.CompletedProcess(argv, 0, Fake.listing, "")
+            if Fake.list_fail:
+                return subprocess.CompletedProcess(argv, 1, "", Fake.list_fail)
+            spawned = any(c[3] in ("new-window", "respawn-window") for c in calls)
+            up = spawned and not Fake.dies
+            listing = "perch\t{}\nbudgie\t{}\ngitboard\t{}\n" if up else Fake.listing
+            return subprocess.CompletedProcess(argv, 0, listing, "")
         return subprocess.CompletedProcess(
             argv, 1 if Fake.stderr or Fake.fail else 0, "", Fake.stderr
         )
 
     Fake.calls = calls
     monkeypatch.setattr(subprocess, "run", run)
+    monkeypatch.setattr(tui.time, "sleep", lambda s: None)
     monkeypatch.setenv("TMUX", SUITE_TMUX)
     monkeypatch.setenv("PI_SUITE", "untouched")
     return Fake
@@ -520,6 +530,7 @@ def test_in_suite_b_hops_and_perch_keeps_running(tmp_path, hops):
     assert hops.calls == [
         suite.windows(),
         suite.hop("budgie", m["budgie"], json.dumps(m), None),
+        suite.windows(),  # did the new window survive startup?
     ]
     assert os.environ["PI_SUITE"] == "untouched"
 
@@ -540,7 +551,7 @@ def test_in_suite_hopping_while_a_command_runs_is_fine(tmp_path, hops, monkeypat
         await pilot.press("G")
         await pilot.pause()
         assert not any(n.startswith("busy") for n in _notices(app))
-        assert len(hops.calls) == 2
+        assert len(hops.calls) == 3
         release.set()
         await settle(app, pilot)
 
@@ -1483,3 +1494,37 @@ def test_refresh_and_a_finished_run_compute_rows_off_the_ui_thread(
         assert seen == [False, False]
 
     run(tui.PerchTUI(home), script)
+
+
+def test_in_suite_a_failed_list_windows_says_why_and_spawns_nothing(tmp_path, hops):
+    from perch.core import suite
+
+    hops.list_fail = "no server running"
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        await pilot.press("B")
+        await pilot.pause()
+        assert "budgie: switch failed: no server running" in _notices(app)
+
+    run(tui.PerchTUI(home), script)
+    assert hops.calls == [suite.windows()]
+
+
+def test_in_suite_an_app_that_dies_at_startup_says_so(tmp_path, hops):
+    hops.dies = True
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        await pilot.press("B")
+        await pilot.pause()
+        assert "budgie: exited at startup" in _notices(app)
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_suite_map_entries_name_the_project(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    m = tui.suite_map(home, "apollo")
+    assert m["budgie"]["project"] == m["gitboard"]["project"] == "apollo"
+    assert "project" not in m["perch"]  # a hop to perch never restarts it

@@ -138,6 +138,12 @@ rather than leaning on `$TMUX`.
 Probed with tmux 3.7c: a JSON `@entry` comes back byte-identical, and a `cwd`
 or argv element with spaces, quotes or `$` arrives intact.
 
+A failed `list-windows` is a failed hop (stderr shown, nothing spawned); the
+first window of a name wins. After a `new-window`/`respawn-window` the app waits
+0.5 s and lists again: a window that is gone says "NAME exited at startup".
+Budgie and gitboard entries carry `"project"` (perch's project name), so a
+different project makes a different `@entry` and respawns; perch's own has none.
+
 A failing tmux call shows its stderr in the app (a toast in perch and Budgie,
 the status line in gitboard) and the app stays where it is.
 

@@ -171,10 +171,12 @@ def suite_map(home: Home, name: str) -> dict[str, dict]:
         "budgie": {
             "cwd": str(config.budgie_project),
             "argv": [str(_bin_dir() / "budgie"), "tui"],
+            "project": name,  # in the window's @entry: another project respawns
         },
         "gitboard": {
             "cwd": str(home.gitboard_dir),
             "argv": ["gitboard", "tui", *gitlab],
+            "project": name,
         },
     }
 
@@ -186,7 +188,7 @@ def suite_entry(name: str) -> dict | None:
         cwd, argv = str(entry["cwd"]), [str(a) for a in entry["argv"]]
     except (ValueError, KeyError, TypeError):
         return None
-    return {"cwd": cwd, "argv": argv} if argv else None
+    return {**entry, "cwd": cwd, "argv": argv} if argv else None
 
 
 def switch(entry: dict) -> None:
@@ -755,12 +757,22 @@ class PerchTUI(App):
 
     def _hop(self, target: str, apps: dict) -> None:
         try:
-            listing = subprocess.run(
+            listed = subprocess.run(
                 windows(), capture_output=True, text=True, check=False
-            ).stdout
-            current = entry_of(listing, target)
-            argv = hop(target, apps[target], json.dumps(apps), current)
-            done = subprocess.run(argv, capture_output=True, text=True, check=False)
+            )
+            if listed.returncode:  # an empty listing would spawn a duplicate
+                done = listed
+            else:
+                current = entry_of(listed.stdout, target)
+                argv = hop(target, apps[target], json.dumps(apps), current)
+                done = subprocess.run(argv, capture_output=True, text=True, check=False)
+                if not done.returncode and argv[3] != "select-window":
+                    time.sleep(0.5)  # new-window exits 0 even if the app crashes
+                    after = subprocess.run(
+                        windows(), capture_output=True, text=True, check=False
+                    ).stdout
+                    if entry_of(after, target) is None:
+                        self.notify(f"{target}: exited at startup", severity="error")
         except OSError as exc:
             self.notify(f"{target}: switch failed: {exc}", severity="error")
             return
