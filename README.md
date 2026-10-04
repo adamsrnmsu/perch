@@ -14,14 +14,20 @@ board logic stays in gitboard. perch never calls GitLab and never sends mail.
 ## Install
 
 ```bash
-make venv          # venv at ~/Documents/tools/perch; Budgie editable from ../budgie
+git clone https://github.com/adamsrnmsu/perch.git ~/Documents/git/perch
+~/Documents/git/perch/scripts/bootstrap.sh
 ```
 
+perch is the one repo you clone. `scripts/bootstrap.sh` clones Budgie and
+gitboard into `apps/` (ignored by perch's git; each stays its own repo with its
+own remote and beads), installs all three and puts `perch` and `gitboard` on
+your PATH. It leaves an app already in `apps/` alone, so it is safe to re-run.
+It ends by printing the `gitboard_dir:` line for your `perch-home.yaml`.
+
 `pyproject.toml` pins Budgie to its GitHub repo by URL (never PyPI, where the
-name is not ours), so `pip install` of perch works anywhere your SSH key can reach
-the private repo. `make venv`
-then installs the sibling checkout editable on top (`BUDGIE_DIR=../budgie` to
-override), so local Budgie edits show up in perch at once.
+name is not ours), so `pip install` of perch works anywhere your SSH key can
+reach the private repo. `make venv` then installs `apps/budgie` editable on top
+(`BUDGIE_DIR=` to override), so local Budgie edits show up in perch at once.
 
 ## The suite
 
@@ -44,7 +50,7 @@ as separate commands; each app still lives in its own repo. Run it from
 anywhere inside a workspace, or set `PERCH_HOME`.
 
 ```bash
-perch init apollo --home ~/work/pi --gitboard-dir ~/Documents/git/pi_suite/remote-gitboard
+perch init apollo --home ~/work/pi --gitboard-dir ~/Documents/git/perch/apps/remote-gitboard
 perch projects                 # every project, its GitLab project, how fresh its data is
 perch doctor                   # tools, config, people names, freshness; FIX lines say what to run
 perch status                   # each project's Monday steps: ok, stale, todo or FAIL, and the next command
@@ -134,6 +140,15 @@ differs from perch's copy). `perch` must be on the session's PATH.
 It asks gitboard for about nine months of history (`gitboard stats
 --history-days 276`; the stats summary stays 7 days), so `perch quarterly` can
 set a quarter beside the one before it.
+### Layout and cross-repo work
+
+    ~/Documents/git/perch/        this repo
+      apps/budgie/                Budgie's repo (git@github.com:adamsrnmsu/budgie.git)
+      apps/remote-gitboard/       gitboard's repo
+
+Suite-level docs and decisions live in perch's `docs/`. A change that spans
+repos is one perch epic with a child bead in each repo it touches, each
+naming the epic; each repo is branched, merged and pushed on its own.
 
 ## Use
 
