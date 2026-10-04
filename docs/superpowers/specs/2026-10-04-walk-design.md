@@ -48,8 +48,9 @@ $ cd ~/work/pi && claude
 
 Prints everything the walk needs as one block, in this order:
 
-1. **Freshness**: the board dump's `fetched_at`, the last week recorded in
-   `history.jsonl`, the ISO week today. Claude says so when they lag.
+1. **Freshness**: the board dump's `fetched_at`, the board YAML's pull time
+   (its `.base` mtime), the last week recorded in `history.jsonl`, the ISO
+   week today. Claude says so when they lag.
 2. **Team**: `team_lines(rows)` as `perch review` uses it (stoplight, chance
    the board breaks the budget, budget, spent, headroom, hours left, cost to
    clear P10/P50/P90, headroom by week).
@@ -60,8 +61,10 @@ Prints everything the walk needs as one block, in this order:
 5. **Budget status**: Budgie's `status` output (the step `perch budget` runs),
    captured.
 6. **Watch**: this ISO week's `projects/<name>/watch/<week>.md`, verbatim.
-7. **Follow-ups**: open issues in `<gitboard_dir>/boards/<name>.yaml` labelled
-   `followup`: `#iid`, title, column, assignee, due date.
+7. **Follow-ups**: issues in `<gitboard_dir>/boards/<name>.yaml` labelled
+   `followup`: `#iid`, title, column, assignee, due date. `gitboard pull`
+   lists only open issues, so a follow-up leaves the brief when it is closed
+   in GitLab and the board is pulled again.
 
 Each part that cannot be produced prints one line saying why and what to run
 (`watch: none for 2026-W41; run perch monday`, `board: no boards/apollo.yaml;
@@ -73,8 +76,9 @@ runs Budgie; it never calls GitLab, as today.
 
 Runs gitboard from its checkout via the existing `steps.gitboard`, with the
 target filled in: the spec `boards/<name>.yaml` for `show --from`, `plan`,
-`push`, `estimate`, `graph --from`; the `gitlab_project` for `report`,
-`stats`, `pull --base`. `SUB` is one of `show report stats graph estimate plan
+`push`, `estimate`, `graph --from`; `--from <board_dump>` for `stats`, so the
+board's flag counts come from the same dump as the money (no second GitLab
+read); the `gitlab_project` for `report` and `pull --base`. `SUB` is one of `show report stats graph estimate plan
 push pull`; anything else is refused. Extra `ARGS` pass through (`push --yes`,
 `graph -M <milestone>`).
 
@@ -95,10 +99,18 @@ Lives at `perch/commands/walk.md` in this repo and is installed to
 
 Frontmatter `allowed-tools`: `Bash(perch brief:*)`, `Bash(perch cut:*)`,
 `Bash(perch gb show:*)`, `report`, `stats`, `graph`, `estimate`, `plan`,
-`push` likewise, `Read`, and `Edit` on the gitboard checkout's
-`boards/*.yaml`. `install` substitutes the absolute gitboard path into that
-`Edit` pattern from `perch-home.yaml`. `pull` is not in the list: a stale
-board is the lead's call.
+`push` likewise, `Read`, and `Edit(//<gitboard_dir>/boards/*.yaml)` (Claude
+Code's absolute-path form; `install` substitutes the path from
+`perch-home.yaml`). `pull` is not in the list: a stale board is the lead's
+call.
+
+The board YAML stays in the gitboard checkout, where `perch review`, gitboard's
+TUI and `snapshots.jsonl` expect it. That directory is outside the session's
+working directory, so `install` also adds the gitboard checkout to
+`permissions.additionalDirectories` in `<workspace>/.claude/settings.json`
+(creating the file, or adding the one entry to an existing list; nothing else
+in it is touched). A bare `claude` in the workspace can then edit the board
+without `--add-dir`.
 
 ### `perch walk [-p NAME]` (new)
 
@@ -134,10 +146,11 @@ fails outright, say so and stop.
    conversation the lead may want to have. Ask what, if anything, they want to
    do. Stop.
 5. **Track.** Turn the lead's calls into staged edits: a new card labelled
-   `followup` (title says the decision, assignee the lead unless they say
-   otherwise, due date only if they give one), or a `notes:` entry on an
-   existing card. Last week's follow-ups the lead calls done get a note, not a
-   close (`board.md`: never close). Run `perch gb plan -p $ARGUMENTS`, show
+   `followup` (title says the decision; unassigned and undated unless the lead
+   names an owner or a date), or a `notes:` entry on an existing card. A
+   follow-up the lead calls done gets a note and a move into `Verify`, and
+   Claude names it for the lead to close in GitLab (`board.md`: never close);
+   the next pull drops it. Run `perch gb plan -p $ARGUMENTS`, show
    the table verbatim with one reason per row, and push with `perch gb push
    -p $ARGUMENTS --yes` only after a yes in this conversation.
 
@@ -198,9 +211,14 @@ suggested default.
 - `walk.md`: frontmatter parses; every `Bash(perch X:*)` in `allowed-tools`
   names a real perch command; install substitutes the gitboard path; install
   never overwrites an existing file.
+- `settings.json`: install creates it with `additionalDirectories`, adds the
+  entry to an existing file once, and keeps every other key.
 - Doctor: missing and differing `walk.md` each give a FIX line.
-- Manual, before calling it done: one `/walk test` session in the workspace,
-  checking that the `allowed-tools` patterns run without prompting.
+- Manual, before calling it done: one bare `claude` + `/walk test` session in
+  the workspace, checking that the `allowed-tools` patterns and the board
+  `Edit` run without prompting. If the absolute-path `Edit` rule does not
+  match, fall back to `perch walk` passing `--add-dir` and say so in the
+  README.
 
 ## Work split
 
