@@ -1457,3 +1457,29 @@ def test_the_projects_grid_is_found_by_id_beside_card_tables(tmp_path, monkeypat
         assert app.query_one("#projects", tui.Grid).row_count == 1
 
     run(tui.PerchTUI(home), script)
+
+
+def test_refresh_and_a_finished_run_compute_rows_off_the_ui_thread(
+    tmp_path, spawned, monkeypatch
+):
+    import threading
+
+    home = build_home(tmp_path, "apollo")
+    seen = []
+    original = tui.snapshot
+
+    def spy(h, n):
+        seen.append(threading.current_thread() is threading.main_thread())
+        return original(h, n)
+
+    monkeypatch.setattr(tui, "snapshot", spy)
+
+    async def script(app, pilot):
+        seen.clear()
+        app.action_refresh()
+        await settle(app, pilot)
+        await pilot.press("b")
+        await settle(app, pilot)
+        assert seen == [False, False]
+
+    run(tui.PerchTUI(home), script)
