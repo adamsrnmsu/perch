@@ -227,6 +227,28 @@ def test_gb_passes_extra_args_through(tmp_path):
     assert step.argv[-1] == "--yes"
 
 
+@pytest.mark.parametrize(
+    "sub,args",
+    [
+        ("show", ("--from", "")),
+        ("plan", ("--against=",)),
+        ("estimate", ("--history", "")),
+        ("report", ("--since", "")),
+        ("show", ("grp/other",)),
+    ],
+)
+def test_gb_offline_subs_refuse_args_that_override_the_target(tmp_path, sub, args):
+    home, config = apollo(tmp_path)
+    with pytest.raises(ValueError, match="perch fills in"):
+        steps.gb(home, "apollo", config, sub, args)
+
+
+def test_gb_offline_subs_keep_legit_args(tmp_path):
+    home, config = apollo(tmp_path)
+    step = steps.gb(home, "apollo", config, "graph", ("-M", "v1"))
+    assert step.argv[-2:] == ("-M", "v1")
+
+
 def test_offline_subs_are_the_ones_walk_may_run():
     assert steps.GB_OFFLINE == ("show", "report", "stats", "graph", "estimate", "plan")
     assert set(steps.GB_SUBS) == {*steps.GB_OFFLINE, "push", "pull"}

@@ -147,6 +147,8 @@ def pull_fix(project: str, spec: Path) -> str:
 GB_OFFLINE = ("show", "report", "stats", "graph", "estimate", "plan")
 # push and pull need GitLab: the lead runs them on a connected machine.
 GB_SUBS = (*GB_OFFLINE, "push", "pull")
+# Flags that move an offline sub's input: --from "" would read GitLab.
+GB_TARGET_FLAGS = ("--from", "--against", "--base", "--history", "--since", "--all")
 
 
 def gb(
@@ -160,6 +162,12 @@ def gb(
     """
     if sub not in GB_SUBS:
         raise ValueError(f"{sub!r} is not one of {', '.join(GB_SUBS)}")
+    if sub in GB_OFFLINE:
+        for a in args:
+            if a.split("=", 1)[0] in GB_TARGET_FLAGS:
+                raise ValueError(f"gb {sub}: perch fills in {a.split('=')[0]}")
+        if args and not args[0].startswith("-"):
+            raise ValueError(f"gb {sub}: perch fills in the target, got {args[0]!r}")
     path = spec_path(home, project, config)
     spec, base = str(path), path.with_name(path.name + ".base")
     if sub == "plan" and not base.is_file():
