@@ -117,6 +117,17 @@ def people_lines(rows: list[dict], people: Mapping[str, str]) -> list[str]:
     ]
 
 
+def spec_path(home: Home, project: str, config: Config) -> Path:
+    """gitboard's pulled board for this project: boards/<last path segment>.yaml."""
+    if not config.gitlab_project:
+        raise WorkspaceError(
+            f"{project}: perch.yaml has no gitlab_project; "
+            f"add e.g. `gitlab_project: group/{project}`"
+        )
+    name = config.gitlab_project.rsplit("/", 1)[-1]
+    return home.gitboard_dir / "boards" / f"{name}.yaml"
+
+
 def review(home: Home, project: str, config: Config, rows: list[dict]) -> Step:
     """Claude's /board on the pulled board, told what perch knows about the money.
 
@@ -126,16 +137,7 @@ def review(home: Home, project: str, config: Config, rows: list[dict]) -> Step:
     """
     from perch.core.trend import team_lines
 
-    if not config.gitlab_project:
-        raise WorkspaceError(
-            f"{project}: perch.yaml has no gitlab_project; "
-            f"add e.g. `gitlab_project: group/{project}`"
-        )
-    spec = (
-        home.gitboard_dir
-        / "boards"
-        / f"{config.gitlab_project.rsplit('/', 1)[-1]}.yaml"
-    )
+    spec = spec_path(home, project, config)
     if not spec.is_file():
         raise WorkspaceError(
             f"{project}: no {spec}; pull it first: (cd {shlex.quote(str(home.gitboard_dir))}"

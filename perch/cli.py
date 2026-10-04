@@ -185,6 +185,7 @@ _SECTIONS = {
         "forecast",
         "cut",
         "review",
+        "brief",
         "watch",
         "quarterly",
         "tui",
@@ -616,6 +617,19 @@ def review(project):
             home, name, config, history.load(config.history)
         ),
     )
+
+
+@cli.command()
+@_project_option
+def brief(project):
+    """Everything /walk reads for one project, as plain text. Reads only."""
+    from perch.core.brief import build
+
+    try:
+        home, name, config = _project(project)
+        click.echo("\n".join(build(home, name, config, date.today())))  # noqa: DTZ011
+    except (OSError, TypeError, ValueError) as exc:
+        raise click.ClickException(str(exc)) from exc
 
 
 @cli.command()
