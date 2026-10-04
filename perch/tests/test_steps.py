@@ -183,3 +183,58 @@ def test_review_without_a_pulled_board_says_how_to_pull_it(tmp_path):
     _, bare = apollo(tmp_path / "bare", gitlab=False)
     with pytest.raises(WorkspaceError, match="gitlab_project"):
         steps.review(home, "apollo", bare, [])
+
+
+@pytest.mark.parametrize(
+    ("sub", "tail"),
+    [
+        ("show", ("show", "--from", "SPEC", "--markdown")),
+        ("graph", ("graph", "--from", "SPEC")),
+        ("plan", ("plan", "SPEC", "--against", "BASE")),
+        ("estimate", ("estimate", "SPEC", "--history", "DUMP")),
+        ("stats", ("stats", "--from", "DUMP")),
+        ("report", ("report", "--since", "SPEC")),
+        ("push", ("push", "SPEC")),
+        ("pull", ("pull", "grp/apollo", "--base")),
+    ],
+)
+def test_gb_fills_in_the_projects_target(tmp_path, sub, tail):
+    home, config = apollo(tmp_path)
+    spec = str(home.gitboard_dir / "boards" / "apollo.yaml")
+    base = home.gitboard_dir / "boards" / "apollo.yaml.base"
+    base.parent.mkdir(parents=True)
+    base.write_text("")
+    want = tuple(
+        {"SPEC": spec, "BASE": str(base), "DUMP": str(config.board_dump)}.get(t, t)
+        for t in tail
+    )
+    step = steps.gb(home, "apollo", config, sub)
+    gb = home.gitboard_dir
+    assert step.argv == (str(gb / ".venv/bin/python"), "-m", "gitboard.cli", *want)
+    assert step.cwd == gb and step.env == {"PYTHONPATH": str(gb / "src")}
+
+
+def test_gb_passes_extra_args_through(tmp_path):
+    home, config = apollo(tmp_path)
+    step = steps.gb(home, "apollo", config, "push", ("--yes",))
+    assert step.argv[-1] == "--yes"
+
+
+def test_offline_subs_are_the_ones_walk_may_run():
+    assert steps.GB_OFFLINE == ("show", "report", "stats", "graph", "estimate", "plan")
+    assert set(steps.GB_SUBS) == {*steps.GB_OFFLINE, "push", "pull"}
+
+
+def test_gb_plan_without_a_base_says_where_to_pull(tmp_path):
+    home, config = apollo(tmp_path)
+    with pytest.raises(WorkspaceError, match="where GitLab is reachable"):
+        steps.gb(home, "apollo", config, "plan")
+
+
+def test_gb_refuses_an_unknown_sub_and_a_missing_gitlab_project(tmp_path):
+    home, config = apollo(tmp_path)
+    with pytest.raises(ValueError, match="sync"):
+        steps.gb(home, "apollo", config, "sync")
+    _, bare = apollo(tmp_path / "bare", gitlab=False)
+    with pytest.raises(WorkspaceError, match="gitlab_project"):
+        steps.gb(home, "apollo", bare, "show")

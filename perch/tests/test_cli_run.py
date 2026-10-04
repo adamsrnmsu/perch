@@ -265,3 +265,20 @@ def test_run_header_is_a_heading_and_a_dim_command(capsys, monkeypatch):
     first, second = (json.loads(x) for x in capsys.readouterr().out.splitlines()[:2])
     assert (first["block"], first["level"], first["text"]) == ("heading", 3, "fetch")
     assert second["block"] == "text" and second["tone"] == "dim"
+
+
+def test_gb_runs_one_gitboard_step_with_passthrough_args(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(home.root)
+    ran = recorder(monkeypatch)
+    result = run("gb", "graph", "-p", "apollo", "-M", "v1")
+    assert result.exit_code == 0, result.output
+    assert [s.name for s in ran] == ["gb graph"]
+    assert ran[0].argv[-2:] == ("-M", "v1")
+
+
+def test_gb_refuses_sync(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(home.root)
+    result = run("gb", "sync", "-p", "apollo")
+    assert result.exit_code == 2

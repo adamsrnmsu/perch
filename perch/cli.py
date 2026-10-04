@@ -15,7 +15,7 @@ from rich.table import Table
 from rich.text import Text
 
 from perch.core import blocks as bk
-from perch.core.steps import MONDAY_STEPS
+from perch.core.steps import GB_SUBS, MONDAY_STEPS
 
 console = Console()
 
@@ -186,6 +186,7 @@ _SECTIONS = {
         "cut",
         "review",
         "brief",
+        "gb",
         "watch",
         "quarterly",
         "tui",
@@ -630,6 +631,17 @@ def brief(project):
         click.echo("\n".join(build(home, name, config, date.today())))  # noqa: DTZ011
     except (OSError, TypeError, ValueError) as exc:
         raise click.ClickException(str(exc)) from exc
+
+
+@cli.command(context_settings={"ignore_unknown_options": True})
+@click.argument("sub", type=click.Choice(GB_SUBS))
+@_project_option
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def gb(sub, project, args):
+    """gitboard for the project, from its checkout. push and pull need GitLab."""
+    from perch.core import steps
+
+    _one(project, lambda home, name, config: steps.gb(home, name, config, sub, args))
 
 
 @cli.command()

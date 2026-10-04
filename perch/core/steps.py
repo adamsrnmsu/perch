@@ -128,6 +128,44 @@ def spec_path(home: Home, project: str, config: Config) -> Path:
     return home.gitboard_dir / "boards" / f"{name}.yaml"
 
 
+# Read only pulled files: what /walk may run, with no GitLab in reach.
+GB_OFFLINE = ("show", "report", "stats", "graph", "estimate", "plan")
+# push and pull need GitLab: the lead runs them on a connected machine.
+GB_SUBS = (*GB_OFFLINE, "push", "pull")
+
+
+def gb(
+    home: Home, project: str, config: Config, sub: str, args: tuple[str, ...] = ()
+) -> Step:
+    """gitboard for one project, run from its checkout with the target filled in.
+
+    The offline six read the pulled spec, its .base, the board dump (the same
+    data the money came from) and the snapshot log. `sync` and `migrate` are
+    not here on purpose.
+    """
+    if sub not in GB_SUBS:
+        raise ValueError(f"{sub!r} is not one of {', '.join(GB_SUBS)}")
+    path = spec_path(home, project, config)
+    spec, base = str(path), path.with_name(path.name + ".base")
+    if sub == "plan" and not base.is_file():
+        raise WorkspaceError(
+            f"{project}: no {base}: run perch gb pull -p {project} "
+            "where GitLab is reachable"
+        )
+    dump = str(config.board_dump)
+    target = {
+        "show": ("--from", spec, "--markdown"),
+        "graph": ("--from", spec),
+        "plan": (spec, "--against", str(base)),
+        "estimate": (spec, "--history", dump),
+        "stats": ("--from", dump),
+        "report": ("--since", spec),
+        "push": (spec,),
+        "pull": (config.gitlab_project, "--base"),
+    }[sub]
+    return gitboard(home, f"gb {sub}", sub, *target, *args)
+
+
 def review(home: Home, project: str, config: Config, rows: list[dict]) -> Step:
     """Claude's /board on the pulled board, told what perch knows about the money.
 
