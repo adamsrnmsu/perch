@@ -1027,12 +1027,22 @@ def test_walk_toasts_a_settings_file_perch_left_alone(tmp_path, monkeypatch):
     line = "left x/settings.json alone (not a settings object); add y by hand"
     monkeypatch.setattr(command, "install", lambda home: ["kept z", line])
     monkeypatch.setattr(tui.PerchTUI, "suspend", lambda self: nullcontext())
-    monkeypatch.setattr(tui.subprocess, "run", lambda *a, **k: None)
+    events = []
+    monkeypatch.setattr(tui.subprocess, "run", lambda *a, **k: events.append("walk"))
+    notify = tui.PerchTUI.notify
+
+    def spy(self, message, **kw):
+        events.append(("notify", kw.get("timeout")))
+        return notify(self, message, **kw)
+
+    monkeypatch.setattr(tui.PerchTUI, "notify", spy)
 
     async def script(app, pilot):
         await pilot.press("R")
         await settle(app, pilot)
         assert _notices(app) == [line]
+        # a toast posted before the walk would expire while Claude owns the terminal
+        assert events == ["walk", ("notify", 30)]
 
     run(tui.PerchTUI(home), script)
 

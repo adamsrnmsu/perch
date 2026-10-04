@@ -704,12 +704,12 @@ class PerchTUI(App):
         except _ERRORS as exc:
             self.notify(f"{name}: {exc}", severity="error")
             return
-        for line in lines:  # the lead must see what to add by hand
-            if line.startswith("left"):
-                self.notify(line, severity="warning")
         step = walk(self.home, name)
         with self.suspend():
             subprocess.run(step.argv, cwd=step.cwd, check=False)
+        for line in lines:  # after the walk: a toast posted earlier expires unseen
+            if line.startswith("left"):
+                self.notify(line, severity="warning", timeout=30)
         self.action_refresh()
 
     def action_switch(self, target: str) -> None:
