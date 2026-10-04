@@ -241,7 +241,7 @@ def test_perch_tui_outside_a_workspace_says_how_to_start(tmp_path, monkeypatch):
     from perch.cli import cli
 
     monkeypatch.chdir(tmp_path)
-    result = CliRunner().invoke(cli, ["tui"])
+    result = CliRunner().invoke(cli, ["tui", "--no-suite"])
     assert result.exit_code == 1
     assert "perch-home.yaml" in result.output
 
@@ -471,7 +471,7 @@ def test_perch_tui_execs_the_target_it_exited_with(tmp_path, monkeypatch):
     monkeypatch.setattr(tui.PerchTUI, "run", lambda self: "budgie")
     switched = []
     monkeypatch.setattr(tui, "switch", switched.append)
-    assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
+    assert CliRunner().invoke(cli, ["tui", "--no-suite"]).exit_code == 0
     assert switched == [entry]
 
 
@@ -626,7 +626,7 @@ def test_a_crash_outside_the_suite_runs_no_tmux(tmp_path, monkeypatch):
     monkeypatch.setattr(tui.PerchTUI, "run", _fake_run(1))
     ran = []
     monkeypatch.setattr(subprocess, "run", lambda argv, **kw: ran.append(argv))
-    assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
+    assert CliRunner().invoke(cli, ["tui", "--no-suite"]).exit_code == 0
     assert ran == []
 
 
@@ -641,7 +641,7 @@ def test_q_outside_the_suite_just_quits(tmp_path, monkeypatch):
     monkeypatch.setattr(tui.PerchTUI, "run", lambda self: None)
     ran = []
     monkeypatch.setattr(subprocess, "run", lambda argv, **kw: ran.append(argv))
-    assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
+    assert CliRunner().invoke(cli, ["tui", "--no-suite"]).exit_code == 0
     assert ran == []
 
 

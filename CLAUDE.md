@@ -24,7 +24,8 @@ perch --help  # running the apps: init [--year Y --year-start MM-01],
               # board, weekly, digest, emails, monday [--all | --from STEP];
               # accuracy, budget, forecast, cut, review, watch, quarterly
               # [--all], tui, suite
-perch suite   # perch, Budgie and gitboard in a hidden tmux; P/B/G hop instantly
+perch tui     # starts perch suite (hidden tmux, P/B/G hop instantly) when
+              # tmux is installed; inside the suite or --no-suite: the TUI alone
 make venv     # ~/Documents/tools/perch; Budgie from GitHub, then ../budgie
 make test     # perch only: ~/Documents/tools/perch/bin/pytest
 make test-all # Budgie, perch and gitboard suites
@@ -137,6 +138,10 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   widgets in its card (tables, bars, figures). In `perch suite` (`$TMUX` on the
   `pi` socket) `B`/`G` hop to the running window instead of exiting, `q` closes
   the whole suite, and coming to the front refreshes the rows in a worker.
+  `perch tui` outside the suite with tmux on PATH runs `perch suite` instead
+  (the suite's perch window runs `perch tui` inside it, so it never loops);
+  `--no-suite` keeps the TUI alone, and tests that drive `cli tui` from
+  outside the suite pass it so they never touch a real tmux.
   Display and key handling only, like cli.py.
 
 ## Testing

@@ -1194,8 +1194,27 @@ def quarterly(config_path, project, all_projects, quarter, out_dir):
 
 
 @cli.command()
-def tui():
-    """Every project in one table; single keys run perch on the selected one."""
+@click.option(
+    "--no-suite",
+    is_flag=True,
+    help="Just the perch TUI, without starting perch suite.",
+)
+@click.pass_context
+def tui(ctx, no_suite):
+    """Every project in one table; single keys run perch on the selected one.
+
+    With tmux installed this starts perch suite (or comes back to it), so B
+    and G hop to Budgie and gitboard at once. Inside the suite, without tmux,
+    or with --no-suite it is just this TUI.
+    """
+    import shutil
+
+    from perch.core.suite import in_suite
+
+    if not no_suite and not in_suite(os.environ) and shutil.which("tmux"):
+        ctx.invoke(suite, project=None)  # execs tmux attach; returns only in tests
+        return
+
     from perch import tui as tui_mod
 
     app = tui_mod.PerchTUI(_home())

@@ -79,14 +79,19 @@ Everything under `perch.core` is UI-free; `perch.cli` is a thin adapter over it.
 ### perch suite
 
 ```bash
-perch suite        # or: perch suite -p apollo
+perch tui          # starts the suite when tmux is installed
+perch suite        # the same, explicitly; -p apollo opens on apollo
+perch tui --no-suite   # perch alone
 ```
 
 perch, Budgie and gitboard open side by side. `B` and `G` in perch (and `P`,
 `B`, `G` in the others) jump between them at once, and each stays where you
-left it. Close the terminal and the suite keeps running: `perch suite` again
+left it. Close the terminal and the suite keeps running: `perch tui` again
 picks it up. `q` in perch closes everything. It runs on tmux, which you never
-have to touch (`brew install tmux` once). If the suite ever wedges (an app hangs, or tmux was upgraded while it ran), `tmux -L pi kill-server` resets it; `perch suite` then starts fresh.
+have to touch (`brew install tmux` once). If the suite ever wedges (an app
+hangs, or tmux was upgraded while it ran), `tmux -L pi kill-server` resets it;
+`perch tui` then starts fresh.
 
-Without tmux it says `needs tmux: brew install tmux`. A project whose config
+Inside the suite, without tmux, or with `--no-suite`, `perch tui` is just the
+perch TUI. `perch suite` without tmux says `needs tmux: brew install tmux`. A project whose config
 is broken opens perch alone; the others open on the first hop.

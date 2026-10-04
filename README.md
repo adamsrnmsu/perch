@@ -25,13 +25,17 @@ override), so local Budgie edits show up in perch at once.
 
 ## The suite
 
-    perch suite        # or: perch suite -p apollo
+    perch tui          # or: perch suite -p apollo, to open on apollo
 
+With tmux installed, `perch tui` starts the suite (or comes back to it):
 perch, Budgie and gitboard open side by side. `B` and `G` in perch (and `P`,
 `B`, `G` in the others) jump between them at once, and each stays where you
-left it. Close the terminal and the suite keeps running: `perch suite` again
+left it. Close the terminal and the suite keeps running: `perch tui` again
 picks it up. `q` in perch closes everything. It runs on tmux, which you never
-have to touch (`brew install tmux` once). If the suite ever wedges (an app hangs, or tmux was upgraded while it ran), `tmux -L pi kill-server` resets it; `perch suite` then starts fresh.
+have to touch (`brew install tmux` once); without tmux, or with
+`perch tui --no-suite`, you get perch alone. If the suite ever wedges (an app
+hangs, or tmux was upgraded while it ran), `tmux -L pi kill-server` resets it;
+`perch tui` then starts fresh.
 
 ## One entry point for every pi app
 
@@ -54,7 +58,7 @@ perch monday --all             # fetch, board, weekly, digest, emails for every 
 perch monday -p apollo --from weekly  # resume at a step after a failure
 perch watch -p apollo          # private: anyone out of line with their own last 8 weeks
 perch review -p apollo         # Claude's /board on the pulled board, told the budget picture
-perch tui                      # every project in one table; single keys run the commands
+perch tui                      # every project in one table, inside the suite; single keys run the commands
 ```
 
 `-p NAME` picks a project. Without it, a `perch.yaml` in the current directory is used, then the project folder you are standing in, then the only project. Nothing is ever sent.

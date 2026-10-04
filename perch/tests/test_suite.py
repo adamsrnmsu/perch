@@ -312,3 +312,69 @@ def test_suite_tmux_refusing_to_start_says_why(tmp_path, monkeypatch, tmux):
     assert r.exit_code == 1
     assert "unknown option: focus-events" in r.output
     assert tmux.execs == []
+
+
+# --- perch tui starts the suite --------------------------------------------------
+
+
+def _no_tui(monkeypatch):
+    """Records each PerchTUI.run instead of drawing it."""
+    ran = []
+
+    def run(self):
+        ran.append(self)
+
+    monkeypatch.setattr(tui.PerchTUI, "run", run)
+    return ran
+
+
+def test_perch_tui_with_tmux_starts_the_suite(tmp_path, monkeypatch, tmux):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(tmp_path / "ws")
+    drawn = _no_tui(monkeypatch)
+    assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
+    assert [argv for argv, _ in tmux.calls] == [
+        suite.has_session(),
+        suite.launch(_perch(home), tui.suite_map(home, "apollo")),
+    ]
+    assert tmux.execs[0][1] == suite.attach()
+    assert drawn == []
+
+
+def test_perch_tui_reattaches_a_running_suite(tmp_path, monkeypatch, tmux):
+    build_home(tmp_path, "apollo")
+    monkeypatch.chdir(tmp_path / "ws")
+    tmux.up = True
+    drawn = _no_tui(monkeypatch)
+    assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
+    assert [argv for argv, _ in tmux.calls] == [suite.has_session()]
+    assert drawn == []
+
+
+def test_perch_tui_inside_the_suite_draws_the_tui(tmp_path, monkeypatch, tmux):
+    build_home(tmp_path, "apollo")
+    monkeypatch.chdir(tmp_path / "ws")
+    monkeypatch.setenv("TMUX", "/private/tmp/tmux-501/pi,123,0")
+    drawn = _no_tui(monkeypatch)
+    assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
+    assert len(drawn) == 1
+    assert [argv for argv, _ in tmux.calls] == [suite.kill()]  # q closes the suite
+
+
+def test_perch_tui_without_tmux_draws_the_tui(tmp_path, monkeypatch, tmux):
+    build_home(tmp_path, "apollo")
+    monkeypatch.chdir(tmp_path / "ws")
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    drawn = _no_tui(monkeypatch)
+    assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
+    assert len(drawn) == 1
+    assert tmux.calls == [] and tmux.execs == []
+
+
+def test_perch_tui_no_suite_draws_the_tui(tmp_path, monkeypatch, tmux):
+    build_home(tmp_path, "apollo")
+    monkeypatch.chdir(tmp_path / "ws")
+    drawn = _no_tui(monkeypatch)
+    assert CliRunner().invoke(cli, ["tui", "--no-suite"]).exit_code == 0
+    assert len(drawn) == 1
+    assert tmux.calls == [] and tmux.execs == []
