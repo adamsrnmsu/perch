@@ -414,16 +414,26 @@ class PerchTUI(App):
 
     def on_mount(self) -> None:
         self.query_one("#projects", Grid).add_columns(*COLUMNS)
-        self.action_refresh()
+        names = self.home.projects()  # first paint: the table is never empty
+        self._rebuild(names, {n: snapshot(self.home, n) for n in names})
 
     def action_refresh(self) -> None:
+        self._reload()
+
+    @work(thread=True, exclusive=True, group="reload")
+    def _reload(self) -> None:
+        names = self.home.projects()  # a project made meanwhile shows up
+        snaps = {n: snapshot(self.home, n) for n in names}
+        self.call_from_thread(self._rebuild, names, snaps)
+
+    def _rebuild(self, names: list[str], snaps: dict) -> None:
         table = self.query_one("#projects", Grid)
         at = table.cursor_coordinate
         table.clear()
-        self.names = self.home.projects()  # a project made meanwhile shows up
+        self.names = names
         self.changes = {}
-        for name in self.names:
-            cells, self.changes[name] = snapshot(self.home, name)
+        for name in names:
+            cells, self.changes[name] = snaps[name]
             table.add_row(*cells, key=name)
         table.move_cursor(row=at.row, column=at.column)
         self._report()
@@ -578,18 +588,28 @@ class PerchTUI(App):
         if name not in self.names:  # None (`a`), or a project gone meanwhile
             self.action_refresh()
             return
+        self._row_done(name, card, code)
+
+    @work(thread=True, group="row")
+    def _row_done(self, name: str, card: RunCard, code: int) -> None:
+        snap = snapshot(self.home, name)
+        checks = project_checks(self.home, name) if code else []
+        self.call_from_thread(self._apply_row, name, card, snap, checks)
+
+    def _apply_row(self, name: str, card: RunCard, snap: tuple, checks: list) -> None:
+        if name not in self.names:  # removed while the worker ran
+            return
         table = self.query_one("#projects", Grid)
         at = self.names.index(name)
-        cells, self.changes[name] = snapshot(self.home, name)
+        cells, self.changes[name] = snap
         for col, cell in enumerate(cells):
             table.update_cell_at(Coordinate(at, col), cell, update_width=True)
         self._report()
-        if code:  # ponytail: `a` (monday --all) gets no FIX lines
-            for check in project_checks(self.home, name):
-                if not check.ok:
-                    fix = Text.assemble(("▲ FIX  ", "bold yellow"), check.what)
-                    fix.append(f"\n       → {check.fix}", style="yellow")
-                    card.add(fix)
+        for check in checks:  # ponytail: `a` (monday --all) gets no FIX lines
+            if not check.ok:
+                fix = Text.assemble(("▲ FIX  ", "bold yellow"), check.what)
+                fix.append(f"\n       → {check.fix}", style="yellow")
+                card.add(fix)
 
     def action_command(self, text: str) -> None:
         box = self.query_one("#command", Input)
