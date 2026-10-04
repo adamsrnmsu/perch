@@ -1079,11 +1079,23 @@ def tui():
     """Every project in one table; single keys run perch on the selected one."""
     from perch import tui as tui_mod
 
-    target = tui_mod.PerchTUI(_home()).run()
+    app = tui_mod.PerchTUI(_home())
+    target = app.run()
     if target:
         tui_mod.switch(tui_mod.suite_entry(target))
-    elif tui_mod.in_suite(os.environ):  # q in perch suite closes the whole suite
-        from perch.core.suite import kill
+    elif tui_mod.in_suite(os.environ):
+        if app.return_code:  # a crash is not q: keep the suite and the traceback
+            click.echo(
+                "perch stopped with an error (above). Enter closes this window; "
+                "the suite keeps running, P reopens perch.",
+                err=True,
+            )
+            try:
+                input()
+            except EOFError:
+                pass
+            return
+        from perch.core.suite import kill  # q in perch suite closes the whole suite
 
         subprocess.run(kill(), check=False)
 

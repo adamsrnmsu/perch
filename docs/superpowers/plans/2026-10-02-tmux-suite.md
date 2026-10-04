@@ -48,8 +48,6 @@ Budgie), rich + termios loop (gitboard), click (perch CLI), pytest
 - `core/` stays UI-free (no textual, no rich, no click). `core/suite.py`
   executes nothing.
 - The hop code is copied into Budgie and gitboard, not shared.
-- Paths with a backslash are not supported (tmux un-escapes `-e` values;
-  probed). Do not add escaping.
 - Repos: perch, Budgie and gitboard are three git repos. Work each in its own
   worktree (`.claude/worktrees/tmux-suite` in that repo), branch from a fresh
   `origin/main`. Another session is editing Budgie's `tui.py` and perch's

@@ -486,13 +486,14 @@ def hops(monkeypatch):
     class Fake:
         listing = ""
         stderr = ""  # non-empty: the hop call fails with it
+        fail = False  # True: fails even with empty stderr
 
     def run(argv, **kw):
         calls.append(list(argv))
         if "list-windows" in argv:
             return subprocess.CompletedProcess(argv, 0, Fake.listing, "")
         return subprocess.CompletedProcess(
-            argv, 1 if Fake.stderr else 0, "", Fake.stderr
+            argv, 1 if Fake.stderr or Fake.fail else 0, "", Fake.stderr
         )
 
     Fake.calls = calls
@@ -560,6 +561,18 @@ def test_in_suite_a_failed_hop_says_why(tmp_path, hops):
     run(tui.PerchTUI(home), script)
 
 
+def test_in_suite_a_failed_hop_with_no_stderr_still_says_why(tmp_path, hops):
+    hops.fail = True
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        await pilot.press("G")
+        await pilot.pause()
+        assert "gitboard: switch failed: tmux failed" in _notices(app)
+
+    run(tui.PerchTUI(home), script)
+
+
 def test_q_in_perch_suite_closes_the_suite(tmp_path, monkeypatch):
     from click.testing import CliRunner
 
@@ -569,11 +582,50 @@ def test_q_in_perch_suite_closes_the_suite(tmp_path, monkeypatch):
     build_home(tmp_path, "apollo")
     monkeypatch.chdir(tmp_path / "ws")
     monkeypatch.setenv("TMUX", SUITE_TMUX)
-    monkeypatch.setattr(tui.PerchTUI, "run", lambda self: None)
+    monkeypatch.setattr(tui.PerchTUI, "run", _fake_run(0))
     ran = []
     monkeypatch.setattr(subprocess, "run", lambda argv, **kw: ran.append(argv))
     assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
     assert ran == [suite.kill()]
+
+
+def _fake_run(code):
+    def run(self):
+        self._return_code = code
+
+    return run
+
+
+def test_a_crash_in_perch_suite_keeps_the_suite(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from perch.cli import cli
+
+    build_home(tmp_path, "apollo")
+    monkeypatch.chdir(tmp_path / "ws")
+    monkeypatch.setenv("TMUX", SUITE_TMUX)
+    monkeypatch.setattr(tui.PerchTUI, "run", _fake_run(1))
+    ran = []
+    monkeypatch.setattr(subprocess, "run", lambda argv, **kw: ran.append(argv))
+    out = CliRunner().invoke(cli, ["tui"], input="\n")
+    assert out.exit_code == 0
+    assert ran == []
+    assert "perch stopped with an error" in out.output
+
+
+def test_a_crash_outside_the_suite_runs_no_tmux(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    from perch.cli import cli
+
+    build_home(tmp_path, "apollo")
+    monkeypatch.chdir(tmp_path / "ws")
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.setattr(tui.PerchTUI, "run", _fake_run(1))
+    ran = []
+    monkeypatch.setattr(subprocess, "run", lambda argv, **kw: ran.append(argv))
+    assert CliRunner().invoke(cli, ["tui"]).exit_code == 0
+    assert ran == []
 
 
 def test_q_outside_the_suite_just_quits(tmp_path, monkeypatch):

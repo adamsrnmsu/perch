@@ -86,7 +86,7 @@ perch, Budgie and gitboard open side by side. `B` and `G` in perch (and `P`,
 `B`, `G` in the others) jump between them at once, and each stays where you
 left it. Close the terminal and the suite keeps running: `perch suite` again
 picks it up. `q` in perch closes everything. It runs on tmux, which you never
-have to touch (`brew install tmux` once).
+have to touch (`brew install tmux` once). If the suite ever wedges (an app hangs, or tmux was upgraded while it ran), `tmux -L pi kill-server` resets it; `perch suite` then starts fresh.
 
 Without tmux it says `needs tmux: brew install tmux`. A project whose config
 is broken opens perch alone; the others open on the first hop.

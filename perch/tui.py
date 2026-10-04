@@ -594,5 +594,6 @@ class PerchTUI(App):
             return
         if done.returncode:
             self.notify(
-                f"{target}: switch failed: {done.stderr.strip()}", severity="error"
+                f"{target}: switch failed: {done.stderr.strip() or 'tmux failed'}",
+                severity="error",
             )

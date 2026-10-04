@@ -200,13 +200,11 @@ does not happen and `r` still works.
 - **gitboard:** no automatic refresh. Its refresh is a GitLab refetch; `r`
   stays manual.
 
-Only focus-in triggers a refresh. There is no timer.
+Only focus-in triggers a refresh. There is no timer. The same handler runs
+outside the suite too (alt-tab back to a plain `perch tui` or `budgie tui`);
+that is harmless and kept.
 
-## Known limits
-
-tmux strips one level of backslashes from an `-e` value (probed), so a path
-holding a backslash reaches the other apps' `PI_SUITE` mangled. macOS paths
-practically never hold one; not handled.
+## Known limit
 
 If you switch budget inside Budgie, or board inside gitboard (`b`), that app's
 `PI_SUITE` still names the project perch sent, so its `B`/`G` hops follow
