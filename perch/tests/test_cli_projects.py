@@ -88,6 +88,7 @@ def test_init_makes_the_workspace_runs_budgie_init_and_writes_perch_yaml(
     assert (
         "gitlab_project" in result.output and "perch doctor -p apollo" in result.output
     )
+    assert (tmp_path / "ws" / ".claude" / "commands" / "walk.md").is_file()
 
 
 def test_init_passes_year_and_year_start_to_budgie(tmp_path, monkeypatch):

@@ -124,7 +124,10 @@ def test_monday_all_with_no_projects_says_init(tmp_path, monkeypatch):
 
 
 def quiet_tools(monkeypatch, home):
+    from perch.core import walk
+
     home.gitboard_dir.mkdir()
+    walk.install(home)  # an installed /walk is part of a healthy workspace
     monkeypatch.setattr("perch.cli._runs", lambda argv, cwd, env: True)
     monkeypatch.setattr("perch.cli._show_gitboard_config", lambda home: True)
 
@@ -235,7 +238,7 @@ def test_doctor_as_blocks(tmp_path, monkeypatch):
     assert result.exit_code == 1
     out = blocks_of(result)
     heads = [b["text"] for b in out if b["block"] == "heading"]
-    assert heads[:3] == ["Tools", "Projects", "Data (last written)"]
+    assert heads[:4] == ["Tools", "Projects", "Walk", "Data (last written)"]
     fix = next(b for b in out if b["block"] == "text" and b["text"].startswith("FIX"))
     assert fix["tone"] == "bad" and "gitlab_project" in fix["text"]
     assert any(b["block"] == "text" and b.get("tone") == "good" for b in out)

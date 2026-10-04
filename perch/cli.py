@@ -510,6 +510,9 @@ def init(name, home_dir, gitboard_dir, year, year_start):
         if not (home.budget_dir(name) / "budgie.yaml").is_file():
             _run(budgie_init(_bin_dir(), home, name, year, year_start))
         path = home.scaffold(name)
+        from perch.core import walk
+
+        installed = walk.install(home)
     except StepFailed as exc:
         raise click.ClickException(f"{name}: {exc}") from exc
     except (OSError, ValueError) as exc:
@@ -524,6 +527,8 @@ def init(name, home_dir, gitboard_dir, year, year_start):
         markup=False,
     )
     console.print(f"  {budget}/  the Budgie inputs: budgie guide", markup=False)
+    for line in installed:
+        console.print(line, markup=False, highlight=False)
     console.print(f"Then: perch doctor -p {name}", markup=False)
 
 
@@ -839,6 +844,10 @@ def doctor(project):
         show([Check(False, "no projects yet", "perch init <name>")])
     for name in names:
         show(project_checks(home, name))
+    from perch.core import walk
+
+    _show([bk.heading("Walk")])
+    show(walk.checks(home))
     _show(
         [
             bk.heading("Data (last written)"),
