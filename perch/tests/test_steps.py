@@ -236,6 +236,13 @@ def test_gb_plan_without_a_base_says_where_to_pull(tmp_path):
     home, config = apollo(tmp_path)
     with pytest.raises(WorkspaceError, match="where GitLab is reachable"):
         steps.gb(home, "apollo", config, "plan")
+    spec = home.gitboard_dir / "boards" / "apollo.yaml"
+    spec.parent.mkdir(parents=True)
+    spec.write_text("")  # a pull without --base: --force would drop edits
+    with pytest.raises(
+        WorkspaceError, match="--force without a .base discards unpushed edits"
+    ):
+        steps.gb(home, "apollo", config, "plan")
 
 
 def test_gb_refuses_an_unknown_sub_and_a_missing_gitlab_project(tmp_path):

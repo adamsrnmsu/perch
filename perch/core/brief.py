@@ -19,12 +19,12 @@ from perch.core import history
 from perch.core.config import Config
 from perch.core.doctor import age
 from perch.core.money import load_money
-from perch.core.steps import iso_week, people_lines, spec_path
+from perch.core.steps import iso_week, people_lines, pull_fix, spec_path
 from perch.core.trend import team_lines
 from perch.core.workspace import Home
 
 FOLLOWUP = "followup"
-_ERRORS = (OSError, TypeError, ValueError, KeyError)
+_ERRORS = (OSError, TypeError, ValueError, KeyError, yaml.YAMLError)
 _ONLINE = "where GitLab is reachable"  # /walk itself never pulls
 
 
@@ -32,9 +32,10 @@ def _money(value: float | None) -> str:
     return "—" if value is None else f"${value:,.0f}"
 
 
-def _freshness(home: Home, name: str, config: Config, rows, today: date):
+def _freshness(home: Home, name: str, config: Config, today: date):
     try:
-        fetched = json.loads(config.board_dump.read_text()).get("fetched_at")
+        data = json.loads(config.board_dump.read_text())
+        fetched = data.get("fetched_at") if isinstance(data, dict) else None
         yield f"board dump fetched {fetched or 'at an unknown time'}"
     except (OSError, ValueError):
         yield f"board dump: none; run perch fetch -p {name}"
@@ -49,12 +50,16 @@ def _freshness(home: Home, name: str, config: Config, rows, today: date):
         elif spec.exists():
             yield (
                 f"board YAML has no .base (plan cannot diff it), last written "
-                f"{age(spec)}; run perch gb pull -p {name} --force {_ONLINE}"
+                f"{age(spec)}; {pull_fix(name, spec)}"
             )
         else:
-            yield f"board YAML: never pulled; run perch gb pull -p {name} {_ONLINE}"
-    last = max((r["week"] for r in rows), default=None)
-    yield f"last week recorded: {last or f'none; run perch board -p {name}'}"
+            yield f"board YAML: never pulled; {pull_fix(name, spec)}"
+    try:
+        last = max((r["week"] for r in history.load(config.history)), default=None)
+    except _ERRORS as exc:
+        yield f"last week recorded: history.jsonl unreadable: {exc}"
+    else:
+        yield f"last week recorded: {last or f'none; run perch board -p {name}'}"
     yield f"today: {iso_week(today)}"
 
 
@@ -98,6 +103,8 @@ def _follow_ups(home: Home, name: str, config: Config):
         yield f"no boards/{path.name}; run perch gb pull -p {name} {_ONLINE}"
         return
     spec = yaml.safe_load(path.read_text()) or {}
+    if not isinstance(spec, dict):
+        raise TypeError(f"{path.name} is not a board: its top level is not a mapping")
     columns = {c["name"] for c in spec.get("columns") or []}
     found = False
     for issue in spec.get("issues") or []:
@@ -120,13 +127,15 @@ def _under_section(text: str) -> list[str]:
 
 
 def build(home: Home, name: str, config: Config, today: date) -> list[str]:
-    rows = history.load(config.history)
+    def rows():  # read per section: a corrupt line costs those sections, not all
+        return history.load(config.history)
+
     week = iso_week(today)
     watch = home.watch_path(name, week)
     sections = {
-        "Freshness": lambda: _freshness(home, name, config, rows, today),
-        "Team": lambda: team_lines(rows),
-        "People": lambda: people_lines(rows, config.people) or ["no person rows yet"],
+        "Freshness": lambda: _freshness(home, name, config, today),
+        "Team": lambda: team_lines(rows()),
+        "People": lambda: people_lines(rows(), config.people) or ["no person rows yet"],
         "Forecast": lambda: _forecast(config),
         "Watch": lambda: (
             _under_section(watch.read_text())

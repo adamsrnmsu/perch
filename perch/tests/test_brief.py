@@ -138,9 +138,44 @@ def test_freshness_says_a_board_without_base_cannot_be_planned(tmp_path):
     board_yaml(home, [])
     lines = section(brief.build(home, "apollo", config, TODAY), "Freshness")
     assert lines[1].startswith("board YAML has no .base (plan cannot diff it)")
-    assert lines[1].endswith(
-        "run perch gb pull -p apollo --force where GitLab is reachable"
-    )
+    assert "push or copy it first" in lines[1]
+    assert "--force without a .base discards unpushed edits" in lines[1]
+
+
+def test_a_malformed_board_yaml_is_one_line_and_the_rest_prints(tmp_path):
+    home, config = apollo(tmp_path)
+    path = board_yaml(home, [])
+    path.write_text("issues: [{labels: [followup")
+    lines = brief.build(home, "apollo", config, TODAY)
+    (follow,) = section(lines, "Follow-ups")
+    assert follow.startswith("follow-ups: could not read:")
+    assert section(lines, "Forecast")[0].startswith("at completion")
+
+
+def test_a_board_yaml_that_is_not_a_mapping_is_one_line(tmp_path):
+    home, config = apollo(tmp_path)
+    board_yaml(home, []).write_text("- just\n- a list\n")
+    (follow,) = section(brief.build(home, "apollo", config, TODAY), "Follow-ups")
+    assert follow.startswith("follow-ups: could not read:")
+
+
+def test_a_corrupt_history_is_one_line_per_section_and_the_rest_prints(tmp_path):
+    home, config = apollo(tmp_path)
+    config.history.write_text("{oops\n")
+    lines = brief.build(home, "apollo", config, TODAY)
+    assert section(lines, "Team")[0].startswith("team: could not read:")
+    assert section(lines, "People")[0].startswith("people: could not read:")
+    freshness = section(lines, "Freshness")
+    assert freshness[0].startswith("board dump fetched")
+    assert freshness[2].startswith("last week recorded: history.jsonl unreadable")
+    assert section(lines, "Forecast")[0].startswith("at completion")
+
+
+def test_a_dump_that_is_not_a_mapping_still_prints_freshness(tmp_path):
+    home, config = apollo(tmp_path)
+    config.board_dump.write_text("[]")
+    lines = section(brief.build(home, "apollo", config, TODAY), "Freshness")
+    assert lines[0] == "board dump fetched at an unknown time"
 
 
 def test_spec_path_is_the_gitlab_projects_last_segment(tmp_path):

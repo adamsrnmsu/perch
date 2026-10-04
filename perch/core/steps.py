@@ -128,6 +128,21 @@ def spec_path(home: Home, project: str, config: Config) -> Path:
     return home.gitboard_dir / "boards" / f"{name}.yaml"
 
 
+def pull_fix(project: str, spec: Path) -> str:
+    """What to run when the board has no .base, without losing staged edits.
+
+    gitboard guards `pull --force` against unpushed edits only through the
+    .base, so with none it would overwrite them silently.
+    """
+    where = "where GitLab is reachable"
+    if not spec.exists():
+        return f"run perch gb pull -p {project} {where}"
+    return (
+        f"push or copy it first: --force without a .base discards unpushed "
+        f"edits; then perch gb pull -p {project} --force {where}"
+    )
+
+
 # Read only pulled files: what /walk may run, with no GitLab in reach.
 GB_OFFLINE = ("show", "report", "stats", "graph", "estimate", "plan")
 # push and pull need GitLab: the lead runs them on a connected machine.
@@ -148,10 +163,7 @@ def gb(
     path = spec_path(home, project, config)
     spec, base = str(path), path.with_name(path.name + ".base")
     if sub == "plan" and not base.is_file():
-        raise WorkspaceError(
-            f"{project}: no {base}: run perch gb pull -p {project} "
-            "where GitLab is reachable"
-        )
+        raise WorkspaceError(f"{project}: no {base}; {pull_fix(project, path)}")
     dump = str(config.board_dump)
     target = {
         "show": ("--from", spec, "--markdown"),
