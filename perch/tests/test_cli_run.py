@@ -1,11 +1,13 @@
+import json
 from datetime import date
+from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
 
 from perch.cli import cli
 from perch.core import steps
-from perch.core.steps import StepFailed
+from perch.core.steps import Step, StepFailed
 from perch.tests.conftest import build_home
 
 
@@ -215,3 +217,51 @@ def test_help_lists_every_command_once_in_workflow_order():
     out = run("--help").output
     steps = ["hours", "fetch", "board", "weekly", "digest", "emails"]
     assert sorted(steps, key=lambda c: out.index(f"  {c} ")) == steps
+
+
+def blocks_of(result):
+    from perch.core.blocks import parse
+
+    out = [parse(line) for line in result.stdout.splitlines()]
+    assert all(out), result.output
+    return out
+
+
+def test_doctor_as_blocks(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo", gitlab=False)
+    monkeypatch.chdir(home.root)
+    quiet_tools(monkeypatch, home)
+    result = CliRunner().invoke(cli, ["doctor", "-p", "apollo"], env={"PI_BLOCKS": "1"})
+    assert result.exit_code == 1
+    out = blocks_of(result)
+    heads = [b["text"] for b in out if b["block"] == "heading"]
+    assert heads[:3] == ["Tools", "Projects", "Data (last written)"]
+    fix = next(b for b in out if b["block"] == "text" and b["text"].startswith("FIX"))
+    assert fix["tone"] == "bad" and "gitlab_project" in fix["text"]
+    assert any(b["block"] == "text" and b.get("tone") == "good" for b in out)
+    assert any(
+        b["block"] == "list" and "apollo: board dump" in b["items"][0] for b in out
+    )
+
+
+def test_monday_as_blocks(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(home.root)
+    recorder(monkeypatch)  # _run is faked: no step header
+    result = CliRunner().invoke(cli, ["monday"], env={"PI_BLOCKS": "1"})
+    assert result.exit_code == 0, result.output
+    out = [json.loads(x) for x in result.stdout.splitlines() if x.startswith("{")]
+    done = next(b for b in out if b["block"] == "text" and "done. Review" in b["text"])
+    paths = out[out.index(done) + 1]
+    assert paths["block"] == "list" and len(paths["items"]) == 3
+    assert out[-1]["block"] == "text" and out[-1]["text"].startswith("watch:")
+
+
+def test_run_header_is_a_heading_and_a_dim_command(capsys, monkeypatch):
+    from perch.cli import _run
+
+    monkeypatch.setenv("PI_BLOCKS", "1")
+    _run(Step("fetch", ("true",), Path.cwd()))
+    first, second = (json.loads(x) for x in capsys.readouterr().out.splitlines()[:2])
+    assert (first["block"], first["level"], first["text"]) == ("heading", 3, "fetch")
+    assert second["block"] == "text" and second["tone"] == "dim"

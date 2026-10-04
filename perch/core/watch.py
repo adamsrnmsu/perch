@@ -16,6 +16,7 @@ from statistics import mean
 
 from budgie.core.calendar import workdays_between
 
+from perch.core import blocks
 from perch.core.accuracy import MIN_COVERAGE, PersonAccuracy, by_person
 from perch.core.board import BLOCKED, DONE, Board
 from perch.core.estimates import Estimate
@@ -121,7 +122,7 @@ def _per_issue(
     closed = [
         i.closed_on
         for i in board.closed
-        if people.get(i.assignee) == name and i.closed_on.year == money.year
+        if people.get(i.assignee) == name and money.span.contains(i.closed_on)
     ]
 
     def window(start: date, end: date) -> tuple[float, int]:
@@ -251,26 +252,42 @@ def watch(
     return Watch(f"{board.project} {board.name}, {week}", out, weeks)
 
 
-def render(result: Watch) -> str:
+def watch_blocks(result: Watch) -> list[dict]:
     out = [
-        f"# Watch, {result.title}",
-        "",
-        (
+        blocks.heading(f"Watch, {result.title}", 1),
+        blocks.text(
             "Private, for the lead: never for a draft, an email or a report. Each "
             f"person against their own last {WINDOW} weeks; a flag is a prompt "
-            "for a conversation, not a verdict."
+            "for a conversation, not a verdict.",
+            tone="dim",
         ),
     ]
     for person in result.people:
-        out += ["", f"## {person.name}", ""]
+        out.append(blocks.heading(person.name, 2))
         out.append(
-            f"{person.flags} flag(s)." if person.flags else "Nothing out of line."
+            blocks.text(f"{person.flags} flag(s).", tone="warn")
+            if person.flags
+            else blocks.text("Nothing out of line.", tone="good")
         )
-        out += [
-            f"- {'**Flag:** ' if s.flagged else ''}{s.name}: {s.text}"
-            for s in person.signals
-        ]
-    return "\n".join(out) + "\n"
+        out.append(
+            {
+                **blocks.bullets(
+                    [
+                        f"{'Flag: ' if s.flagged else ''}{s.name}: {s.text}"
+                        for s in person.signals
+                    ]
+                ),
+                "md": "\n".join(
+                    f"- {'**Flag:** ' if s.flagged else ''}{s.name}: {s.text}"
+                    for s in person.signals
+                ),
+            }
+        )
+    return out
+
+
+def render(result: Watch) -> str:
+    return blocks.to_md(watch_blocks(result))
 
 
 def summary(result: Watch) -> str:

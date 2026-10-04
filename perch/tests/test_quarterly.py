@@ -9,16 +9,19 @@ import json
 from datetime import date
 
 import pytest
+from budgie.core.calendar import year_span
 from budgie.core.eac import at_completion
 from budgie.core.montecarlo import simulate
+from budgie.core.person import HoursEstimate, Person
 from budgie.core.signals import evaluate
 
 from perch.core.board import load_board
 from perch.core.config import load_config
 from perch.core.estimates import load_estimates
 from perch.core.join import calibrate
-from perch.core.money import load_money, load_snapshot
+from perch.core.money import Money, load_money, load_snapshot
 from perch.core.quarterly import build, last_complete_quarter, parse_quarter
+from perch.core.report_mail import render_md
 from perch.tests.conftest import issue, since
 
 FETCH_DAY = date(2026, 4, 20)
@@ -29,7 +32,7 @@ def make(world, quarter, today=FETCH_DAY, board=True, estimates=True):
     the_board = load_board(config.board_dump) if board else None
     money = load_money(config.budgie_project)
     rates = (
-        calibrate(money.readings, the_board, config.people, money.year)
+        calibrate(money.readings, the_board, config.people, money.span)
         if the_board
         else None
     )
@@ -40,19 +43,25 @@ def make(world, quarter, today=FETCH_DAY, board=True, estimates=True):
 
 
 def test_a_quarter_is_its_calendar_months():
-    assert parse_quarter("2026-Q3") == (date(2026, 7, 1), date(2026, 9, 30))
-    assert parse_quarter("2026-q1") == (date(2026, 1, 1), date(2026, 3, 31))
+    assert parse_quarter("2026-Q3", year_span(2026)) == (
+        date(2026, 7, 1),
+        date(2026, 9, 30),
+    )
+    assert parse_quarter("2026-q1", year_span(2026)) == (
+        date(2026, 1, 1),
+        date(2026, 3, 31),
+    )
     for bad in ("2026-Q5", "2026-Q0", "Q3", "2026Q3"):
         with pytest.raises(ValueError, match="2026-Q3"):
-            parse_quarter(bad)
+            parse_quarter(bad, year_span(2026))
 
 
 def test_the_default_is_the_last_complete_quarter():
-    assert last_complete_quarter(2026, date(2026, 10, 1)) == "2026-Q3"
-    assert last_complete_quarter(2026, date(2026, 9, 30)) == "2026-Q2"
-    assert last_complete_quarter(2026, date(2027, 2, 1)) == "2026-Q4"
+    assert last_complete_quarter(year_span(2026), date(2026, 10, 1)) == "2026-Q3"
+    assert last_complete_quarter(year_span(2026), date(2026, 9, 30)) == "2026-Q2"
+    assert last_complete_quarter(year_span(2026), date(2027, 2, 1)) == "2026-Q4"
     # Nothing in the year is over yet: its first quarter, to date.
-    assert last_complete_quarter(2026, date(2026, 2, 1)) == "2026-Q1"
+    assert last_complete_quarter(year_span(2026), date(2026, 2, 1)) == "2026-Q1"
 
 
 def test_a_quarter_outside_the_budgie_year_is_refused(world):
@@ -74,7 +83,9 @@ def test_budget_position_for_a_quarter_to_date(quarter_world):
     ]
     # Budgie's own estimate at completion, as `budgie forecast --as-of` runs it.
     money = load_money(quarter_world.parent / "fy26")
-    eac = at_completion(money.people, money.readings, 2026, q.through, money.plan)
+    eac = at_completion(
+        money.people, money.readings, year_span(2026), q.through, money.plan
+    )
     # The cost lines go in as `budgie forecast` passes them: the laptops, $5,000.
     sim = simulate(
         eac.people, iterations=money.iterations, seed=money.seed, costs=money.costs
@@ -98,7 +109,9 @@ def test_a_cost_line_with_a_range_is_sampled_as_budgie_forecast_does(quarter_wor
     q = make(quarter_world, "2026-Q2")
     snap = load_snapshot(quarter_world.parent / "fy26")
     assert [(c.low, c.high) for c in snap.costs] == [(4000, 7000)]
-    eac = at_completion(snap.people, snap.readings, 2026, q.through, snap.plan)
+    eac = at_completion(
+        snap.people, snap.readings, year_span(2026), q.through, snap.plan
+    )
     sim = simulate(eac.people, iterations=snap.iterations, seed=1, costs=snap.costs)
     p = q.position
     assert (p.p10, p.p50, p.p90) == (
@@ -333,3 +346,37 @@ def test_an_issue_created_after_the_quarter_is_not_in_its_label(world):
     dump.write_text(json.dumps(meta))
     (billing,) = make(world, "2026-Q1", today=date(2026, 10, 1)).misses
     assert (billing.label, billing.issues, billing.open) == ("epic::billing", 4, 0)
+
+
+FY27 = year_span(2027, "10-01")
+
+
+def test_fiscal_quarters_come_from_budgies_year():
+    assert parse_quarter("FY27-Q1", FY27) == (date(2026, 10, 1), date(2026, 12, 31))
+    assert parse_quarter("fy27-q4", FY27) == (date(2027, 7, 1), date(2027, 9, 30))
+    with pytest.raises(ValueError, match="outside the Budgie project's year, FY27"):
+        parse_quarter("2026-Q3", FY27)
+    with pytest.raises(ValueError, match="FY27-Q3"):
+        parse_quarter("FY27Q1", FY27)
+
+
+def test_the_default_fiscal_quarter_is_the_last_complete_one():
+    assert last_complete_quarter(FY27, date(2026, 12, 31)) == "FY27-Q1"  # none over yet
+    assert last_complete_quarter(FY27, date(2027, 1, 1)) == "FY27-Q1"
+    assert last_complete_quarter(FY27, date(2027, 4, 1)) == "FY27-Q2"
+
+
+def test_a_fiscal_quarter_report_is_named_and_dated_by_the_span():
+    money = Money(
+        span=FY27,
+        hourly_cost={"Alice": 50.0},
+        people=[Person("Alice", 50.0, HoursEstimate.constant(1000.0))],
+    )
+    q = build(None, money, {}, None, {}, "FY27-Q1", date(2027, 1, 15), "proj")
+    assert (q.name, q.start, q.end, q.year_start) == (
+        "FY27-Q1",
+        date(2026, 10, 1),
+        date(2026, 12, 31),
+        date(2026, 10, 1),
+    )
+    assert "FY27-Q1 runs Oct 1 – Dec 31" in render_md(q)

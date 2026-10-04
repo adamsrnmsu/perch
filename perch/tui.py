@@ -11,6 +11,11 @@ follows), on any other column runs the next step; `i` explains the cell in an
 info card. `:` opens the command line (`perch.core.command`), `c` prefilled with
 CUT. A line above the table says what changed since last week, and a stoplight
 that flipped toasts once. All of it reads the team row of history.jsonl.
+
+Commands run with PI_BLOCKS=1 (`perch.core.blocks`): a stdout line that is a
+block becomes a widget in the run card (heading, text, figures tiles, table,
+bars, list), any other line stays text. `o` maximizes the newest card; Escape
+restores it.
 """
 
 from __future__ import annotations
@@ -24,17 +29,19 @@ from collections.abc import Callable, Iterator
 from datetime import date
 from pathlib import Path
 
+from rich.columns import Columns
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.coordinate import Coordinate
 from textual.message import Message
+from textual.widget import Widget
 from textual.widgets import DataTable, Footer, Input, Static
 
 from perch.cli import _bin_dir, _label, _watch
-from perch.core import history
+from perch.core import blocks, history
 from perch.core.command import parse
 from perch.core.config import load_config
 from perch.core.doctor import project_checks
@@ -191,9 +198,99 @@ def switch(entry: dict) -> None:
         sys.exit(f"switch failed: {exc}")
 
 
-class RunCard(Static):
-    """One command's output: its title, a live status, the tool's own colours."""
+_TONE = blocks.TONE_STYLE
+TABLE_ROWS = 12  # a table shows this many rows, then scrolls
 
+
+def _num(n: float, unit: str | None) -> str:
+    return f"{n:g}" + (f" {unit}" if unit else "")
+
+
+def bar_lines(items: list, unit: str | None, width: int) -> Text:
+    """`label  ████ n` per item: label padded, bar scaled to the largest value."""
+    pad = max((len(label) for label, _ in items), default=0)
+    nums = [_num(n, unit) for _, n in items]
+    room = max(width - pad - max(map(len, nums), default=0) - 2, 1)
+    top = max((n for _, n in items), default=0)
+    lines = [
+        f"{label:<{pad}} {'█' * (round(room * n / top) if top > 0 and n > 0 else 0)} {num}"
+        for (label, n), num in zip(items, nums, strict=True)
+    ]
+    return Text("\n".join(lines))
+
+
+class Bars(Static):
+    """Redrawn at its own width, so a maximized card gets longer bars."""
+
+    def __init__(self, items: list, unit: str | None):
+        super().__init__()
+        self.items, self.unit = items, unit
+
+    def render(self) -> Text:
+        return bar_lines(self.items, self.unit, self.size.width or 40)
+
+
+def _tile(f: dict) -> Text:
+    tile = Text(f["value"], style=f"bold {_TONE.get(f.get('tone'), '')}".strip())
+    tile.append(f"\n{f['label']}", style="dim")
+    if f.get("note"):
+        tile.append(f"\n{f['note']}", style="dim")
+    return tile
+
+
+def _table(b: dict) -> Vertical:
+    cols = b["columns"]
+    right = [a == "r" for a in b.get("align") or ["l"] * len(cols)]
+    table = DataTable(show_cursor=False, zebra_stripes=True)
+    table.add_columns(
+        *(
+            Text(c, justify="right" if r else "left")
+            for c, r in zip(cols, right, strict=True)
+        )
+    )
+    for r in b["rows"]:
+        table.add_row(
+            *(
+                Text(c, justify="right" if x else "left")
+                for c, x in zip(r, right, strict=True)
+            )
+        )
+    table.styles.height = min(len(b["rows"]), TABLE_ROWS) + 1  # + the header
+    return Vertical(*_titled(b), table, classes="block")
+
+
+def _titled(b: dict) -> list[Static]:
+    return [Static(Text(b["title"], style="bold"))] if b.get("title") else []
+
+
+def block_widget(b: dict) -> Widget:
+    """One block as a widget; the kinds are those of perch.core.blocks."""
+    kind = b["block"]
+    if kind == "table":
+        return _table(b)
+    if kind == "bars":
+        return Vertical(*_titled(b), Bars(b["items"], b.get("unit")), classes="block")
+    if kind == "heading":
+        level = b["level"]
+        w = Static(Text(b["text"], style="bold dim" if level == 3 else "bold"))
+        if level == 2:
+            w.styles.border_bottom = ("solid", "gray")
+        return w
+    if kind == "text":
+        return Static(Text(b["text"], style=_TONE.get(b.get("tone"), "")))
+    if kind == "figures":
+        return Static(Columns([_tile(f) for f in b["items"]], padding=(0, 3)))
+    return Static(Text("\n".join(f"• {i}" for i in b["items"])))  # list
+
+
+class RunCard(Vertical):
+    """One command's output: its title, a live status, the tool's own colours.
+
+    Plain lines gather in one text widget; a block mounts a widget after it and
+    the next plain line starts a fresh text widget below.
+    """
+
+    ALLOW_MAXIMIZE = True
     DEFAULT_CSS = """
     RunCard {
         height: auto;
@@ -204,15 +301,23 @@ class RunCard(Static):
     }
     RunCard.ok { border: round $success; border-subtitle-color: $success; }
     RunCard.failed { border: round $error; border-subtitle-color: $error; }
+    RunCard .block { height: auto; margin: 0 0 1 0; }
+    RunCard .block Static { height: auto; }
     """
 
     def __init__(self, title: str, info: bool = False):
         super().__init__()
         self.border_title = title
         self.info = info  # a card of facts: no spinner, nothing to finish
-        self.body = Text()
+        self.parts: list[tuple[Static, Text]] = []  # the text widgets, oldest first
+        self._open = False  # the last widget is a text one still taking lines
         self.began = time.monotonic()
         self.frame = 0
+
+    @property
+    def body(self) -> Text:
+        """All the plain lines, blocks left out."""
+        return Text("\n").join(t for _, t in self.parts)
 
     def on_mount(self) -> None:
         if self.info:
@@ -226,10 +331,23 @@ class RunCard(Static):
         self.frame += 1
 
     def add(self, line: Text) -> None:
-        if self.body:
-            self.body.append("\n")
-        self.body.append_text(line)
-        self.update(self.body)
+        if not self._open:
+            self.parts.append((Static(), Text()))
+            self.mount(self.parts[-1][0])
+            self._open = True
+        widget, body = self.parts[-1]
+        if body:
+            body.append("\n")
+        body.append_text(line)
+        widget.update(body)
+
+    def put(self, raw: str) -> None:
+        """One output line: a block becomes a widget, anything else is text."""
+        if (b := blocks.parse(raw)) is None:
+            self.add(Text.from_ansi(raw))
+        else:
+            self.mount(block_widget(b))
+            self._open = False
 
     def finish(self, code: int) -> None:
         self.ticker.stop()
@@ -266,6 +384,7 @@ class PerchTUI(App):
         ("colon", "command('')", "command"),
         ("c", "command('CUT ')", "cut"),
         ("i", "info", "info"),
+        ("o", "open", "open"),
         ("h", "hours", "hours"),
         ("R", "review", "review"),
         ("r", "refresh", "refresh"),
@@ -294,11 +413,11 @@ class PerchTUI(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.query_one(DataTable).add_columns(*COLUMNS)
+        self.query_one("#projects", Grid).add_columns(*COLUMNS)
         self.action_refresh()
 
     def action_refresh(self) -> None:
-        table = self.query_one(DataTable)
+        table = self.query_one("#projects", Grid)
         at = table.cursor_coordinate
         table.clear()
         self.names = self.home.projects()  # a project made meanwhile shows up
@@ -322,7 +441,7 @@ class PerchTUI(App):
     def _fill(self, snaps: dict) -> None:
         """Rewrite the rows in place: the cursor stays. A project made meanwhile
         shows on `r`."""
-        table = self.query_one(DataTable)
+        table = self.query_one("#projects", Grid)
         for name, (cells, moved) in snaps.items():
             if name not in self.names:  # removed while the worker ran
                 continue
@@ -352,7 +471,7 @@ class PerchTUI(App):
         if not self.names:
             self.notify("no projects yet. Run: perch init <name>", severity="warning")
             return None
-        return self.names[self.query_one(DataTable).cursor_coordinate.row]
+        return self.names[self.query_one("#projects", Grid).cursor_coordinate.row]
 
     def _free(self) -> bool:
         if self.busy:
@@ -387,7 +506,7 @@ class PerchTUI(App):
         width = max(
             self.query_one("#output").size.width - 4, 40
         )  # the card's inside: tables fit it
-        env = {"FORCE_COLOR": "1", "COLUMNS": str(width)}
+        env = {"FORCE_COLOR": "1", "COLUMNS": str(width), blocks.ENV: "1"}
         self._stream(card, name, [str(_bin_dir() / "perch"), *args], env)
 
     def on_grid_go(self) -> None:
@@ -422,7 +541,7 @@ class PerchTUI(App):
         try:
             for line in _spawn(argv, self.home.root, self._hold, env):
                 if pending is not None:
-                    self.call_from_thread(card.add, Text.from_ansi(pending))
+                    self.call_from_thread(card.put, pending)
                 pending = line
             if pending is not None and pending.startswith("exited "):
                 code, pending = int(pending.split()[1]), None
@@ -430,7 +549,7 @@ class PerchTUI(App):
             code, pending = 1, f"{pending}\n{exc}" if pending else str(exc)
         finally:
             if pending is not None:
-                self.call_from_thread(card.add, Text.from_ansi(pending))
+                self.call_from_thread(card.put, pending)
             self.call_from_thread(self._finished, name, card, code)
 
     def _hold(self, proc: subprocess.Popen) -> None:
@@ -459,7 +578,7 @@ class PerchTUI(App):
         if name not in self.names:  # None (`a`), or a project gone meanwhile
             self.action_refresh()
             return
-        table = self.query_one(DataTable)
+        table = self.query_one("#projects", Grid)
         at = self.names.index(name)
         cells, self.changes[name] = snapshot(self.home, name)
         for col, cell in enumerate(cells):
@@ -483,7 +602,14 @@ class PerchTUI(App):
         box = self.query_one("#command", Input)
         box.display = False
         box.value = ""
-        self.query_one(DataTable).focus()
+        self.query_one("#projects", Grid).focus()
+        self.screen.minimize()  # Escape also restores a maximized card
+
+    def action_open(self) -> None:
+        """Maximize the newest card (its container is the pane: not that)."""
+        cards = self.query(RunCard)
+        if cards:
+            self.screen.maximize(cards.last(), container=False)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self.action_close_command()
@@ -493,7 +619,9 @@ class PerchTUI(App):
             self.notify(str(exc), severity="error")
             return
         if command.args[0] in ("hours", "review"):
-            self.query_one(DataTable).move_cursor(row=self.names.index(command.project))
+            self.query_one("#projects", Grid).move_cursor(
+                row=self.names.index(command.project)
+            )
             if command.args[0] == "hours":
                 self.action_hours()
             else:

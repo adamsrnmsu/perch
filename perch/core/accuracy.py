@@ -97,7 +97,7 @@ def by_person(
 ) -> list[PersonAccuracy]:
     out = []
     for name, series in sorted(money.readings.items()):
-        start, before = window(series, money.year, board.since)
+        start, before = window(series, money.span, board.since)
         through, booked = series[-1]
         closed = [
             i

@@ -19,12 +19,16 @@ is one GitLab project + one Budgie project + one charge code, picked with
 ## Commands
 
 ```bash
-perch --help  # running the apps: projects, init, doctor, status, hours,
-              # monday [--all | --from STEP], quarterly [--all]
+perch --help  # running the apps: init [--year Y --year-start MM-01],
+              # projects, doctor; status, hours, fetch,
+              # board, weekly, digest, emails, monday [--all | --from STEP];
+              # accuracy, budget, forecast, cut, review, watch, quarterly
+              # [--all], tui, suite
 perch suite   # perch, Budgie and gitboard in a hidden tmux; P/B/G hop instantly
 make venv     # ~/Documents/tools/perch; Budgie from GitHub, then ../budgie
 make test     # perch only: ~/Documents/tools/perch/bin/pytest
 make test-all # Budgie, perch and gitboard suites
+make docs     # sphinx -W into docs/_build/html
 make lint     # ruff check .
 make format   # ruff format .
 ```
@@ -59,6 +63,13 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   window per app, each window's `@entry` = the `{"cwd", "argv"}` it runs. The
   hop rule: same entry, select; another, respawn that window; none, open it.
   Budgie and gitboard carry their own copy; a change goes in all three.
+- `core/blocks.py` -- the PI_BLOCKS contract
+  (`docs/superpowers/specs/2026-10-02-tui-blocks-design.md`): with `PI_BLOCKS=1`
+  a command prints one JSON line per block instead of text. One builder per
+  report, rendered three ways: rich in the terminal (`cli._print_block`),
+  widgets in the TUI, markdown (`to_md`) and the JSON lines. `parse` rejects
+  anything off-contract (the TUI shows that line as text). Strings are never
+  rich markup.
 - `core/doctor.py` -- `Check(ok, what, fix)` values for `perch doctor`.
 - `core/status.py` -- `perch status` and the TUI's step cells: done, stale,
   todo, failed or error per Monday step this ISO week, read only from the files
@@ -104,7 +115,9 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   readings, budget revisions and plan plus the board dump (never
   history.jsonl). The forecast is Budgie's `at_completion` + `simulate` +
   `evaluate`; booked hours interpolate readings like Budgie's `monthly`.
-  Team level only: names appear only in staffing changes.
+  Team level only: names appear only in staffing changes. Quarters are
+  Budgie's `YearSpan.quarters` (fiscal when the Budgie project sets
+  `year_start`), named `2026-Q3` or `FY27-Q1`.
 - `core/report_mail.py` -- a `Quarter` as markdown and as an `.eml` draft
   (multipart/alternative, `X-Unsent: 1`, table HTML with inline styles only).
 - `core/command.py` -- the TUI command line's grammar: `parse(text, projects,
@@ -120,9 +133,11 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   project's row is redrawn. `:` opens the command line (`c` prefilled `CUT `),
   `i` explains the cursor's cell in an info card, the Trend column and the
   `#changes` strip read `core/trend.py`, and a stoplight flip toasts once.
-  Display and key handling only, like cli.py. In `perch suite` (`$TMUX` on the
+  `o` maximizes the newest card. Blocks from a command's output mount as
+  widgets in its card (tables, bars, figures). In `perch suite` (`$TMUX` on the
   `pi` socket) `B`/`G` hop to the running window instead of exiting, `q` closes
   the whole suite, and coming to the front refreshes the rows in a worker.
+  Display and key handling only, like cli.py.
 
 ## Testing
 

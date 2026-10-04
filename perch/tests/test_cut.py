@@ -9,6 +9,7 @@ import json
 from datetime import date
 
 import pytest
+from budgie.core.calendar import year_span
 from budgie.core.plan import PlanEntry
 
 from perch.core.cut import compare, parse_change
@@ -26,7 +27,7 @@ def _load(world):
 
 def test_bob_leaving_on_july_1(world):
     config, board, estimates, rates, snap = _load(world)
-    leaves = parse_change("Bob:2026-07-01", NAMES, 2026, leaves=True)
+    leaves = parse_change("Bob:2026-07-01", NAMES, year_span(2026), leaves=True)
     assert leaves == PlanEntry("Bob", date(2026, 7, 1), 0.0)
     cut = compare(
         money_from(snap),
@@ -145,12 +146,12 @@ def test_milestones_with_their_open_hours(world):
 def test_flags_are_checked_and_the_error_names_the_flag(flag, leaves, error):
     option = "--leaves" if leaves else "--fte"
     with pytest.raises(ValueError, match=error) as caught:
-        parse_change(flag, NAMES, 2026, leaves=leaves)
+        parse_change(flag, NAMES, year_span(2026), leaves=leaves)
     assert str(caught.value).startswith(f"{option} {flag}: ")
 
 
 def test_fte_flag(world):
-    assert parse_change("Alice:2026-11-01:0.5", NAMES, 2026) == PlanEntry(
+    assert parse_change("Alice:2026-11-01:0.5", NAMES, year_span(2026)) == PlanEntry(
         "Alice", date(2026, 11, 1), 0.5
     )
 

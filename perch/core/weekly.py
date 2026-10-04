@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from statistics import mean
 
+from perch.core import blocks
 from perch.core.accuracy import MIN_COVERAGE, PersonAccuracy
 from perch.core.board import Board
 from perch.core.history import figures, week_key
@@ -104,6 +105,11 @@ def _accuracy(
     return head + f"{now}, {way} your {base:.2f}x over {len(before)} weeks."
 
 
+def _plain(line: str) -> str:
+    """A markdown bullet line as a list item: no `- `, no bold."""
+    return line.replace("**", "").replace("- ", "", 1)
+
+
 def _waiting(name: str, board: Board, people: dict[str, str]) -> list[str]:
     mine = [i for i in board.open if i.is_waiting and people.get(i.assignee) == name]
     if not mine:
@@ -126,7 +132,7 @@ def _waiting(name: str, board: Board, people: dict[str, str]) -> list[str]:
     return out
 
 
-def weekly(
+def weekly_blocks(
     board: Board,
     money: Money,
     rates: Rates,
@@ -136,7 +142,7 @@ def weekly(
     people: dict[str, str],
     history: list[dict],
     only: str | None = None,
-) -> str:
+) -> list[dict]:
     names = sorted(set(people.values()))
     if only is not None:
         if only not in names:
@@ -147,22 +153,30 @@ def weekly(
     by_row = {r.name: r for r in rows}
     by_acc = {a.name: a for a in accuracy}
     out = [
-        f"# Weekly, {board.project} {board.name}, {week}",
-        "",
-        f"Draft from the board fetched {board.fetched_on}. Not sent.",
+        blocks.heading(f"Weekly, {board.project} {board.name}, {week}", 1),
+        blocks.text(
+            f"Draft from the board fetched {board.fetched_on}. Not sent.", tone="dim"
+        ),
     ]
     for name in names:
-        out += [
-            "",
-            f"## {name}",
-            "",
-            _open_line(by_row.get(name), money.left.get(name)),
-        ]
-        out += _types(name, rates, history, weeks)
-        out.append(
+        lines = [_open_line(by_row.get(name), money.left.get(name))]
+        lines += _types(name, rates, history, weeks)
+        lines.append(
             _accuracy(by_acc.get(name), history, weeks, name)
             if estimates_given
             else "- **Estimate accuracy:** no `estimates:` file, so nothing to compare."
         )
-        out += _waiting(name, board, people)
-    return "\n".join(out) + "\n"
+        lines += _waiting(name, board, people)
+        out += [
+            blocks.heading(name, 2),
+            # items: the same lines without markup; a sub-item keeps two spaces
+            {
+                **blocks.bullets([_plain(line) for line in lines]),
+                "md": "\n".join(lines),
+            },
+        ]
+    return out
+
+
+def weekly(*args, **kwargs) -> str:
+    return blocks.to_md(weekly_blocks(*args, **kwargs))

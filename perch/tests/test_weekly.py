@@ -1,8 +1,11 @@
 import json
+import os
+from pathlib import Path
 
 from click.testing import CliRunner
 
 from perch.cli import cli
+from perch.core import blocks
 from perch.core.history import record
 from perch.tests.conftest import week
 
@@ -98,3 +101,42 @@ def test_out_writes_a_file_and_unknown_person_is_a_clean_error(world, tmp_path):
 def test_alice_has_nothing_waiting(world):
     out = run(world, "--person", "Alice").output
     assert "nothing in Blocked or asked as `Q:`" in out
+
+
+# -- markdown stays byte-identical to the pre-blocks render --------------------
+
+GOLDEN = Path(__file__).parent / "golden"
+
+
+def check_golden(name, text):
+    path = GOLDEN / name
+    if os.environ.get("GOLDEN_WRITE"):
+        path.write_text(text)
+    assert text == path.read_text()
+
+
+def test_markdown_is_byte_identical(world):
+    check_golden("weekly_nohistory.md", run(world).output)
+    seed_history(world, 2)
+    cover_alice(world)
+    check_golden("weekly_thin.md", run(world).output)
+    seed_history(world, 8)
+    check_golden("weekly_full.md", run(world).output)
+    world.write_text(
+        "budgie_project: fy26\nboard_dump: dump.json\npeople:\n  bjones: Bob\n"
+    )
+    check_golden("weekly_bob.md", run(world).output)
+
+
+def test_blocks_when_asked_and_markdown_otherwise(world, monkeypatch):
+    md = run(world).output
+    monkeypatch.setenv("PI_BLOCKS", "1")
+    lines = run(world).output.splitlines()
+    parsed = [blocks.parse(x) for x in lines]
+    assert None not in parsed
+    assert [b["block"] for b in parsed] == ["heading", "text"] + ["heading", "list"] * 2
+    assert not [x for b in parsed for x in b.get("items", []) if "**" in x]
+    assert "## Alice" in md
+    target = world.parent / "w.md"  # --out stays markdown
+    run(world, "--out", str(target))
+    assert target.read_text() == md

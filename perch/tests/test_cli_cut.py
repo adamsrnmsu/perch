@@ -93,3 +93,32 @@ def test_after_the_fact_says_left_includes_hours_spent_since(world):
     assert CliRunner().invoke(cli, ["board", "--config", str(world)]).exit_code == 0
     result = run(world)
     assert "also falls by the hours booked since 2026-W17" in result.output
+
+
+def test_cut_as_blocks(world):
+    from perch.core.blocks import parse
+
+    result = CliRunner().invoke(
+        cli,
+        ["cut", "--leaves", "Bob:2026-07-01", "--config", str(world)],
+        env={"PI_BLOCKS": "1"},
+    )
+    assert result.exit_code == 0, result.output
+    out = [parse(line) for line in result.stdout.splitlines()]
+    assert all(out), result.output
+    assert [b["block"] for b in out[:2]] == ["heading", "figures"]
+    values = {f["label"]: f["value"] for f in out[1]["items"]}
+    assert values["Planned hours left"] == "1,672 → 1,170"
+    assert values["Stoplight"] == "GOOD → GOOD"
+    fits = next(b for b in out if b["block"] == "text" and "still fit" in b["text"])
+    assert fits["tone"] == "good" and "1,013 h spare" in fits["text"]
+    people = next(
+        b for b in out if b["block"] == "table" and b["title"].startswith("People")
+    )
+    names = [r[0] for r in people["rows"]]
+    assert names.index("Alice") < names.index("Bob")  # name order
+    leave = next(b for b in out if b["block"] == "list")
+    assert "Bob leaves 2026-07-01: 2 open issues" in leave["items"][0]
+    assert any(
+        b["block"] == "table" and b["title"].startswith("Milestones") for b in out
+    )

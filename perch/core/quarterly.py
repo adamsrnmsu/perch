@@ -14,6 +14,7 @@ from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
 from budgie.core.budget import BudgetRevision
+from budgie.core.calendar import YearSpan
 from budgie.core.eac import at_completion
 from budgie.core.montecarlo import simulate
 from budgie.core.plan import AllocationPlan
@@ -29,32 +30,34 @@ DUMP_DAYS = 90  # how far back a dump without `since` reaches (gitboard's HISTOR
 NO_DUMP = "no board dump; run `perch fetch`"
 RUN_HOURS = "run `perch hours`"
 NO_READINGS = f"no hours readings; {RUN_HOURS}"
-_QUARTER = re.compile(r"(\d{4})-Q([1-4])", re.IGNORECASE)
+_QUARTER = re.compile(r"(\d{4}|FY\d{2})-Q([1-4])", re.IGNORECASE)
 
 
-def parse_quarter(text: str) -> tuple[date, date]:
-    """`2026-Q3` -> (Jul 1, Sep 30): calendar quarters, Q1 is Jan-Mar."""
+def parse_quarter(text: str, span: YearSpan) -> tuple[date, date]:
+    """`2026-Q3` -> (Jul 1, Sep 30); `FY27-Q1` -> (Oct 1, Dec 31, 2026).
+
+    The quarters are Budgie's year cut in four, so the name must be that
+    year's: a calendar project takes `2026-Q3`, a fiscal one `FY27-Q1`.
+    """
     match = _QUARTER.fullmatch(text.strip())
     if not match:
-        raise ValueError(f"`{text}` is not a quarter; write it like 2026-Q3")
-    year, number = int(match[1]), int(match[2])
-    start = date(year, 3 * number - 2, 1)
-    end = date(year + 1, 1, 1) if number == 4 else date(year, 3 * number + 1, 1)
-    return start, end - timedelta(days=1)
+        raise ValueError(f"`{text}` is not a quarter; write it like {span.label}-Q3")
+    if match[1].upper() != span.label:
+        raise ValueError(f"{text} is outside the Budgie project's year, {span.label}")
+    return span.quarters[int(match[2]) - 1]
 
 
-def last_complete_quarter(year: int, today: date) -> str:
+def last_complete_quarter(span: YearSpan, today: date) -> str:
     """The year's last quarter that is over by `today`; Q1 when none is yet."""
-    if today.year > year:
-        return f"{year}-Q4"
-    done = (today.month - 1) // 3 if today.year == year else 0
-    return f"{year}-Q{max(done, 1)}"
+    done = sum(1 for _, end in span.quarters if end < today)
+    return f"{span.label}-Q{max(done, 1)}"
 
 
 @dataclass(frozen=True)
 class Position:
     spent_quarter: float | None  # labor only; None: no readings in the quarter
-    spent_year: float | None  # labor only, Jan 1 to the quarter's last reading
+    # labor only, the year's first day to the quarter's last reading
+    spent_year: float | None
     budget_start: float | None
     budget_end: float | None
     revisions: tuple[BudgetRevision, ...]  # dated inside the quarter
@@ -103,9 +106,10 @@ class Staffing:
 @dataclass(frozen=True)
 class Quarter:
     project: str
-    name: str  # 2026-Q3
+    name: str  # 2026-Q3, or FY27-Q1
     start: date
     end: date
+    year_start: date  # the Budgie year's first day: year to date counts from it
     through: date  # the quarter's end, or the latest reading while it runs
     to_date: bool
     as_of: date | None  # the latest hours reading
@@ -185,13 +189,13 @@ def _position(
     # Budgie's estimate at completion, as `budgie forecast --as-of` computes it.
     # The cost lines go in as it passes them: a low/high line is sampled too.
     eac = at_completion(
-        money.people, money.readings, money.year, as_of=through, plan=money.plan
+        money.people, money.readings, money.span, as_of=through, plan=money.plan
     )
     sim = simulate(
         eac.people, iterations=money.iterations, seed=money.seed, costs=money.costs
     )
     budget = budget_on(end)
-    year_start = date(money.year, 1, 1)
+    year_start = money.span.first
     return Position(
         spent_quarter=_team(money, start, read_to, cost=True)
         if read_to and read_to >= start
@@ -260,7 +264,7 @@ def _staffing(money: Money, start: date, end: date) -> tuple[Staffing, ...]:
     """Each plan.csv change dated in the quarter, costed by the year's plan hours.
 
     Before is the plan without that row; after is the plan as written. A row on
-    Jan 1 is the starting team, not a change.
+    the year's first day is the starting team, not a change.
     """
     plan = money.plan
     if plan is None:
@@ -268,13 +272,13 @@ def _staffing(money: Money, start: date, end: date) -> tuple[Staffing, ...]:
     out = []
     for n, entry in enumerate(plan.entries):
         day = entry.effective_date
-        if not start <= day <= end or day <= date(money.year, 1, 1):
+        if not start <= day <= end or day <= money.span.first:
             continue
         without = AllocationPlan(plan.entries[:n] + plan.entries[n + 1 :])
         name = entry.name
         before_fte = plan.fte_on(name, day - timedelta(days=1))
-        hours = plan.allocated_hours(name, money.year, money.pto) - (
-            without.allocated_hours(name, money.year, money.pto)
+        hours = plan.allocated_hours(name, money.span, money.pto) - (
+            without.allocated_hours(name, money.span, money.pto)
         )
         rate = money.hourly_cost.get(name)
         if before_fte == 0:
@@ -306,16 +310,20 @@ def _previous(
     board: Board, money: Money, start: date
 ) -> tuple[Week | None, int | None]:
     """(totals, blocked issue-days) for the quarter before `start`, or (None,
-    None) unless the dump's recorded `since` covers all of it."""
-    end = start - timedelta(days=1)
-    first = date(end.year, end.month - 2, 1)
+    None) unless the dump's recorded `since` covers all of it. Q1's previous
+    quarter is outside the Budgie year."""
+    quarters = money.span.quarters
+    n = [a for a, _ in quarters].index(start)
+    if n == 0:
+        return None, None
+    first, end = quarters[n - 1]
     covered = board.since is not None and board.since <= first
-    if start.month == 1 or not covered or end > board.fetched_on:
+    if not covered or end > board.fetched_on:
         return None, None
     closed = sum(1 for i in board.closed if first <= i.closed_on <= end)
     read = money.as_of is not None and end <= money.as_of
     hours = _team(money, first, end, cost=False) if read else None
-    name = f"{end.year}-Q{(first.month + 2) // 3}"
+    name = f"{money.span.label}-Q{n}"
     blocked = _blocked_days(board, first, end, board.since)
     return Week(name, first, end, closed, hours), blocked
 
@@ -400,11 +408,7 @@ def build(
     project: str,
 ) -> Quarter:
     """The quarter's report. `board` is None when there is no dump yet."""
-    start, end = parse_quarter(quarter)
-    if start.year != money.year:
-        raise ValueError(
-            f"{quarter} is outside the Budgie project's year, {money.year}"
-        )
+    start, end = parse_quarter(quarter, money.span)
     to_date = today <= end
     through = min(end, money.as_of or today) if to_date else end
     through = max(through, start)
@@ -456,9 +460,10 @@ def build(
 
     return Quarter(
         project=project,
-        name=f"{start.year}-Q{(start.month + 2) // 3}",
+        name=f"{money.span.label}-Q{money.span.quarters.index((start, end)) + 1}",
         start=start,
         end=end,
+        year_start=money.span.first,
         through=through,
         to_date=to_date,
         as_of=as_of,

@@ -88,6 +88,25 @@ def test_budgie_init_runs_from_the_workspace_root(tmp_path):
     assert step.argv == ("/venv/bin/budgie", "init", "gemini") and step.cwd == home.root
 
 
+def test_budgie_init_passes_year_flags_only_when_given(tmp_path):
+    home, _ = apollo(tmp_path)
+    step = steps.budgie_init(BIN, home, "gemini", year="2027", year_start="10-01")
+    assert step.argv == (
+        "/venv/bin/budgie",
+        "init",
+        "--year",
+        "2027",
+        "--year-start",
+        "10-01",
+        "gemini",
+    )
+    assert steps.budgie_init(BIN, home, "g", year="2027").argv[2:] == (
+        "--year",
+        "2027",
+        "g",
+    )
+
+
 def test_iso_week_matches_date_G_W_V():
     assert steps.iso_week(date(2026, 1, 1)) == "2026-W01"
     assert steps.iso_week(date(2027, 1, 1)) == "2026-W53"

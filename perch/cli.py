@@ -12,12 +12,59 @@ import click
 from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
+from rich.text import Text
 
+from perch.core import blocks as bk
 from perch.core.steps import MONDAY_STEPS
 
 console = Console()
 
-_SIGNAL_STYLE = {"GREEN": "green", "YELLOW": "yellow", "RED": "red", "BLUE": "blue"}
+_SIGNAL_TONE = {"GREEN": "good", "YELLOW": "warn", "RED": "bad", "BLUE": "dim"}
+_TONE_STYLE = bk.TONE_STYLE
+
+
+def _print_block(b: dict) -> None:
+    """One block as the terminal shows it: the one renderer for every report."""
+    kind, tone = b["block"], _TONE_STYLE.get(b.get("tone"), "")
+    if kind == "heading":
+        console.print(Text(b["text"], style="bold"), soft_wrap=True)
+    elif kind == "text":
+        console.print(Text(b["text"], style=tone), soft_wrap=True)
+    elif kind == "figures":
+        width = max((len(i["label"]) for i in b["items"]), default=0) + 2
+        for i in b["items"]:
+            note = f" ({i['note']})" if i.get("note") else ""
+            line = f"{i['label']:<{width}}{i['value']}{note}"
+            style = _TONE_STYLE.get(i.get("tone"), "")
+            console.print(Text(line, style=style), soft_wrap=True)
+    elif kind == "table":
+        align = b.get("align") or ["l"] * len(b["columns"])
+        t = Table(title=Text(b["title"]) if b.get("title") else None)
+        for head, a in zip(b["columns"], align, strict=True):
+            t.add_column(Text(head), justify="right" if a == "r" else "left")
+        for row in b["rows"]:
+            t.add_row(*map(Text, row))
+        console.print(t)
+    elif kind == "bars":
+        if b.get("title"):
+            console.print(Text(b["title"], style="bold"))
+        top = max((n for _, n in b["items"]), default=0) or 1
+        width = max((len(label) for label, _ in b["items"]), default=0)
+        for label, n in b["items"]:
+            bar = "█" * round(20 * n / top)
+            console.print(Text(f"{label:<{width}}  {bar} {n:g}"), soft_wrap=True)
+    elif kind == "list":
+        for item in b["items"]:
+            console.print(Text(f"  • {item}"), soft_wrap=True)
+
+
+def _show(blocks: list[dict]) -> None:
+    """Emit the blocks for the TUI (PI_BLOCKS=1), else draw them with rich."""
+    if bk.wanted():
+        bk.emit(blocks)
+        return
+    for b in blocks:
+        _print_block(b)
 
 
 def _hours(value: float | None) -> str:
@@ -51,7 +98,7 @@ def _load(config_path: Path):
     board = load_board(config.board_dump)
     money = load_money(config.budgie_project)
     estimates = load_estimates(config.estimates) if config.estimates else {}
-    rates = calibrate(money.readings, board, config.people, money.year)
+    rates = calibrate(money.readings, board, config.people, money.span)
     return config, board, money, estimates, rates
 
 
@@ -111,7 +158,7 @@ def _run(step) -> None:
 
     for directory in step.makes:
         directory.mkdir(parents=True, exist_ok=True)
-    console.print(f"[bold]{escape(step.name)}[/bold] [dim]{escape(step.shown())}[/dim]")
+    _show([bk.heading(step.name, 3), bk.text(step.shown(), "dim")])
     code = subprocess.run(
         step.argv, cwd=step.cwd, env={**os.environ, **step.env}, check=False
     ).returncode
@@ -182,48 +229,63 @@ def board(config_path, project, seed, iterations, no_history):
     rows = person_rows(the_board, estimates, rates, config.people, money)
     summary = rollup(rows, money, iterations=iterations, seed=seed)
 
-    table = Table(title=f"{the_board.project} — {the_board.name}: the open board")
-    for head in ("Name", "Open", "Hours", "Cost", "Left", "Gap", "Basis"):
-        table.add_column(head, justify="left" if head in ("Name", "Basis") else "right")
-    for r in rows:
-        gap = _hours(r.gap)
-        if r.gap is not None and r.gap < 0:
-            gap = f"[bold red]{gap}[/bold red]"
-        table.add_row(
-            r.name,
-            str(r.open),
-            _spread(r.low, r.mode, r.high),
-            _money(r.cost),
-            _hours(r.left),
-            gap,
-            ", ".join(r.bases) or "no basis",
-        )
-    console.print(table)
-    _print_rates(rates)
-
     when = f"as of {summary.as_of}" if summary.as_of else "no hours readings"
-    console.print(f"Spent to date             {_money(summary.spent_cost)}   ({when})")
-    console.print(
-        f"Cost to clear the board   {_money(summary.clear_p50)}   "
-        f"(P10 {_money(summary.clear_p10)} – P90 {_money(summary.clear_p90)})"
-    )
-    console.print(f"Planned non-labor         {_money(summary.non_labor)}")
+    figures = [
+        bk.figure("Spent to date", _money(summary.spent_cost), when),
+        bk.figure(
+            "Cost to clear the board",
+            _money(summary.clear_p50),
+            f"P10 {_money(summary.clear_p10)} – P90 {_money(summary.clear_p90)}",
+        ),
+        bk.figure("Planned non-labor", _money(summary.non_labor)),
+    ]
     if summary.budget is not None:
-        console.print(f"Budget (latest)           {_money(summary.budget)}")
-        console.print(f"Headroom after the board  {_money(summary.headroom)}")
+        figures += [
+            bk.figure("Budget (latest)", _money(summary.budget)),
+            bk.figure("Headroom after the board", _money(summary.headroom)),
+        ]
+    out = [
+        bk.table(
+            ["Name", "Open", "Hours", "Cost", "Left", "Gap", "Basis"],
+            [
+                [
+                    r.name,
+                    str(r.open),
+                    _spread(r.low, r.mode, r.high),
+                    _money(r.cost),
+                    _hours(r.left),
+                    _hours(r.gap),
+                    ", ".join(r.bases) or "no basis",
+                ]
+                for r in rows
+            ],
+            title=f"{the_board.project} — {the_board.name}: the open board",
+            align=["l", "r", "r", "r", "r", "r", "l"],
+        ),
+        *_rates_blocks(rates),
+        bk.figures(figures),
+    ]
     if summary.signal is not None:
-        style = _SIGNAL_STYLE[summary.signal.signal.name]
-        console.print(
-            f"[{style}]●[/{style}] {summary.signal.label.upper()} — "
-            f"{summary.signal.prob_over_budget:.0%} chance the board alone "
-            "breaks the budget that is left"
+        out.append(
+            bk.text(
+                f"● {summary.signal.label.upper()} — "
+                f"{summary.signal.prob_over_budget:.0%} chance the board alone "
+                "breaks the budget that is left",
+                _SIGNAL_TONE[summary.signal.signal.name],
+            )
         )
-    console.print(
-        "[dim]Not a year forecast: a board rarely holds the rest of the year's "
-        "work. `budgie forecast` says where the plan lands.[/dim]"
+    out.append(
+        bk.text(
+            "Not a year forecast: a board rarely holds the rest of the year's "
+            "work. `budgie forecast` says where the plan lands.",
+            "dim",
+        )
     )
-    for note in notes(the_board, rows, config.people, money):
-        console.print(f"[yellow]![/yellow] {note}")
+    out += [
+        bk.text(f"! {note}", "warn")
+        for note in notes(the_board, rows, config.people, money)
+    ]
+    _show(out)
 
     if not no_history:
         accuracy = by_person(estimates, the_board, config.people, money)
@@ -240,29 +302,33 @@ def board(config_path, project, seed, iterations, no_history):
         )
 
 
-def _print_rates(rates):
+def _rates_blocks(rates) -> list[dict]:
     if rates.types is None:
-        console.print(
-            "[dim]Type rates: not enough history to fit yet "
-            "(needs more reading intervals than issue types + 2).[/dim]"
-        )
-        return
-    table = Table(
-        title=f"Hours per issue by type — modelled, {rates.types.intervals} intervals"
-    )
-    table.add_column("Who")
+        return [
+            bk.text(
+                "Type rates: not enough history to fit yet "
+                "(needs more reading intervals than issue types + 2).",
+                "dim",
+            )
+        ]
     columns = sorted(rates.types.rates)
-    for column in columns:
-        table.add_column(column, justify="right")
-    table.add_row("team", *(_rate(rates.types.rates[c]) for c in columns))
+    rows = [["team", *(_rate(rates.types.rates[c]) for c in columns)]]
     for name, factor in sorted(rates.types.factors.items()):
-        table.add_row(name, *(_rate(factor * rates.types.rates[c]) for c in columns))
-    console.print(table)
-    console.print(
-        "[dim]Modelled, not measured: each person's pace is assumed the same "
-        "across types, so this cannot show someone quick on one type and slow "
-        "on another.[/dim]"
-    )
+        rows.append([name, *(_rate(factor * rates.types.rates[c]) for c in columns)])
+    return [
+        bk.table(
+            ["Who", *columns],
+            rows,
+            title=f"Hours per issue by type — modelled, {rates.types.intervals} intervals",
+            align=["l"] + ["r"] * len(columns),
+        ),
+        bk.text(
+            "Modelled, not measured: each person's pace is assumed the same "
+            "across types, so this cannot show someone quick on one type and slow "
+            "on another.",
+            "dim",
+        ),
+    ]
 
 
 @cli.command()
@@ -327,17 +393,18 @@ def accuracy(config_path, project):
 @click.option("--out", "out_path", default=None, help="Write the markdown here.")
 def weekly(config_path, project, person, out_path):
     """Step 3: per-person markdown drafts for the weekly digest. Nothing is sent."""
+    from perch.core import blocks
     from perch.core.accuracy import by_person
     from perch.core.history import load
     from perch.core.join import person_rows
-    from perch.core.weekly import weekly as render
+    from perch.core.weekly import weekly_blocks
 
     try:
         config, the_board, money, estimates, rates = _load(
             _config_path(config_path, project)
         )
         rows = person_rows(the_board, estimates, rates, config.people, money)
-        text = render(
+        made = weekly_blocks(
             the_board,
             money,
             rates,
@@ -351,10 +418,12 @@ def weekly(config_path, project, person, out_path):
     except (OSError, TypeError, ValueError) as exc:
         raise click.ClickException(str(exc)) from exc
     if out_path:
-        Path(out_path).write_text(text)
+        Path(out_path).write_text(blocks.to_md(made))
         console.print(f"Wrote {out_path}")
+    elif blocks.wanted():
+        blocks.emit(made)
     else:
-        click.echo(text, nl=False)
+        click.echo(blocks.to_md(made), nl=False)
 
 
 @cli.command()
@@ -402,8 +471,20 @@ def projects():
     type=click.Path(file_okay=False, path_type=Path),
     help="The remote-gitboard checkout; needed with --home the first time.",
 )
-def init(name, home_dir, gitboard_dir):
-    """Scaffold projects/NAME/perch.yaml and the Budgie project budget/NAME."""
+@click.option(
+    "--year", default=None, help="Budgie's budget year, e.g. 2027 (new project only)."
+)
+@click.option(
+    "--year-start",
+    default=None,
+    help="First month of the year as MM-01; federal fiscal is 10-01 "
+    "(Budgie checks it).",
+)
+def init(name, home_dir, gitboard_dir, year, year_start):
+    """Scaffold projects/NAME/perch.yaml and the Budgie project budget/NAME.
+
+    --year and --year-start go to `budgie init`, so a fiscal-year project
+    needs no hand edit of budgie.yaml."""
     from perch.core.steps import StepFailed, budgie_init
     from perch.core.workspace import HOME_NAME, check_name, create_home, load_home
 
@@ -425,7 +506,7 @@ def init(name, home_dir, gitboard_dir):
                 f"{home.config_path(name)} exists; edit it instead."
             )
         if not (home.budget_dir(name) / "budgie.yaml").is_file():
-            _run(budgie_init(_bin_dir(), home, name))
+            _run(budgie_init(_bin_dir(), home, name, year, year_start))
         path = home.scaffold(name)
     except StepFailed as exc:
         raise click.ClickException(f"{name}: {exc}") from exc
@@ -586,13 +667,18 @@ def monday(project, all_projects, start):
             record_failure(home, name, week, current, code, at)
             raise
         clear_failure(home, name, ran)
-        console.print(f"\n[bold]{name}[/bold] done. Review, then send yourself:")
-        for place in (
-            home.weekly_path(name, week),
-            f"{home.reports_dir(name)}  (newest dated folder)",
-            config.budgie_project / "emails",
-        ):
-            console.print(f"  {place}", markup=False, highlight=False)
+        _show(
+            [
+                bk.text(f"{name} done. Review, then send yourself:"),
+                bk.bullets(
+                    [
+                        str(home.weekly_path(name, week)),
+                        f"{home.reports_dir(name)}  (newest dated folder)",
+                        str(config.budgie_project / "emails"),
+                    ]
+                ),
+            ]
+        )
         _write_watch(home, name, week)
 
     home = _home()
@@ -622,12 +708,12 @@ def monday(project, all_projects, start):
         raise click.exceptions.Exit(1)
 
 
-_CELL = {  # state -> (shown, markup colour)
-    "done": ("ok", "green"),
-    "stale": ("stale", "yellow"),
-    "todo": ("todo", "dim"),
-    "failed": ("FAIL", "red"),
-    "error": ("ERR", "red"),
+_CELL = {  # state -> shown
+    "done": "ok",
+    "stale": "stale",
+    "todo": "todo",
+    "failed": "FAIL",
+    "error": "ERR",
 }
 
 
@@ -647,23 +733,27 @@ def status(project):
     if not names:
         raise click.ClickException("no projects yet. Run: perch init <name>")
     today = date.today()  # noqa: DTZ011 -- the lead's local Monday
-    width = max(len(n) for n in names)
-    console.print(" " * width + "".join(f"  {s:<6}" for s in st.STEPS), highlight=False)
     grid = {n: st.status(home, n, today) for n in names}
-    for name, cells in grid.items():
-        row = ""
-        for step in st.STEPS:
-            word, colour = _CELL[cells[step].state]
-            row += f"  [{colour}]{word:<6}[/{colour}]"
-        console.print(f"{escape(name):<{width}}{row}", highlight=False)
+    out = [
+        bk.table(
+            ["project", *st.STEPS],
+            [
+                [name, *(_CELL[cells[step].state] for step in st.STEPS)]
+                for name, cells in grid.items()
+            ],
+        )
+    ]
+    nxt = []
     for name, cells in grid.items():
         if (step := st.next_step(cells)) is None:
             continue
         if cells[step].state == "error":
-            console.print(f"{escape(name)}: {escape(cells[step].why)}", highlight=False)
+            nxt.append(f"{name}: {cells[step].why}")
         else:
-            cmd = shlex.join(st.next_command(name, step))
-            console.print(f"next: {escape('perch ' + cmd)}", highlight=False)
+            nxt.append(f"next: perch {shlex.join(st.next_command(name, step))}")
+    if nxt:
+        out.append(bk.bullets(nxt))
+    _show(out)
 
 
 def _runs(argv, cwd, env) -> bool:
@@ -687,7 +777,7 @@ def _show_gitboard_config(home) -> bool:
             step.argv, cwd=step.cwd, env={**os.environ, **step.env}, check=False
         )
     except OSError as exc:
-        console.print(f"  [red]gitboard config did not run[/red]: {escape(str(exc))}")
+        _show([bk.text(f"gitboard config did not run: {exc}", "bad")])
         return False
     return done.returncode == 0
 
@@ -707,34 +797,36 @@ def doctor(project):
 
     def show(checks):
         nonlocal failed
+        lines = []
         for c in checks:
             if c.ok:
-                console.print(
-                    f"  [green]ok[/green]    {escape(c.what)}", highlight=False
-                )
+                lines.append(bk.text(f"ok    {c.what}", "good"))
             else:
                 failed += 1
-                console.print(
-                    f"  [red]FIX[/red]   {escape(c.what)}  ->  {escape(c.fix)}",
-                    highlight=False,
-                )
+                lines.append(bk.text(f"FIX   {c.what}  ->  {c.fix}", "bad"))
+        _show(lines)
 
-    console.print(f"Workspace {home.root}", markup=False, highlight=False)
-    console.print("[bold]Tools[/bold]")
+    _show([bk.text(f"Workspace {home.root}"), bk.heading("Tools")])
     show(tool_checks(_bin_dir(), home, _runs))
-    console.print("[bold]Projects[/bold]")
+    _show([bk.heading("Projects")])
     if not names:
         show([Check(False, "no projects yet", "perch init <name>")])
     for name in names:
         show(project_checks(home, name))
-    console.print("[bold]Data (last written)[/bold]")
-    for name in names:
-        for label, when in freshness(home, name):
-            console.print(
-                f"  {name}: {label:<14} {when}", markup=False, highlight=False
-            )
+    _show(
+        [
+            bk.heading("Data (last written)"),
+            bk.bullets(
+                [
+                    f"{name}: {label:<14} {when}"
+                    for name in names
+                    for label, when in freshness(home, name)
+                ]
+            ),
+        ]
+    )
     if home.gitboard_dir.is_dir():
-        console.print("[bold]GitLab tokens (gitboard config)[/bold]")
+        _show([bk.heading("GitLab tokens (gitboard config)")])
         if not _show_gitboard_config(home):
             show(
                 [
@@ -798,11 +890,11 @@ def cut(config_path, project, new_budget, leaves, fte):
         the_board = load_board(config.board_dump)
         snap = m.load_snapshot(config.budgie_project)
         names = {p.name for p in snap.people}
-        changes = [parse_change(f, names, snap.year, leaves=True) for f in leaves]
-        changes += [parse_change(f, names, snap.year) for f in fte]
+        changes = [parse_change(f, names, snap.span, leaves=True) for f in leaves]
+        changes += [parse_change(f, names, snap.span) for f in fte]
         now = m.money_from(snap)
         estimates = load_estimates(config.estimates) if config.estimates else {}
-        rates = calibrate(now.readings, the_board, config.people, now.year)
+        rates = calibrate(now.readings, the_board, config.people, now.span)
         since = None
         if changes or new_budget is not None:
             before, after = now, m.money_from(m.what_if(snap, new_budget, changes))
@@ -823,88 +915,106 @@ def cut(config_path, project, new_budget, leaves, fte):
         raise click.ClickException(str(exc)) from exc
 
     b, a = result.before, result.after
-    console.print(f"[bold]{escape(title)}[/bold]", highlight=False)
-    for label, old, new, show in (
-        ("Planned hours left", b.left, a.left, _hours),
-        ("Budget", b.budget, a.budget, _money),
-        ("Cost to clear (P50)", b.clear_p50, a.clear_p50, _money),
-        ("Headroom", b.headroom, a.headroom, _money),
-        ("Stoplight", b.signal, a.signal, _label),
-    ):
-        console.print(f"{label:<22}{_change(old, new, show)}", highlight=False)
+    figures = [
+        bk.figure(label, _change(old, new, show))
+        for label, old, new, show in (
+            ("Planned hours left", b.left, a.left, _hours),
+            ("Budget", b.budget, a.budget, _money),
+            ("Cost to clear (P50)", b.clear_p50, a.clear_p50, _money),
+            ("Headroom", b.headroom, a.headroom, _money),
+        )
+    ]
+    tone = None
+    if a.signal is not None:
+        tone = {"good": "good", "bad": "bad"}.get(a.signal.lower(), "warn")
+    figures.append(
+        bk.figure("Stoplight", _change(b.signal, a.signal, _label), tone=tone)
+    )
+    out = [bk.heading(title), bk.figures(figures)]
     if result.spare is not None:
         if result.spare < 0:
-            fits = f"[bold red]short by {_hours(-result.spare)} h[/bold red]"
+            fits, fit_tone = f"short by {_hours(-result.spare)} h", "bad"
         else:
-            fits = f"hours still fit: {_hours(result.spare)} h spare"
-        console.print(
-            f"Board needs {_hours(result.board_hours)} h; the team has "
-            f"{_hours(a.left)} h left after the change: {fits}",
-            highlight=False,
-            soft_wrap=True,
+            fits, fit_tone = f"hours still fit: {_hours(result.spare)} h spare", "good"
+        out.append(
+            bk.text(
+                f"Board needs {_hours(result.board_hours)} h; the team has "
+                f"{_hours(a.left)} h left after the change: {fits}",
+                fit_tone,
+            )
         )
     if since:
-        console.print(
-            f"[dim]Planned hours left also falls by the hours booked since {since}."
-            "[/dim]",
-            soft_wrap=True,
+        out.append(
+            bk.text(
+                f"Planned hours left also falls by the hours booked since {since}.",
+                "dim",
+            )
         )
     if b.old_row:
-        console.print(
-            "[yellow]![/yellow] That week was recorded before budget and hours "
-            "left were; a fresh `perch board` will record them.",
-            soft_wrap=True,
+        out.append(
+            bk.text(
+                "! That week was recorded before budget and hours "
+                "left were; a fresh `perch board` will record them.",
+                "warn",
+            )
         )
-
-    people = Table(title="People (name order)")
-    for head in ("Name", "Hours left", "Open", "Hours", "Basis"):
-        people.add_column(
-            head, justify="left" if head in ("Name", "Basis") else "right"
+    out.append(
+        bk.table(
+            ["Name", "Hours left", "Open", "Hours", "Basis"],
+            [
+                [
+                    p.name,
+                    _change(p.left_before, p.left_after, _hours),
+                    str(p.row.open) if p.row else "0",
+                    _spread(p.row.low, p.row.mode, p.row.high) if p.row else "—",
+                    (", ".join(p.row.bases) or "no basis") if p.row else "",
+                ]
+                for p in result.people
+            ],
+            title="People (name order)",
+            align=["l", "r", "r", "r", "l"],
         )
-    for p in result.people:
-        r = p.row
-        people.add_row(
-            p.name,
-            _change(p.left_before, p.left_after, _hours),
-            str(r.open) if r else "0",
-            _spread(r.low, r.mode, r.high) if r else "—",
-            (", ".join(r.bases) or "no basis") if r else "",
-        )
-    console.print(people)
+    )
+    leave_lines = []
     for p in result.people:
         if p.leaves is None:
             continue
         if p.row is None:
-            console.print(
-                f"{p.name} leaves {p.leaves}: no open issues", highlight=False
-            )
+            leave_lines.append(f"{p.name} leaves {p.leaves}: no open issues")
             continue
         issues = "1 open issue" if p.row.open == 1 else f"{p.row.open} open issues"
         needs = "needs" if p.row.open == 1 else "need"
-        console.print(
+        leave_lines.append(
             f"{p.name} leaves {p.leaves}: {issues} "
             f"({_hours(p.row.mode)} h) {needs} a new owner: "
-            + ", ".join(f"#{iid}" for iid in p.issues),
-            highlight=False,
-            soft_wrap=True,
+            + ", ".join(f"#{iid}" for iid in p.issues)
         )
-
-    milestones = Table(title="Milestones: open work")
-    for head in ("Milestone", "Open", "Hours", "Due"):
-        milestones.add_column(head, justify="left" if head == "Milestone" else "right")
-    for ms in result.milestones:
-        milestones.add_row(
-            ms.name or "no milestone",
-            str(ms.open),
-            _spread(ms.low, ms.mode, ms.high)
-            + (f" + {ms.no_basis} no basis" if ms.no_basis else ""),
-            str(ms.due) if ms.due else "—",
+    if leave_lines:
+        out.append(bk.bullets(leave_lines))
+    out.append(
+        bk.table(
+            ["Milestone", "Open", "Hours", "Due"],
+            [
+                [
+                    ms.name or "no milestone",
+                    str(ms.open),
+                    _spread(ms.low, ms.mode, ms.high)
+                    + (f" + {ms.no_basis} no basis" if ms.no_basis else ""),
+                    str(ms.due) if ms.due else "—",
+                ]
+                for ms in result.milestones
+            ],
+            title="Milestones: open work",
+            align=["l", "r", "r", "r"],
         )
-    console.print(milestones)
-    for note in notes(
-        the_board, [p.row for p in result.people if p.row], config.people, after
-    ):
-        console.print(f"[yellow]![/yellow] {note}")
+    )
+    out += [
+        bk.text(f"! {note}", "warn")
+        for note in notes(
+            the_board, [p.row for p in result.people if p.row], config.people, after
+        )
+    ]
+    _show(out)
 
 
 def _watch(config_path: Path):
@@ -929,9 +1039,9 @@ def _write_watch(home, name: str, week: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(render(page))
     except (OSError, TypeError, ValueError) as exc:
-        console.print(f"watch: could not be read: {exc}", markup=False, highlight=False)
+        _show([bk.text(f"watch: could not be read: {exc}", "warn")])
         return
-    console.print(summary(page), markup=False, highlight=False)
+    _show([bk.text(summary(page))])
 
 
 @cli.command()
@@ -945,8 +1055,15 @@ def _write_watch(home, name: str, week: str) -> None:
 )
 def watch(config_path, project, all_projects):
     """Private: anyone out of line with their own last 8 weeks. For you only."""
+    from perch.core import blocks
     from perch.core.steps import run_projects
-    from perch.core.watch import render
+    from perch.core.watch import render, watch_blocks
+
+    def show(page, nl=False):
+        if blocks.wanted():
+            blocks.emit(watch_blocks(page))
+        else:
+            click.echo(render(page), nl=nl)
 
     if all_projects and (project or config_path):
         raise click.UsageError("give -p/--config or --all, not both")
@@ -962,14 +1079,14 @@ def watch(config_path, project, all_projects):
                 path.write_text(render(page))
         except (OSError, TypeError, ValueError) as exc:
             raise click.ClickException(str(exc)) from exc
-        click.echo(render(page), nl=False)
+        show(page)
         return
     home = _home()
     if not home.projects():
         raise click.ClickException("no projects yet. Run: perch init <name>")
     results = run_projects(
         home.projects(),
-        lambda name: click.echo(render(_watch(home.config_path(name)))),
+        lambda name: show(_watch(home.config_path(name)), nl=True),
     )
     for name, error in results:
         if error is not None:
@@ -995,7 +1112,7 @@ def _write_quarterly(config_path: Path, quarter: str | None, out: Path | None):
     money = load_money(config.budgie_project)
     estimates = load_estimates(config.estimates) if config.estimates else {}
     rates = (
-        calibrate(money.readings, board, config.people, money.year) if board else None
+        calibrate(money.readings, board, config.people, money.span) if board else None
     )
     today = date.today()  # noqa: DTZ011 -- the lead's local date
     report = build(
@@ -1004,7 +1121,7 @@ def _write_quarterly(config_path: Path, quarter: str | None, out: Path | None):
         estimates,
         rates,
         config.people,
-        quarter or last_complete_quarter(money.year, today),
+        quarter or last_complete_quarter(money.span, today),
         today,
         config.root.name,
     )
@@ -1028,7 +1145,9 @@ def _write_quarterly(config_path: Path, quarter: str | None, out: Path | None):
     help="Every project, in name order; a failure moves on to the next.",
 )
 @click.option(
-    "--quarter", default=None, help="e.g. 2026-Q3; default the last complete one."
+    "--quarter",
+    default=None,
+    help="e.g. 2026-Q3, or FY27-Q1 for a fiscal year; default the last complete one.",
 )
 @click.option(
     "--out",
