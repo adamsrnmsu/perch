@@ -89,7 +89,17 @@ def checks(home: Home) -> list[Check]:
         )
     else:
         command = Check(True, "walk: .claude/commands/walk.md")
-    settings = _settings(home) or {}
+    settings = _settings(home)
+    if settings is None:
+        return [
+            command,
+            Check(
+                False,
+                "walk: .claude/settings.json is not a settings object perch can edit",
+                f"fix it, or add {home.gitboard_dir} to "
+                "permissions.additionalDirectories by hand (perch walk leaves it alone)",
+            ),
+        ]
     listed = str(home.gitboard_dir) in settings.get("permissions", {}).get(
         "additionalDirectories", []
     )

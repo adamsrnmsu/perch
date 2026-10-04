@@ -91,6 +91,19 @@ def test_init_makes_the_workspace_runs_budgie_init_and_writes_perch_yaml(
     assert (tmp_path / "ws" / ".claude" / "commands" / "walk.md").is_file()
 
 
+def test_init_survives_a_walk_install_oserror_and_still_guides(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "ws").mkdir()
+    (tmp_path / "ws" / ".claude").write_text("a file")
+    fake_budgie_init(monkeypatch, tmp_path / "ws")
+    result = run(
+        "init", "apollo", "--home", "ws", "--gitboard-dir", str(tmp_path / "gb")
+    )
+    assert result.exit_code == 0, result.output
+    assert "could not install /walk" in result.output
+    assert "Fill in:" in result.output
+
+
 def test_init_passes_year_and_year_start_to_budgie(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     ran = fake_budgie_init(monkeypatch, tmp_path / "ws")
