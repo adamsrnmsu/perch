@@ -39,6 +39,7 @@ def _freshness(home: Home, name: str, config: Config, today: date):
         yield f"board dump fetched {fetched or 'at an unknown time'}"
     except (OSError, ValueError):
         yield f"board dump: none; run perch fetch -p {name}"
+    spec = None
     try:
         spec = spec_path(home, name, config)
     except ValueError as exc:
@@ -61,6 +62,8 @@ def _freshness(home: Home, name: str, config: Config, today: date):
     else:
         yield f"last week recorded: {last or f'none; run perch board -p {name}'}"
     yield f"today: {iso_week(today)}"
+    if spec:
+        yield f"board file: {spec}"
 
 
 def _forecast(config: Config):

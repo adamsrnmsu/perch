@@ -38,8 +38,8 @@ decision you need and your suggested default.
 `@GITBOARD_DIR@`) and follow its **Offline** rules: the pulled file is the
 board. Two changes: run gitboard as `perch gb <sub> -p $ARGUMENTS` (it fills
 in the spec, its `.base` and the dump) instead of `PYTHONPATH=src
-.venv/bin/python -m gitboard.cli`, and do not run `plan` yet. The board file
-is `@GITBOARD_DIR@/boards/<last segment of gitlab_project>.yaml`. Weigh
+.venv/bin/python -m gitboard.cli`, and do not run `plan` yet. The board
+file is the `board file:` line under Freshness in `perch brief`. Weigh
 priority and milestones against the money section. Stage edits. Stop.
 
 **4. Watch.** The Watch section of the brief is private to the lead. Take each

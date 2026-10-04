@@ -295,3 +295,12 @@ def test_gb_refuses_sync(tmp_path, monkeypatch):
     monkeypatch.chdir(home.root)
     result = run("gb", "sync", "-p", "apollo")
     assert result.exit_code == 2
+
+
+def test_gb_help_after_the_sub_goes_to_gitboard(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(home.root)
+    ran = recorder(monkeypatch)
+    result = run("gb", "show", "-p", "apollo", "--help")
+    assert result.exit_code == 0, result.output
+    assert ran[0].argv[-1] == "--help"

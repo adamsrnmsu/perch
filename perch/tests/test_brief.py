@@ -66,6 +66,15 @@ def test_forecast_is_team_level_with_no_per_person_money(tmp_path):
         assert not any(name in line and "$" in line for line in people)
 
 
+def test_forecast_with_no_hours_booked_says_nothing_to_forecast_from(tmp_path):
+    home, config = apollo(tmp_path)
+    (config.budgie_project / "weekly.csv").write_text("name,week,hours_to_date\n")
+    lines = brief.build(home, "apollo", config, TODAY)
+    assert section(lines, "Forecast") == [
+        "no hours booked yet: nothing to forecast from"
+    ]
+
+
 def test_follow_ups_list_open_followup_cards_and_new_ones(tmp_path):
     home, config = apollo(tmp_path)
     board_yaml(
@@ -122,7 +131,14 @@ def test_freshness_names_dump_pull_and_week(tmp_path):
         "where GitLab is reachable"
     )
     assert lines[2] == "last week recorded: none; run perch board -p apollo"
-    assert lines[-1] == "today: 2026-W17"
+    assert lines[-2] == "today: 2026-W17"
+
+
+def test_freshness_prints_the_board_file_path(tmp_path):
+    home, config = apollo(tmp_path)
+    lines = section(brief.build(home, "apollo", config, TODAY), "Freshness")
+    spec = home.gitboard_dir / "boards" / "apollo.yaml"
+    assert f"board file: {spec}" in lines
 
 
 def test_freshness_names_the_pull_time_when_pulled(tmp_path):
