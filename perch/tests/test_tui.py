@@ -724,12 +724,30 @@ def test_enter_on_the_project_cell_runs_the_next_step(tmp_path, spawned, monkeyp
     run(tui.PerchTUI(home), script)
 
 
+def test_a_last_line_reading_exited_is_output_not_a_failure(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo", gitlab=False)
+
+    def fake(argv, cwd, started, env=None):
+        yield "exited 3"
+        return 0
+
+    monkeypatch.setattr(tui, "_spawn", fake)
+
+    async def script(app, pilot):
+        await pilot.press("m")
+        await settle(app, pilot)
+        _, body, state = _cards(app)[-1]
+        assert body == "exited 3" and state.startswith("✓")
+
+    run(tui.PerchTUI(home), script)
+
+
 def test_a_failing_run_logs_the_projects_fix_lines(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo", "beta", gitlab=False)
 
     def fake(argv, cwd, started, env=None):
         yield "boom"
-        yield "exited 2"
+        return 2
 
     monkeypatch.setattr(tui, "_spawn", fake)
 

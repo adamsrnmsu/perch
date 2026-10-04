@@ -25,7 +25,7 @@ import os
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator
 from datetime import date
 from pathlib import Path
 
@@ -86,8 +86,9 @@ def _spawn(
     cwd: Path,
     started: Callable[[subprocess.Popen], None],
     env: dict[str, str] | None = None,
-) -> Iterator[str]:
+) -> Generator[str, None, int]:
     """Run a command, yielding its output lines as they come; tests replace this.
+    The return value (StopIteration.value) is its exit code.
 
     `started` gets the process as soon as it exists, so the app can stop it.
     `env` is added to os.environ.
@@ -104,8 +105,7 @@ def _spawn(
         started(proc)
         for line in proc.stdout:
             yield line.rstrip("\n")
-    if proc.returncode:
-        yield f"exited {proc.returncode}"
+    return proc.returncode
 
 
 def _flags(config_path: Path) -> str:
@@ -534,18 +534,21 @@ class PerchTUI(App):
     ) -> None:
         """In a thread: every touch of the app goes through call_from_thread.
 
-        Each line is shown one behind, so `_spawn`'s closing "exited N" can go
-        to the card's status instead of its body.
+        The exit code is `_spawn`'s return value, not a line of its output.
         """
         pending, code = None, 0
         try:
-            for line in _spawn(argv, self.home.root, self._hold, env):
+            run = _spawn(argv, self.home.root, self._hold, env)
+            while True:
+                try:
+                    line = next(run)
+                except StopIteration as done:
+                    code = done.value or 0
+                    break
                 if pending is not None:
                     self.call_from_thread(card.put, pending)
                 pending = line
-            if pending is not None and pending.startswith("exited "):
-                code, pending = int(pending.split()[1]), None
-        except (OSError, ValueError) as exc:
+        except OSError as exc:
             code, pending = 1, f"{pending}\n{exc}" if pending else str(exc)
         finally:
             if pending is not None:
