@@ -639,12 +639,16 @@ def brief(project):
         raise click.ClickException(str(exc)) from exc
 
 
-@cli.command(context_settings={"ignore_unknown_options": True})
+# No help option of our own: `perch gb SUB --help` is gitboard's help.
+@cli.command(context_settings={"ignore_unknown_options": True, "help_option_names": []})
 @click.argument("sub", type=click.Choice(GB_SUBS))
 @_project_option
 @click.argument("args", nargs=-1, type=click.UNPROCESSED)
 def gb(sub, project, args):
-    """gitboard for the project, from its checkout. push and pull need GitLab."""
+    """gitboard for the project, from its checkout; SUB --help is gitboard's.
+
+    push and pull need GitLab.
+    """
     from perch.core import steps
 
     _one(project, lambda home, name, config: steps.gb(home, name, config, sub, args))
