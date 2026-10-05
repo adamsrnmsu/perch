@@ -548,7 +548,7 @@ class PerchTUI(App):
     def on_mount(self) -> None:
         self.query_one("#projects", Grid).add_columns(*COLUMNS)
         names = self.home.projects()  # first paint: the table is never empty
-        self._rebuild(names, {n: snapshot(self.home, n) for n in names})
+        self._rebuild(names, {n: self._snap(n, self.asof_week) for n in names})
         self._warm_all(True)
 
     def action_refresh(self) -> None:
@@ -653,7 +653,11 @@ class PerchTUI(App):
 
     def _snap(self, name: str, week: str | None) -> tuple:
         """snapshot, naming the week only when there is one."""
-        return snapshot(self.home, name, week) if week else snapshot(self.home, name)
+        if week:
+            return snapshot(self.home, name, week)
+        # the alert's file reads happen here, in the worker, never in _report
+        self.hits[name] = alert_hits(self.home, name, self.rules)
+        return snapshot(self.home, name)
 
     def _if_current(self, week: str | None, fn: Callable, *args) -> None:
         """Deliver a worker's result only if the view is still the one it began in."""
@@ -697,9 +701,6 @@ class PerchTUI(App):
                 table.update_cell_at(Coordinate(at, col), cell, update_width=True)
         self._report()
 
-    def _set_hits(self, name: str, hits: list[_alerts.State]) -> None:
-        self.hits[name] = hits
-
     def _report(self) -> None:
         """Toast each stoplight flip, then each fresh alert, once; none in history.
 
@@ -722,9 +723,7 @@ class PerchTUI(App):
                     )
                 )
         for name in self.names:
-            # ponytail: a small jsonl read on the UI thread, only when rules exist
-            self._set_hits(name, alert_hits(self.home, name, self.rules))
-            for s in self.hits[name]:
+            for s in self.hits.get(name, []):
                 key = (name, s.rule.index, s.week)
                 if key not in self.fired:
                     pending.append((self.fired, key, _alerts.toast_text(s), "warning"))

@@ -145,3 +145,13 @@ def test_blocks_are_valid_and_never_rank(tmp_path):
     text = repr(out).lower()
     assert not any(w in text for w in ("worst", "best", "slow", "underperforming"))
     assert not any(n in text for n in ("alice", "bob"))
+
+
+def test_build_all_keeps_same_project_duplicates_under_the_project(
+    tmp_path, monkeypatch
+):
+    home = build_home(tmp_path, "apollo")
+    e = events.Event(date(2026, 6, 10), "apollo", "staffing", "a join · FTE 0 → 0.5")
+    monkeypatch.setattr(events, "build", lambda *a, **k: (e, e))
+    cal = events.build_all(home, TODAY, 30)
+    assert [x.project for x in cal.events] == ["apollo", "apollo"]

@@ -89,3 +89,9 @@ def test_help_lists_the_new_commands():
     out = CliRunner().invoke(cli, ["--help"]).output
     for name in ("detail", "events", "tape", "alerts"):
         assert name in out
+
+
+def test_events_prints_a_span_note_once(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    result = run(home, "events", "-p", "apollo", "--days", "366")
+    assert result.output.count("roll the Budgie year") == 1

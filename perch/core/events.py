@@ -101,13 +101,14 @@ def build_all(
         same[(e.day, e.kind, e.what)].append((rank, e))
     keyed = []
     for group in same.values():
-        if len(group) > 1:
+        projects = {e.project for _, e in group}
+        if len(projects) > 1:
             e = group[0][1]
             keyed.append(
-                (0, -1, Event(e.day, f"all ({len(group)})", e.kind, e.what, e.n))
+                (0, -1, Event(e.day, f"all ({len(projects)})", e.kind, e.what, e.n))
             )
         else:
-            keyed.append((1, group[0][0], group[0][1]))
+            keyed += [(1, rank, e) for rank, e in group]
     keyed.sort(key=lambda k: (k[2].day, KINDS.index(k[2].kind), k[0], k[1], k[2].what))
     return Calendar(tuple(k[2] for k in keyed), tuple(notes), tuple(errors))
 

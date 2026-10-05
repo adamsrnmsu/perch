@@ -1310,12 +1310,7 @@ def events(project, all_projects, days):
     names = _names(home, project, all_projects)
     today = date.today()  # noqa: DTZ011 -- the lead's local date
     cal = events_mod.build_all(home, today, days, names)
-    out = events_mod.blocks(cal, today, days)
-    if cal.notes:
-        out += [bk.text(n, "dim") for n in cal.notes]
-    if cal.errors:
-        out.append(bk.bullets(list(cal.errors)))
-    _show(out)
+    _show(events_mod.blocks(cal, today, days))
 
 
 @cli.command()

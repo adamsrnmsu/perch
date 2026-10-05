@@ -2040,3 +2040,25 @@ def test_no_alert_toast_while_browsing_a_recorded_week(tmp_path):
         assert app.hits == {}
 
     run(app, script)
+
+
+def test_alert_files_are_read_off_the_ui_thread_after_startup(tmp_path, monkeypatch):
+    home = _alert_home(tmp_path)
+    real = tui.alert_hits
+    threads = []
+
+    def spy(*a):
+        threads.append(threading.current_thread() is threading.main_thread())
+        return real(*a)
+
+    monkeypatch.setattr(tui, "alert_hits", spy)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        threads.clear()
+        app.action_refresh()
+        await settle(app, pilot)
+        assert threads and not any(threads)
+        assert len(app.hits["apollo"]) == 1
+
+    run(tui.PerchTUI(home), script)
