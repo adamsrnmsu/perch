@@ -79,6 +79,10 @@ COMMANDS = {  # key -> the perch command it runs on the selected project
     "Q": "quarterly",
     "e": "events",
 }
+# commands that write nothing a row or the slow tier reads (`watch` does: the Flags
+# column reads its file; Budgie's forecast writes only with --plots, which perch
+# never passes). One set for the keys, the `:` line and a Flags click.
+READ_ONLY = {"events", "alerts", "detail", "tape", "doctor", "forecast"}
 
 
 BAND, ROWS = "▒", 8  # the fan's glyph; the chart's height
@@ -773,14 +777,14 @@ class PerchTUI(App):
         Known limit: two rapid `[` can read the same base and lose a step."""
         worker = get_current_worker()
         names = list(self.names)
-        rows = []
+        found: set[str] = set()
         for n in names:
             try:
                 config = load_config(self.home.config_path(n), require_dump=False)
-                rows.append(history.load(config.history))
-            except _ERRORS:
+                found.update(_asof.weeks([history.load(config.history)]))
+            except _ERRORS:  # a malformed row skips that project, like snapshot
                 continue
-        recorded = _asof.weeks(rows)
+        recorded = sorted(found)
         try:
             week = (
                 _asof.resolve(text, recorded)
@@ -796,10 +800,12 @@ class PerchTUI(App):
             )
             return
         snaps = {n: self._snap(n, week) for n in names}
-        tapes = {
-            n: tape.project_tape(s, n, date.today(), asof=week)  # noqa: DTZ011
-            for n, s in dict(self.src).items()
-        }
+        tapes = {}
+        for n, s in dict(self.src).items():
+            try:
+                tapes[n] = tape.project_tape(s, n, date.today(), asof=week)  # noqa: DTZ011
+            except _ERRORS:
+                tapes[n] = []
         if worker.is_cancelled:
             return
         try:
@@ -861,12 +867,11 @@ class PerchTUI(App):
 
     def action_events_all(self) -> None:
         if self._free():
-            self._start(None, "events --all", ["events", "--all"], refresh=False)
+            self._start(None, "events --all", ["events", "--all"])
 
-    def _start(
-        self, name: str | None, action: str, args: list[str], refresh: bool = True
-    ) -> None:
+    def _start(self, name: str | None, action: str, args: list[str]) -> None:
         """Run perch on one project, or on every project when ``name`` is None."""
+        refresh = args[0] not in READ_ONLY
         self.busy = action
         card = self._show(RunCard(f"{action} · {name}" if name else action))
         width = max(
@@ -964,24 +969,25 @@ class PerchTUI(App):
         self.busy = None
         card.finish(code)
         self.query_one("#output", VerticalScroll).scroll_end(animate=False)
-        if not refresh:  # a read-only command: no row changed
+        if name not in self.names:  # None (`a`, `E`), or a project gone meanwhile
+            if refresh:
+                self.action_refresh()
             return
-        if name not in self.names:  # None (`a`), or a project gone meanwhile
-            self.action_refresh()
-            return
-        self._row_done(name, card, code)
-        self._warm_all(True)
+        if refresh or code:  # a read-only success has nothing to redraw or explain
+            self._row_done(name, card, code, refresh)
+        if refresh:
+            self._warm_all(True)
 
     @work(thread=True, group="row")
-    def _row_done(self, name: str, card: RunCard, code: int) -> None:
+    def _row_done(self, name: str, card: RunCard, code: int, refresh: bool) -> None:
         week = self.asof_week
-        snap = self._snap(name, week)
+        snap = self._snap(name, week) if refresh else None
         checks = project_checks(self.home, name) if code else []
-        self.call_from_thread(
-            self._if_current, week, self._apply_row, name, card, snap, checks
-        )
+        self.call_from_thread(self._fix_lines, card, checks)  # the card is its own
+        if snap is not None:  # the row belongs to the view the run began in
+            self.call_from_thread(self._if_current, week, self._apply_row, name, snap)
 
-    def _apply_row(self, name: str, card: RunCard, snap: tuple, checks: list) -> None:
+    def _apply_row(self, name: str, snap: tuple) -> None:
         if name not in self.names:  # removed while the worker ran
             return
         table = self.query_one("#projects", Grid)
@@ -990,6 +996,8 @@ class PerchTUI(App):
         for col, cell in enumerate(cells):
             table.update_cell_at(Coordinate(at, col), cell, update_width=True)
         self._report()
+
+    def _fix_lines(self, card: RunCard, checks: list) -> None:
         for check in checks:  # ponytail: `a` (monday --all) gets no FIX lines
             if not check.ok:
                 fix = Text.assemble(("▲ FIX  ", "bold yellow"), check.what)

@@ -69,9 +69,9 @@ def project_tape(
         if text:
             add(day, "flip" if c.signal else "figures", text)
     if src.money:
-        for b in reversed(moves.budget(src.money, start, today)):
+        for b in moves.budget(src.money, start, today):
             add(b.day, "budget", moves.describe_budget(b))
-        for s in reversed(moves.staffing(src.money, start, today)):
+        for s in moves.staffing(src.money, start, today):
             add(s.day, "plan", "plan: " + moves.describe(s))
         if src.money.as_of:
             add(
@@ -85,7 +85,7 @@ def project_tape(
         for day in sorted(closed, reverse=True):
             n = closed[day]
             add(day, "closed", f"{n} issue{'s' * (n != 1)} closed")
-    if src.failure:
+    if src.failure and not asof:  # live files: not history
         try:
             at = datetime.fromisoformat(str(src.failure["at"])).date()
             add(
@@ -95,7 +95,7 @@ def project_tape(
             )
         except (KeyError, ValueError):
             pass
-    for source in src.errors:
+    for source in () if asof else src.errors:
         add(today, "error", unreadable(source))
     return merge({name: out}, [name])
 

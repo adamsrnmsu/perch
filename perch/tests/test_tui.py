@@ -2065,8 +2065,7 @@ def test_e_runs_events_on_the_project_and_E_runs_all_without_a_refresh(
         await pilot.press("e")
         await settle(app, pilot)
         assert spawned[-1][0] == [PERCH, "events", "-p", "apollo"]
-        assert refreshed  # a normal run refreshes
-        refreshed.clear()
+        assert not refreshed  # events is read-only
         await pilot.press("E")
         await settle(app, pilot)
         assert spawned[-1][0] == [PERCH, "events", "--all"]
@@ -2166,3 +2165,101 @@ def test_a_short_terminal_scrolls_the_detail_pane_instead_of_clipping_it(tmp_pat
             assert pane.max_scroll_y > 0  # the rest is a scroll away
 
     asyncio.run(go())
+
+
+@pytest.mark.parametrize(
+    "key,argv",
+    [("e", "events"), ("f", "forecast"), ("d", "doctor")],
+)
+def test_a_read_only_run_reloads_nothing(tmp_path, spawned, monkeypatch, key, argv):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+
+        def boom(*a, **k):
+            raise AssertionError("a read-only run reloaded")
+
+        monkeypatch.setattr(tui, "snapshot", boom)
+        monkeypatch.setattr(tui.sources, "load", boom)
+        await pilot.press(key)
+        await settle(app, pilot)
+        assert spawned[-1][0][1] == argv
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_the_command_line_reads_only_where_the_keys_do(tmp_path, spawned, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+
+        def boom(*a, **k):
+            raise AssertionError("a read-only run reloaded")
+
+        monkeypatch.setattr(tui, "snapshot", boom)
+        monkeypatch.setattr(tui.sources, "load", boom)
+        for text in ("ALRT", "DET", "ALL EVTS"):
+            app.on_input_submitted(tui.Input.Submitted(app.query_one("#command"), text))
+            await settle(app, pilot)
+        assert [c[0][1] for c in spawned[-3:]] == ["alerts", "detail", "events"]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_w_still_refreshes_its_row(tmp_path, spawned, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    seen = []
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        original = tui.snapshot
+        monkeypatch.setattr(tui, "snapshot", lambda *a: seen.append(a) or original(*a))
+        await pilot.press("w")
+        await settle(app, pilot)
+        assert seen
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_malformed_history_row_does_not_kill_the_asof_worker(tmp_path):
+    home = _asof_home(tmp_path)
+    path = home.projects_dir / "beta" / "history.jsonl"
+    path.write_text(path.read_text() + '{"kind": "team", "headroom": 1}\n')
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        await pilot.press("[")
+        await settle(app, pilot)
+        assert app.asof_week == "2026-W37"
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_fix_lines_reach_the_card_when_the_view_changed_mid_run(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo", gitlab=False)
+
+    def fake(argv, cwd, started, env=None):
+        yield "boom"
+        return 2
+
+    monkeypatch.setattr(tui, "_spawn", fake)
+    drawn = []
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        real = tui.project_checks
+
+        def checks(h, n):
+            app.asof_week = "2026-W37"  # the lead stepped into as-of mid-run
+            return real(h, n)
+
+        monkeypatch.setattr(tui, "project_checks", checks)
+        monkeypatch.setattr(app, "_apply_row", lambda *a: drawn.append(a))
+        await pilot.press("m")
+        await settle(app, pilot)
+        assert "FIX" in _cards(app)[-1][1]
+        assert not drawn  # the live row is not drawn into the as-of view
+
+    run(tui.PerchTUI(home), script)

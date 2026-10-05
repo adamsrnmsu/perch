@@ -64,10 +64,10 @@ def test_staffing_has_no_names(world):
     money = replace(_money(world), plan=plan)
     got = events.build("a", money, None, TODAY, 30)
     staff = [e for e in got if e.kind == "staffing"]
-    # same day: ordered by text (the spec's sort), never by a person or a figure
+    # same day: plan.csv entry order, never the text or a figure
     assert [e.what for e in staff] == [
+        "an FTE change · FTE 0.5 → 0.75",  # Alice, 06-10, listed first
         "a join · FTE 0 → 0.5",  # Bob, 06-10
-        "an FTE change · FTE 0.5 → 0.75",  # Alice, 06-10
         "a join · FTE 0 → 0.5",  # Carol, 06-11
         "a leave · FTE 0.5 → 0",  # Bob, 06-12
     ]
