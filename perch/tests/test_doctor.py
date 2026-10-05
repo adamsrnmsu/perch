@@ -73,3 +73,18 @@ def test_a_missing_gitboard_dir_points_at_perch_home(tmp_path):
     home = build_home(tmp_path)
     failed = [c for c in tool_checks(tmp_path, home, lambda *a: True) if not c.ok]
     assert len(failed) == 1 and "perch-home.yaml" in failed[0].fix
+
+
+def test_alert_checks(tmp_path):
+    from perch.core.doctor import alert_checks
+    from perch.core.workspace import load_home
+
+    home = build_home(tmp_path, "apollo")
+    assert all(c.ok for c in alert_checks(home))
+    path = home.root / "perch-home.yaml"
+    path.write_text(path.read_text() + "alerts:\n  - when: headroom < 50k\n")
+    (ok,) = alert_checks(load_home(path))
+    assert ok.ok and "1 rule" in ok.what
+    path.write_text(path.read_text() + "  - when: pace < 80\n")
+    (bad,) = alert_checks(load_home(path))
+    assert not bad.ok and "alerts[1].when" in bad.what and "perch-home.yaml" in bad.fix

@@ -23,7 +23,8 @@ perch --help  # running the apps: init [--year Y --year-start MM-01],
               # projects, doctor; status, hours, fetch,
               # board, weekly, digest, emails, monday [--all | --from STEP];
               # accuracy, budget, forecast, cut, review, brief, gb, walk,
-              # watch, quarterly
+              # watch, quarterly, detail, events [--days N], tape [--days N],
+              # alerts (the last three: -p NAME or --all)
               # [--all], tui, suite
 perch tui     # starts perch suite (hidden tmux, P/B/G hop instantly) when
               # tmux is installed; inside the suite or --no-suite: the TUI alone
@@ -93,7 +94,7 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   `since`; None in old dumps).
 - `core/estimates.py` -- estimates.csv (`#iid` or label keys), via Budgie's csvio.
 - `core/money.py` -- everything read out of a Budgie project, via Budgie's
-  `load_snapshot`. Which input wins (weekly over monthly, a reading over
+  `load_snapshot` (`Money.burn` is a lazy `Snapshot.burn_series`). Which input wins (weekly over monthly, a reading over
   `hours_spent`, a plan over fte, a pinned budget over budget.csv) is Budgie's
   rule in `budgie/core/project.py`; a new rule goes there, never here.
 - `core/rate.py` -- reading-to-reading intervals, own and team rates, and the
@@ -139,6 +140,29 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `core/command.py` -- the TUI command line's grammar: `parse(text, projects,
   current)` turns `apollo CUT 700k` / `ALL MON` into a `Command(project,
   args)`, or raises `ValueError` saying what is wrong. Text in, argv out.
+- `core/sources.py` -- `Sources`/`load`/`stamp`: config, history, the Budgie
+  project, the board dump and the failure record read once per project for the
+  slow tier (Money is ~0.4 s cold). Each source loads on its own; a failure is
+  named in `errors`, never its exception text. `stamp` is the input mtimes.
+- `core/moves.py` -- budget revisions and staffing changes with no name, hours
+  or dollars of people; events and the tape share it (never `quarterly._staffing`).
+- `core/detail.py` -- the detail pane's data: headroom history, `Money.burn`
+  (Budgie's `burn_series`: labor only, spend interpolated between readings, plan
+  through `planned_through`) and per-input freshness. No new arithmetic.
+- `core/events.py` -- `perch events`: next 30 days, one table (budget, staffing,
+  milestone, quarter end, year end, holiday). Overdue milestones stay in;
+  `ALL` collapses identical rows into `all (N)`; Mon-Fri holidays only.
+- `core/tape.py` -- `perch tape`: what changed, newest first, from files only
+  (flips, budget and staffing moves, latest reading, fetch, closed issues,
+  failed steps, unreadable sources). Fixed strings for errors; no name, note or
+  exception text; never the watch.
+- `core/asof.py` -- as-of browsing: the recorded weeks (union over projects),
+  `resolve`/`step`/`until`/`team_as_of`/`week_end`. Never the nearest week.
+- `core/alerts.py` -- `alerts:` in perch-home.yaml: `when: FIGURE OP NUMBER`
+  plus optional `project`, validated by `Home.alerts()`. Fires once per
+  (project, rule, week) when true now, not the week before, with 2+ recorded
+  weeks in this or last ISO week. `pace`/`prob_over` need `%` or a value <= 1.
+  Read only, team level, nothing sent.
 - `core/trend.py` -- read-only arithmetic over the team rows of history.jsonl:
   `spark`, `series`, `change` (last two recorded weeks: signal flip, deltas),
   `describe` and `team_lines`. No person row, no simulation.
@@ -149,6 +173,15 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   project's row is redrawn. `:` opens the command line (`c` prefilled `CUT `),
   `i` explains the cursor's cell in an info card, the Trend column and the
   `#changes` strip read `core/trend.py`, and a stoplight flip toasts once.
+  `v` toggles the detail pane (`#detail`, hidden under 160 columns): burn, plan
+  and forecast by month for the cursor's project, from `core/detail.py`. `t`
+  toggles `#tape` (replaces the old changes strip). `[`/`]` browse recorded
+  weeks (`L` or `ASOF LIVE` returns; step cells and Flags show `n/a`; no toasts
+  fire; workers deliver through `_if_current`). `e` / `E` run `events` for the
+  project / all, `ALRT`, `DET`, `EVTS` are command-line mnemonics. One slow worker
+  (`_warm_all`) builds pane and tape per project, skipping unchanged
+  `sources.stamp`s. The lead's alert rules toast as warnings (more than 3 pending
+  flips and alerts become one summary).
   `o` maximizes the newest card. Blocks from a command's output mount as
   widgets in its card (tables, bars, figures). In `perch suite` (`$TMUX` on the
   `pi` socket) `B`/`G` hop to the running window instead of exiting, `q` closes

@@ -130,3 +130,27 @@ def test_standing_in_a_project_folder_picks_it(tmp_path):
     assert home.select("apollo", here=deep) == "apollo"  # -p still wins
     with pytest.raises(WorkspaceError, match="several projects"):
         home.select(None, here=home.root)
+
+
+def test_alerts_are_stored_raw_and_validated_on_demand(tmp_path):
+    home = make_home(tmp_path, "apollo")
+    assert home.alerts() == ()
+    path = home.root / "perch-home.yaml"
+    path.write_text(
+        path.read_text()
+        + "alerts:\n  - when: headroom < 50k\n    project: apollo\n  - when: pace < 80%\n"
+    )
+    loaded = load_home(path)
+    assert [(r.figure, r.value, r.project) for r in loaded.alerts()] == [
+        ("headroom", 50000, "apollo"),
+        ("pace", 0.8, None),
+    ]
+    assert loaded == home  # alerts_raw is not part of equality
+
+
+def test_a_bad_alerts_value_loads_but_alerts_raises(tmp_path):
+    home = make_home(tmp_path, "apollo")
+    path = home.root / "perch-home.yaml"
+    path.write_text(path.read_text() + "alerts:\n  - when: bogus\n")
+    with pytest.raises(ValueError, match=r"alerts\[0\]\.when"):
+        load_home(path).alerts()

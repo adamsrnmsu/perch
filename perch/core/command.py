@@ -27,8 +27,11 @@ MNEMONICS = {
     "WKLY": "weekly",
     "BUD": "budget",
     "REV": "review",
+    "DET": "detail",
+    "EVTS": "events",
+    "ALRT": "alerts",
 }
-ALL = {"monday", "watch", "quarterly", "status"}  # what ALL accepts
+ALL = {"monday", "watch", "quarterly", "status", "events", "alerts"}  # what ALL accepts
 FROM = ("fetch", "board", "weekly", "digest", "emails")  # monday --from
 
 
@@ -85,6 +88,14 @@ def _how(command: str, tokens: list[str]) -> list[str]:
         if len(tokens) > 1:
             raise ValueError("quarterly takes at most one quarter, e.g. 2026-Q3")
         return ["--quarter", tokens[0]] if tokens else []
+    if command == "events":
+        if not tokens:
+            return []
+        if len(tokens) > 1 or not (
+            tokens[0].isdecimal() and 1 <= int(tokens[0]) <= 366
+        ):
+            raise ValueError("events takes one number of days, 1 to 366")
+        return ["--days", str(int(tokens[0]))]
     if tokens:
         raise ValueError(f"{command} takes no arguments")
     return []

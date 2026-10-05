@@ -30,7 +30,7 @@ def test_all():
     assert run("all wtch").project is None
     assert run("ALL STAT").args == ("status",)
     assert run("ALL QTR 2026-Q3").args == ("quarterly", "--all", "--quarter", "2026-Q3")
-    assert ALL == {"monday", "watch", "quarterly", "status"}
+    assert ALL == {"monday", "watch", "quarterly", "status", "events", "alerts"}
 
 
 @pytest.mark.parametrize(
@@ -93,3 +93,17 @@ def test_go_dropped():
 def test_refusals(text, current, message):
     with pytest.raises(ValueError, match=message):
         run(text, current)
+
+
+def test_detail_events_alerts_grammar():
+    assert run("DET").args == ("detail", "-p", "apollo")
+    assert run("EVTS").args == ("events", "-p", "apollo")
+    assert run("apollo EVTS 60").args == ("events", "-p", "apollo", "--days", "60")
+    assert run("ALL EVTS 7").args == ("events", "--all", "--days", "7")
+    assert run("ALL ALRT").args == ("alerts", "--all")
+    assert run("ALRT").args == ("alerts", "-p", "apollo")
+    for bad in ("EVTS 0", "EVTS 367", "EVTS x", "EVTS 1 2", "DET 5", "ALRT 1"):
+        with pytest.raises(ValueError):
+            run(bad)
+    with pytest.raises(ValueError, match="ALL works with"):
+        run("ALL DET")

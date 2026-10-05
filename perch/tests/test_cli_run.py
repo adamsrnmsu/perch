@@ -238,7 +238,7 @@ def test_doctor_as_blocks(tmp_path, monkeypatch):
     assert result.exit_code == 1
     out = blocks_of(result)
     heads = [b["text"] for b in out if b["block"] == "heading"]
-    assert heads[:4] == ["Tools", "Projects", "Walk", "Data (last written)"]
+    assert heads[:5] == ["Tools", "Projects", "Walk", "Alerts", "Data (last written)"]
     fix = next(b for b in out if b["block"] == "text" and b["text"].startswith("FIX"))
     assert fix["tone"] == "bad" and "gitlab_project" in fix["text"]
     assert any(b["block"] == "text" and b.get("tone") == "good" for b in out)

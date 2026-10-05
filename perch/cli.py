@@ -190,6 +190,10 @@ _SECTIONS = {
         "walk",
         "watch",
         "quarterly",
+        "detail",
+        "events",
+        "tape",
+        "alerts",
         "tui",
         "suite",
     ],
@@ -842,7 +846,13 @@ def _show_gitboard_config(home) -> bool:
 @_project_option
 def doctor(project):
     """Check the tools, each project's config, and how fresh the data is."""
-    from perch.core.doctor import Check, freshness, project_checks, tool_checks
+    from perch.core.doctor import (
+        Check,
+        alert_checks,
+        freshness,
+        project_checks,
+        tool_checks,
+    )
 
     home = _home()
     try:
@@ -873,6 +883,8 @@ def doctor(project):
 
     _show([bk.heading("Walk")])
     show(walk.checks(home))
+    _show([bk.heading("Alerts")])
+    show(alert_checks(home))
     _show(
         [
             bk.heading("Data (last written)"),
@@ -1251,6 +1263,94 @@ def quarterly(config_path, project, all_projects, quarter, out_dir):
             )
     if any(error for _, error in results):
         raise click.exceptions.Exit(1)
+
+
+def _names(home, project, all_projects):
+    """-p NAME, or every project (the default, and --all)."""
+    if all_projects and project:
+        raise click.UsageError("give -p or --all, not both")
+    if project:
+        try:
+            return [home.select(project)]
+        except ValueError as exc:
+            raise click.ClickException(str(exc)) from exc
+    return home.projects()
+
+
+@cli.command()
+@_project_option
+def detail(project):
+    """One project's burn, plan and forecast by month. Team level, labor only."""
+    from perch.core import detail as detail_mod
+    from perch.core import sources
+
+    home = _home()
+    try:
+        name = home.select(project, Path.cwd())
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    _show(detail_mod.blocks(detail_mod.build(name, sources.load(home, name))))
+
+
+@cli.command()
+@_project_option
+@click.option("--all", "all_projects", is_flag=True, help="Every project (default).")
+@click.option(
+    "--days",
+    type=click.IntRange(0, 366),
+    default=30,
+    show_default=True,
+    help="How far ahead to look.",
+)
+def events(project, all_projects, days):
+    """Dated things ahead: budget and staffing moves, milestones, quarter ends, holidays."""
+    from perch.core import events as events_mod
+
+    home = _home()
+    names = _names(home, project, all_projects)
+    today = date.today()  # noqa: DTZ011 -- the lead's local date
+    cal = events_mod.build_all(home, today, days, names)
+    _show(events_mod.blocks(cal, today, days))
+
+
+@cli.command()
+@_project_option
+@click.option("--all", "all_projects", is_flag=True, help="Every project (default).")
+@click.option(
+    "--days",
+    type=click.IntRange(1, 366),
+    default=56,
+    show_default=True,
+    help="How far back to look.",
+)
+def tape(project, all_projects, days):
+    """What changed lately, newest first, from files only."""
+    from perch.core import tape as tape_mod
+
+    home = _home()
+    names = _names(home, project, all_projects)
+    _show(tape_mod.blocks(tape_mod.tape(home, date.today(), days, names), days))  # noqa: DTZ011 -- the lead's local date
+
+
+@cli.command()
+@_project_option
+@click.option("--all", "all_projects", is_flag=True, help="Every project (default).")
+def alerts(project, all_projects):
+    """Every alert rule from perch-home.yaml and whether it is true now. Read only."""
+    from perch.core import alerts as alerts_mod
+    from perch.core import sources
+
+    home = _home()
+    names = _names(home, project, all_projects)
+    try:
+        rules = home.alerts()
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    states = []
+    for name in names:
+        rows = sources.load(home, name).rows
+        states += alerts_mod.evaluate(rules, name, rows, date.today())  # noqa: DTZ011 -- the lead's local date
+    _show(alerts_mod.blocks(states))
 
 
 @cli.command()

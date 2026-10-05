@@ -9,6 +9,7 @@ import inspect
 
 def test_budgie_core_names_perch_uses():
     from budgie.core.budget import Budget, BudgetRevision
+    from budgie.core.burn import BurnSeries, burn_series
     from budgie.core.burndown import BurndownStatus, burndown
     from budgie.core.calendar import workdays_between
     from budgie.core.costs import CostItem
@@ -50,6 +51,20 @@ def test_budgie_core_names_perch_uses():
     assert set(PlanEntry.__dataclass_fields__) == {"name", "effective_date", "fte"}
     assert {"observations", "plan"} <= set(inspect.signature(burndown).parameters)
     assert {"series", "day", "span"} == set(inspect.signature(spent_at).parameters)
+    assert callable(burn_series) and callable(Snapshot.burn_series)
+    assert {
+        "months",
+        "spent",
+        "spent_as_of",
+        "plan",
+        "budget",
+        "p10",
+        "p50",
+        "p90",
+        "reading_dates",
+        "as_of",
+        "note",
+    } == set(BurnSeries.__dataclass_fields__)
     assert callable(BurndownStatus.expected_on) and callable(workdays_between)
     # What quarterly.build calls on them.
     assert {"people", "observations", "span", "as_of", "plan"} <= set(

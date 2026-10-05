@@ -12,13 +12,17 @@ import subprocess
 import sys
 import threading
 from contextlib import nullcontext
+from datetime import date
 from pathlib import Path
 
 import pytest
 from textual.widgets import DataTable, Input, Static
+from textual.worker import WorkerCancelled
 
 from perch import tui
+from perch.core import asof as _asof
 from perch.core import blocks as b
+from perch.core import tape
 from perch.core.watch import PLAN, PersonWatch, Signal, Watch
 from perch.tests.conftest import build_home
 
@@ -70,7 +74,12 @@ def run(app, script):
 
 
 async def settle(app, pilot):
-    await app.workers.wait_for_complete()
+    while True:
+        try:  # an exclusive worker (the slow tier) cancels its predecessor
+            await app.workers.wait_for_complete()
+            break
+        except WorkerCancelled:
+            continue
     await pilot.pause()
 
 
@@ -885,7 +894,7 @@ def _weeks(home, name, *figs):
     """Team rows from W36, one per (headroom, signal[, budget]), plus a person row."""
     rows = []
     for i, (headroom, signal, *budget) in enumerate(figs):
-        week = {"week": f"2026-W{36 + i}", "date": "2026-09-01"}
+        week = {"week": f"2026-W{36 + i}", "date": date.today().isoformat()}  # noqa: DTZ011
         team = {**week, "kind": "team", "name": "team", "headroom": headroom}
         team["signal"] = signal
         if budget:
@@ -1089,31 +1098,52 @@ def test_the_trend_cell_is_a_sparkline_of_recorded_headroom(tmp_path):
     run(tui.PerchTUI(home), script)
 
 
-def test_the_changes_strip_describes_each_project_in_order(tmp_path):
+def test_the_tape_lists_each_projects_changes_in_order(tmp_path):
     home = build_home(tmp_path, "apollo", "beta", "gamma")
     _weeks(home, "apollo", (100, "green"), (-50, "red", 10))
     _weeks(home, "gamma", (100, "yellow"), (200, "yellow"))
     _team_row(home, "beta", 5.0, "green")  # one week: nothing to say
 
     async def script(app, pilot):
-        strip = app.query_one("#changes")
-        assert strip.display
-        assert str(strip.render()) == (
-            "apollo W36→W37: GREEN→RED, headroom −$150  ·  "
-            "gamma W36→W37: headroom +$100"
-        )
+        await settle(app, pilot)
+        assert app.query_one("#tape").display
+        lines = str(app.query_one("#tape-body").render()).splitlines()
+        today = f"{date.today():%m-%d}"  # noqa: DTZ011
+        flip = f"{today}  apollo  flip  W36→W37: GREEN→RED, headroom −$150"
+        move = f"{today}  gamma  figures  W36→W37: headroom +$100"
+        assert lines.index(flip) < lines.index(move)
+        assert not any("beta  flip" in x for x in lines)
 
     run(tui.PerchTUI(home), script)
 
 
-def test_the_strip_is_hidden_with_one_week(tmp_path):
+def test_the_tape_is_hidden_when_empty_and_t_toggles_it(tmp_path):
     home = build_home(tmp_path, "apollo")
     _team_row(home, "apollo", 5.0, "green")
 
     async def script(app, pilot):
-        assert not app.query_one("#changes").display
+        await settle(app, pilot)
+        assert not app.tape_rows and not app.query_one("#tape").display
+        app.tape_by["apollo"] = [tape.TapeEntry(date.today(), "apollo", "board", "x")]  # noqa: DTZ011
+        await pilot.press("t")
+        assert not app.tape_on and not app.query_one("#tape").display
+        await pilot.press("t")
+        assert app.tape_on and app.query_one("#tape").display
 
     run(tui.PerchTUI(home), script)
+
+
+def test_tape_text_styles_and_caps_lines():
+    d = date(2026, 4, 19)
+    es = [
+        tape.TapeEntry(d, "a", "hours", "h"),
+        tape.TapeEntry(d, "a", "failed", "f"),
+        tape.TapeEntry(d, "a", "error", "e"),
+    ]
+    t = tui.tape_text(es)
+    assert t.plain.splitlines()[1] == "04-19  a  failed  f"
+    assert [s.style for s in t.spans] == ["dim", "red", "yellow"]
+    assert len(tui.tape_text(es * 100).plain.splitlines()) == 200
 
 
 def test_a_flipped_stoplight_is_reversed_and_toasts_once(tmp_path):
@@ -1160,7 +1190,7 @@ def test_a_flip_a_run_records_toasts_when_its_row_refreshes(tmp_path, monkeypatc
         await pilot.press("b")
         await settle(app, pilot)
         assert "apollo: stoplight GREEN → RED (W38)" in _notices(app)
-        assert "W37→W38" in str(app.query_one("#changes").render())
+        assert "W37→W38" in str(app.query_one("#tape-body").render())
 
     run(tui.PerchTUI(home), script)
 
@@ -1528,3 +1558,507 @@ def test_suite_map_entries_name_the_project(tmp_path):
     m = tui.suite_map(home, "apollo")
     assert m["budgie"]["project"] == m["gitboard"]["project"] == "apollo"
     assert "project" not in m["perch"]  # a hop to perch never restarts it
+
+
+def _detail_text(app) -> str:
+    return str(app.query_one("#detail").render())
+
+
+def test_the_detail_pane_follows_the_cursor_and_a_move_loads_nothing(
+    tmp_path, monkeypatch
+):
+    from perch.core import sources
+
+    home = build_home(tmp_path, "apollo", "beta")
+    calls = []
+    real = sources.load
+    monkeypatch.setattr(sources, "load", lambda h, n: calls.append(n) or real(h, n))
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        assert sorted(calls) == ["apollo", "beta"]
+        assert _detail_text(app).startswith("apollo")
+        assert "cost lines $5,000 excluded · 4 readings · fan seeded" in _detail_text(
+            app
+        )
+        calls.clear()
+        await pilot.press("down")
+        await pilot.pause()
+        assert _detail_text(app).startswith("beta")
+        assert calls == []  # a cursor move reads a dict
+        await pilot.press("r")
+        await settle(app, pilot)
+        assert sorted(calls) == ["apollo", "beta"]  # r forces one load each
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_the_slow_tier_skips_an_unchanged_project_unless_forced(tmp_path, monkeypatch):
+    from perch.core import sources
+
+    home = build_home(tmp_path, "apollo")
+    calls = []
+    real = sources.load
+    monkeypatch.setattr(sources, "load", lambda h, n: calls.append(n) or real(h, n))
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        app._warm_all()
+        await settle(app, pilot)
+        assert calls == ["apollo"]
+        app._warm_all(True)
+        await settle(app, pilot)
+        assert calls == ["apollo", "apollo"]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_v_toggles_the_detail_pane(tmp_path):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        pane = app.query_one("#detail")
+        assert pane.display
+        await pilot.press("v")
+        assert pane.has_class("off") and not pane.display
+        await pilot.press("v")
+        assert pane.display
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_the_detail_pane_hides_below_160_columns(tmp_path):
+    home = build_home(tmp_path, "apollo")
+
+    async def go():
+        async with tui.PerchTUI(home).run_test(size=(120, 30)) as pilot:
+            assert not pilot.app.query_one("#detail").display
+
+    asyncio.run(go())
+
+
+def test_as_of_replaces_the_chart_and_cuts_the_spark(tmp_path):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        assert "burn chart is live only" not in _detail_text(app)
+        app.asof_week = "2026-W17"
+        app._paint_detail()
+        assert "burn chart is live only · L" in _detail_text(app)
+        assert "█" not in _detail_text(app).split("live only")[1].split("\n")[0]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_burn_lines_draws_each_glyph_on_its_row():
+    from datetime import date
+
+    from budgie.core.burn import BurnSeries
+
+    months = tuple(date(2026, m, 28) for m in (1, 2, 3, 4))
+    # top = 80; levels are 10 apart: 80 -> row 0, 40 -> row 4, 20 -> row 6
+    d = tui.detail.Detail(
+        "p",
+        {},
+        BurnSeries(
+            months=months,
+            spent=(20.0, 20.0, None, None),
+            spent_as_of=None,
+            plan=(10.0, 30.0, 50.0, 70.0),
+            budget=(80.0, 80.0, 80.0, 80.0),
+            p10=(20.0, 20.0, 30.0, 40.0),
+            p50=(20.0, 20.0, 40.0, 50.0),
+            p90=(20.0, 20.0, 50.0, 60.0),
+            reading_dates=(date(2026, 1, 25),),
+            as_of=date(2026, 2, 28),
+        ),
+        None,
+        None,
+        None,
+        None,
+        None,
+        0.0,
+        "",
+    )
+    rows = tui.burn_lines(d, 4).plain.split("\n")
+    assert len(rows) == 8
+    assert rows[0] == "────"  # budget
+    assert [r[0] for r in rows] == list("─      ")[:1] + [
+        " ",
+        " ",
+        " ",
+        " ",
+        " ",
+        "·",
+        "█",
+    ]
+    assert [r[1] for r in rows] == [
+        "─",
+        " ",
+        " ",
+        " ",
+        "·",
+        " ",
+        "▓",
+        "▓",
+    ]  # no Feb reading
+    assert [r[2] for r in rows] == [
+        "─",
+        " ",
+        "·",
+        "▒",
+        "▒",
+        " ",
+        " ",
+        " ",
+    ]  # fan, plan on top
+    assert [r[3] for r in rows] == [
+        "─",
+        "▒",
+        "▒",
+        "▒",
+        " ",
+        " ",
+        " ",
+        " ",
+    ]  # budget beats plan
+
+
+# --- as-of browsing -----------------------------------------------------------
+
+
+def _asof_home(tmp_path):
+    home = build_home(tmp_path, "apollo", "beta")
+    _weeks(
+        home,
+        "apollo",
+        (5000, "green"),
+        (2000, "yellow", 100000),
+        (-3000, "red", 90000),
+    )
+    _weeks(home, "beta", (1000, "green"), (500, "green"))
+    for name in ("apollo", "beta"):  # a row is dated in its own week, like a real run
+        path = home.projects_dir / name / "history.jsonl"
+        rows = [json.loads(x) for x in path.read_text().splitlines()]
+        for r in rows:
+            r["date"] = _asof.week_end(r["week"]).isoformat()
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return home
+
+
+def _row(app, i=0):
+    return _cells(app)[i]
+
+
+def test_brackets_step_through_recorded_weeks_and_back_to_live(tmp_path):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        live = _cells(app)
+        assert live[0][2] == "RED"
+        await pilot.press("[")
+        await settle(app, pilot)
+        banner = app.query_one("#asof")
+        assert banner.display and "AS OF 2026-W37" in str(banner.render())
+        assert app.query_one("#projects").has_class("historical")
+        apollo, beta = _row(app, 0), _row(app, 1)
+        assert apollo[2:5] == ["YELLOW", "$2,000", "█▁"]
+        assert beta[2:5] == ["GREEN", "$500", "█▁"]
+        assert all(c == "n/a" for c in apollo[5:])
+        flip = app.query_one("#projects").get_row_at(0)[2]
+        assert flip.style == "reverse"
+        assert beta[2] == "GREEN"
+        assert app.query_one("#projects").get_row_at(1)[2].style != "reverse"
+        await pilot.press("[")
+        await settle(app, pilot)
+        assert _row(app, 0)[2:5] == ["GREEN", "$5,000", ""]
+        await pilot.press("]")
+        await pilot.press("]")
+        await settle(app, pilot)
+        assert app.asof_week is None and _cells(app) == live
+        assert not app.query_one("#asof").display
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_stepping_toasts_no_stoplight_flip(tmp_path):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        before = len(_notices(app))
+        await pilot.press("[")
+        await settle(app, pilot)
+        await pilot.press("L")
+        await settle(app, pilot)
+        assert len(_notices(app)) == before
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_asof_command_jumps_and_a_project_without_the_week_shows_dashes(tmp_path):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        app.action_command("ASOF W38")
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert app.asof_week == "2026-W38"
+        beta = _row(app, 1)
+        assert beta[2:5] == ["—", "—", ""]
+        assert app.query_one("#projects").get_row_at(1)[2].style != "reverse"
+        app.action_command("ASOF W50")
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert "no week W50 recorded: W36…W38" in _notices(app)
+        assert app.asof_week == "2026-W38"
+        app.action_command("ASOF LIVE")
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert app.asof_week is None
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_one_recorded_week_stays_live(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    _team_row(home, "apollo", 5.0, "green")
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        await pilot.press("[")
+        await settle(app, pilot)
+        assert app.asof_week is None and _notices(app)
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_asof_does_not_run_status_or_the_watch(tmp_path, monkeypatch):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+
+        def boom(*a, **k):
+            raise AssertionError("live-only call")
+
+        monkeypatch.setattr(tui, "status", boom)
+        monkeypatch.setattr(tui, "_flags", boom)
+        await pilot.press("[")
+        await settle(app, pilot)
+        assert app.asof_week == "2026-W37"
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_the_tape_is_recomputed_as_of_the_week(tmp_path):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        assert any("W37→W38" in e.text for e in app.tape_rows)
+        await pilot.press("[")
+        await settle(app, pilot)
+        texts = [e.text for e in app.tape_rows]
+        assert "W36→W37: GREEN→YELLOW, headroom −$3,000" in texts
+        assert not any("W37→W38" in t for t in texts)
+        assert "W36→W37" in str(app.query_one("#tape-body").render())
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_in_asof_i_and_enter_say_n_a_and_run_nothing(tmp_path, spawned):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        await pilot.press("[")
+        await settle(app, pilot)
+        n = len(_cards(app))
+        await pilot.press("right", "right", "right", "right", "right")  # a step cell
+        await pilot.press("i")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert _notices(app).count("as of W37: n/a, press L for live") == 2
+        assert len(_cards(app)) == n and spawned == []
+        for _ in range(8):
+            await pilot.press("right")  # Flags
+        await pilot.press("i")
+        assert spawned == []
+        await pilot.press(
+            "left", "left", "left", "left", "left", "left", "left", "left"
+        )
+        # back to Headroom: team lines only up to the week
+        grid = app.query_one("#projects")
+        grid.move_cursor(row=0, column=3)
+        await pilot.press("i")
+        assert "W38" not in _cards(app)[-1][1]
+        assert "W37" in _cards(app)[-1][1]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_worker_result_for_another_view_is_dropped(tmp_path):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        await pilot.press("[")
+        await settle(app, pilot)
+        hit = []
+        app._if_current(None, hit.append, 1)
+        app._if_current("2026-W37", hit.append, 2)
+        assert hit == [2]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_asof_snapshot_runs_off_the_ui_thread(tmp_path, monkeypatch):
+    home = _asof_home(tmp_path)
+    seen = []
+    original = tui.snapshot
+
+    def spy(h, n, *a):
+        seen.append(threading.current_thread() is threading.main_thread())
+        return original(h, n, *a)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        monkeypatch.setattr(tui, "snapshot", spy)
+        await pilot.press("[")
+        await settle(app, pilot)
+        assert seen == [False, False]
+
+    run(tui.PerchTUI(home), script)
+
+
+# --- events keys and lead-only alert toasts (perch-zq2.2, perch-zq2.5) ---
+
+
+def _alert_home(tmp_path, names=("apollo",), rules="  - when: headroom < 50k\n"):
+    from datetime import timedelta
+
+    from perch.core.history import week_key
+    from perch.core.workspace import load_home
+
+    home = build_home(tmp_path, *names)
+    path = home.root / "perch-home.yaml"
+    path.write_text(path.read_text() + "alerts:\n" + rules)
+    home = load_home(path)
+    today = date.today()  # noqa: DTZ011
+    for name in names:
+        rows = [
+            {"week": week_key(today - timedelta(days=7 * i)), "date": "2026-01-01"}
+            | {"kind": "team", "name": "team", "headroom": h, "signal": "green"}
+            for i, h in ((1, 60000), (0, 42000))
+        ]
+        (home.projects_dir / name / "history.jsonl").write_text(
+            "".join(json.dumps(r) + "\n" for r in rows)
+        )
+    return home
+
+
+def _alerts(app):
+    return [n.message for n in app._notifications if "headroom <" in n.message]
+
+
+def test_e_runs_events_on_the_project_and_E_runs_all_without_a_refresh(
+    tmp_path, spawned, monkeypatch
+):
+    home = build_home(tmp_path, "apollo")
+    refreshed = []
+
+    async def script(app, pilot):
+        monkeypatch.setattr(app, "_warm_all", lambda *a: refreshed.append(a))
+        await pilot.press("e")
+        await settle(app, pilot)
+        assert spawned[-1][0] == [PERCH, "events", "-p", "apollo"]
+        assert refreshed  # a normal run refreshes
+        refreshed.clear()
+        await pilot.press("E")
+        await settle(app, pilot)
+        assert spawned[-1][0] == [PERCH, "events", "--all"]
+        assert not refreshed
+        assert _cards(app)[-1][:2] == ("events --all", "ran")
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_fresh_alert_toasts_once_and_not_again_on_r(tmp_path):
+    home = _alert_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        week = tui.history.load(home.projects_dir / "apollo" / "history.jsonl")[-1][
+            "week"
+        ]
+        assert _alerts(app) == [
+            f"apollo: headroom < 50k (headroom $42,000, {week.split('-')[-1]})"
+        ]
+        assert len(app.hits["apollo"]) == 1
+        app.action_refresh()
+        await settle(app, pilot)
+        assert len(_alerts(app)) == 1
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_bad_alerts_file_gives_no_rules_and_no_toast(tmp_path):
+    home = _alert_home(tmp_path, rules="  - when: pace < 80\n")
+    app = tui.PerchTUI(home)
+    assert app.rules == ()
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        assert _alerts(app) == []
+
+    run(app, script)
+
+
+def test_four_alerts_become_one_summary_toast(tmp_path):
+    home = _alert_home(tmp_path, names=("a", "b", "c", "d"))
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        assert _alerts(app) == []
+        assert [m for m in _notices(app) if m.startswith("4 changes")]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_no_alert_toast_while_browsing_a_recorded_week(tmp_path):
+    home = _alert_home(tmp_path)
+    app = tui.PerchTUI(home)
+    app.asof_week = "2026-W01"
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        assert _alerts(app) == []
+        assert app.hits == {}
+
+    run(app, script)
+
+
+def test_alert_files_are_read_off_the_ui_thread_after_startup(tmp_path, monkeypatch):
+    home = _alert_home(tmp_path)
+    real = tui.alert_hits
+    threads = []
+
+    def spy(*a):
+        threads.append(threading.current_thread() is threading.main_thread())
+        return real(*a)
+
+    monkeypatch.setattr(tui, "alert_hits", spy)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        threads.clear()
+        app.action_refresh()
+        await settle(app, pilot)
+        assert threads and not any(threads)
+        assert len(app.hits["apollo"]) == 1
+
+    run(tui.PerchTUI(home), script)

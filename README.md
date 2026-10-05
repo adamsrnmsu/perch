@@ -67,6 +67,10 @@ perch review -p apollo         # Claude's /board on the pulled board, told the b
 perch brief -p apollo          # everything /walk reads: freshness, team, people, forecast, watch, follow-ups
 perch gb plan -p apollo        # gitboard for the project, from its checkout (show, plan, ...; push/pull need GitLab)
 perch walk -p apollo           # Claude walks you through money, board and watch (/walk)
+perch detail -p apollo         # burn, plan and forecast by month (labor only)
+perch events --all             # next 30 days: budget, staffing, milestones, quarter ends, holidays
+perch tape --all               # what changed lately, newest first
+perch alerts --all             # your alert rules and whether each is true now
 perch tui                      # every project in one table, inside the suite; single keys run the commands
 ```
 
@@ -97,6 +101,32 @@ last 8 recorded weeks, the line above the table says what moved since the week
 before, and a stoplight that flipped shows in reverse and toasts once per
 session. All of it comes from the team row of `history.jsonl`: no names, nothing
 from the watch, nothing sent.
+
+Five more things in the TUI, all team level and all read from files:
+
+- **Detail pane** (`v`): the cursor's project by month, spent against plan with
+  Budgie's forecast fan. Labor only; months drawn from an interpolated reading
+  are lighter. Shown from 160 columns wide. `DET` runs `perch detail`.
+- **Events** (`e`, `E` for all, `EVTS`): budget and staffing changes,
+  milestones (overdue ones included), quarter and year ends and weekday
+  holidays in the next 30 days. `EVTS 60` widens it.
+- **As-of** (`[` back a recorded week, `]` forward, `L` live; `ASOF W38`): the
+  table shows that week's recorded stoplight, headroom and trend; step cells
+  and Flags show `n/a`. Nothing toasts while stepping.
+- **Tape** (`t`): a strip, newest first, of flips, budget and staffing moves,
+  the latest hours reading, fetches and failures.
+- **Alerts**: your own thresholds toast once when they are crossed. In
+  `perch-home.yaml`:
+
+```yaml
+alerts:
+  - when: headroom < 50k
+    project: apollo      # a project name or ALL; default ALL
+  - when: pace < 80%     # pace and prob_over need % (or a value of 1 or less)
+```
+
+  `ALRT` lists every rule and whether it is true now; `perch doctor` checks
+  them. Nothing is sent.
 
 Board edits (pull, plan, push, tui) are `gitboard` commands, run from the
 gitboard checkout with the project's `gitlab_project`.
