@@ -1933,3 +1933,110 @@ def test_asof_snapshot_runs_off_the_ui_thread(tmp_path, monkeypatch):
         assert seen == [False, False]
 
     run(tui.PerchTUI(home), script)
+
+
+# --- events keys and lead-only alert toasts (perch-zq2.2, perch-zq2.5) ---
+
+
+def _alert_home(tmp_path, names=("apollo",), rules="  - when: headroom < 50k\n"):
+    from datetime import timedelta
+
+    from perch.core.history import week_key
+    from perch.core.workspace import load_home
+
+    home = build_home(tmp_path, *names)
+    path = home.root / "perch-home.yaml"
+    path.write_text(path.read_text() + "alerts:\n" + rules)
+    home = load_home(path)
+    today = date.today()  # noqa: DTZ011
+    for name in names:
+        rows = [
+            {"week": week_key(today - timedelta(days=7 * i)), "date": "2026-01-01"}
+            | {"kind": "team", "name": "team", "headroom": h, "signal": "green"}
+            for i, h in ((1, 60000), (0, 42000))
+        ]
+        (home.projects_dir / name / "history.jsonl").write_text(
+            "".join(json.dumps(r) + "\n" for r in rows)
+        )
+    return home
+
+
+def _alerts(app):
+    return [n.message for n in app._notifications if "headroom <" in n.message]
+
+
+def test_e_runs_events_on_the_project_and_E_runs_all_without_a_refresh(
+    tmp_path, spawned, monkeypatch
+):
+    home = build_home(tmp_path, "apollo")
+    refreshed = []
+
+    async def script(app, pilot):
+        monkeypatch.setattr(app, "_warm_all", lambda *a: refreshed.append(a))
+        await pilot.press("e")
+        await settle(app, pilot)
+        assert spawned[-1][0] == [PERCH, "events", "-p", "apollo"]
+        assert refreshed  # a normal run refreshes
+        refreshed.clear()
+        await pilot.press("E")
+        await settle(app, pilot)
+        assert spawned[-1][0] == [PERCH, "events", "--all"]
+        assert not refreshed
+        assert _cards(app)[-1][:2] == ("events --all", "ran")
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_fresh_alert_toasts_once_and_not_again_on_r(tmp_path):
+    home = _alert_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        week = tui.history.load(home.projects_dir / "apollo" / "history.jsonl")[-1][
+            "week"
+        ]
+        assert _alerts(app) == [
+            f"apollo: headroom < 50k (headroom $42,000, {week.split('-')[-1]})"
+        ]
+        assert len(app.hits["apollo"]) == 1
+        app.action_refresh()
+        await settle(app, pilot)
+        assert len(_alerts(app)) == 1
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_bad_alerts_file_gives_no_rules_and_no_toast(tmp_path):
+    home = _alert_home(tmp_path, rules="  - when: pace < 80\n")
+    app = tui.PerchTUI(home)
+    assert app.rules == ()
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        assert _alerts(app) == []
+
+    run(app, script)
+
+
+def test_four_alerts_become_one_summary_toast(tmp_path):
+    home = _alert_home(tmp_path, names=("a", "b", "c", "d"))
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        assert _alerts(app) == []
+        assert [m for m in _notices(app) if m.startswith("4 changes")]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_no_alert_toast_while_browsing_a_recorded_week(tmp_path):
+    home = _alert_home(tmp_path)
+    app = tui.PerchTUI(home)
+    app.asof_week = "2026-W01"
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        assert _alerts(app) == []
+        assert app.hits == {}
+
+    run(app, script)

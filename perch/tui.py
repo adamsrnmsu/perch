@@ -42,6 +42,7 @@ from textual.widgets import DataTable, Footer, Input, Static
 from textual.worker import get_current_worker
 
 from perch.cli import _bin_dir, _label, _watch
+from perch.core import alerts as _alerts
 from perch.core import asof as _asof
 from perch.core import blocks, detail, history, sources, tape
 from perch.core.command import parse
@@ -76,6 +77,7 @@ COMMANDS = {  # key -> the perch command it runs on the selected project
     "f": "forecast",
     "w": "watch",
     "Q": "quarterly",
+    "e": "events",
 }
 
 
@@ -224,6 +226,20 @@ def snapshot(
         *steps,
         Text(NA, style="dim") if asof else _flags(home.config_path(name)),
     ), moved
+
+
+def alert_hits(home: Home, name: str, rules) -> list[_alerts.State]:
+    """The rules that just turned true for one project (fresh), from its history."""
+    if not rules:
+        return []
+    try:
+        rows = history.load(
+            load_config(home.config_path(name), require_dump=False).history
+        )
+        states = _alerts.evaluate(rules, name, rows, date.today())  # noqa: DTZ011
+    except _ERRORS:
+        return []
+    return [s for s in states if s.fresh]
 
 
 def row(home: Home, name: str) -> tuple[str | Text, ...]:
@@ -483,6 +499,7 @@ class PerchTUI(App):
         ("left_square_bracket", "asof(-1)", "as of"),
         Binding("right_square_bracket", "asof(1)", show=False),
         Binding("L", "live", show=False),
+        Binding("E", "events_all", show=False),
         Binding("v", "toggle_detail", show=False),
         Binding("t", "toggle_tape", show=False),
         ("h", "hours", "hours"),
@@ -503,6 +520,12 @@ class PerchTUI(App):
         self.child: subprocess.Popen | None = None  # the running command's process
         self.changes: dict[str, Change | None] = {}  # project -> its latest change
         self.alerted: set[tuple[str, str]] = set()  # (project, week) already toasted
+        try:  # a bad `alerts:` file never stops the TUI: doctor reports it
+            self.rules = home.alerts()
+        except _ERRORS:
+            self.rules = ()
+        self.hits: dict[str, list[_alerts.State]] = {}  # project -> fresh alerts
+        self.fired: set[tuple[str, int, str | None]] = set()  # (project, rule, week)
         self.asof_week: str | None = None  # the recorded week on view; None is live
         self.src: dict[str, sources.Sources] = {}  # the slow tier's loads
         self.stamps: dict[str, float] = {}  # project -> input mtime at its last load
@@ -674,20 +697,46 @@ class PerchTUI(App):
                 table.update_cell_at(Coordinate(at, col), cell, update_width=True)
         self._report()
 
+    def _set_hits(self, name: str, hits: list[_alerts.State]) -> None:
+        self.hits[name] = hits
+
     def _report(self) -> None:
-        """One toast per stoplight flip; none while browsing history."""
+        """Toast each stoplight flip, then each fresh alert, once; none in history.
+
+        More than three pending become one summary toast.
+        """
         self._paint_detail()  # a move to the same cell fires no highlight
         if self.asof_week:
             return
+        pending = []  # (seen set, key, text, severity)
         for name in self.names:
             moved = self.changes.get(name)
             if moved and moved.signal and (name, moved.after) not in self.alerted:
-                self.alerted.add((name, moved.after))
                 old, new = (s.upper() for s in moved.signal)
-                self.notify(
-                    f"{name}: stoplight {old} → {new} ({moved.after[5:]})",
-                    severity="error" if new == "RED" else "warning",
+                pending.append(
+                    (
+                        self.alerted,
+                        (name, moved.after),
+                        f"{name}: stoplight {old} → {new} ({moved.after[5:]})",
+                        "error" if new == "RED" else "warning",
+                    )
                 )
+        for name in self.names:
+            # ponytail: a small jsonl read on the UI thread, only when rules exist
+            self._set_hits(name, alert_hits(self.home, name, self.rules))
+            for s in self.hits[name]:
+                key = (name, s.rule.index, s.week)
+                if key not in self.fired:
+                    pending.append((self.fired, key, _alerts.toast_text(s), "warning"))
+        for seen, key, _, _ in pending:
+            seen.add(key)
+        if len(pending) > 3:
+            self.notify(
+                f"{len(pending)} changes: stoplight flips and alerts, see the tape"
+            )
+            return
+        for _, _, text, severity in pending:
+            self.notify(text, severity=severity)
 
     def action_asof(self, delta: int) -> None:
         self._go(self.asof_week, delta, "")
@@ -789,7 +838,13 @@ class PerchTUI(App):
         pane.scroll_end(animate=False)
         return card
 
-    def _start(self, name: str | None, action: str, args: list[str]) -> None:
+    def action_events_all(self) -> None:
+        if self._free():
+            self._start(None, "events --all", ["events", "--all"], refresh=False)
+
+    def _start(
+        self, name: str | None, action: str, args: list[str], refresh: bool = True
+    ) -> None:
         """Run perch on one project, or on every project when ``name`` is None."""
         self.busy = action
         card = self._show(RunCard(f"{action} · {name}" if name else action))
@@ -797,7 +852,7 @@ class PerchTUI(App):
             self.query_one("#output").size.width - 4, 40
         )  # the card's inside: tables fit it
         env = {"FORCE_COLOR": "1", "COLUMNS": str(width), blocks.ENV: "1"}
-        self._stream(card, name, [str(_bin_dir() / "perch"), *args], env)
+        self._stream(card, name, [str(_bin_dir() / "perch"), *args], env, refresh)
 
     def on_grid_go(self) -> None:
         """Enter: a step's cell runs that step; any other column, the next one."""
@@ -823,7 +878,12 @@ class PerchTUI(App):
 
     @work(thread=True)
     def _stream(
-        self, card: RunCard, name: str | None, argv: list[str], env: dict[str, str]
+        self,
+        card: RunCard,
+        name: str | None,
+        argv: list[str],
+        env: dict[str, str],
+        refresh: bool = True,
     ) -> None:
         """In a thread: every touch of the app goes through call_from_thread.
 
@@ -846,7 +906,7 @@ class PerchTUI(App):
         finally:
             if pending is not None:
                 self.call_from_thread(card.put, pending)
-            self.call_from_thread(self._finished, name, card, code)
+            self.call_from_thread(self._finished, name, card, code, refresh)
 
     def _hold(self, proc: subprocess.Popen) -> None:
         self.child = proc
@@ -862,7 +922,9 @@ class PerchTUI(App):
         except subprocess.TimeoutExpired:
             proc.kill()
 
-    def _finished(self, name: str | None, card: RunCard, code: int) -> None:
+    def _finished(
+        self, name: str | None, card: RunCard, code: int, refresh: bool = True
+    ) -> None:
         """Close the card; refresh the row that ran (every row after `a`).
 
         A failure adds the project's FIX lines to its card.
@@ -871,6 +933,8 @@ class PerchTUI(App):
         self.busy = None
         card.finish(code)
         self.query_one("#output", VerticalScroll).scroll_end(animate=False)
+        if not refresh:  # a read-only command: no row changed
+            return
         if name not in self.names:  # None (`a`), or a project gone meanwhile
             self.action_refresh()
             return
