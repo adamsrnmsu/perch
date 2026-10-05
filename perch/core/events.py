@@ -71,7 +71,8 @@ def build(
     for day, name in federal_holidays(span).items():
         if today <= day <= end and day.weekday() < 5 and span.contains(day):
             out.append(Event(day, project, "holiday", name))
-    return tuple(sorted(out, key=lambda e: (e.day, KINDS.index(e.kind), e.what)))
+    # stable: same-day same-kind ties keep source (file) order
+    return tuple(sorted(out, key=lambda e: (e.day, KINDS.index(e.kind))))
 
 
 def span_note(project: str, money: Money, today: date, days: int) -> str:
@@ -109,7 +110,7 @@ def build_all(
             )
         else:
             keyed += [(1, rank, e) for rank, e in group]
-    keyed.sort(key=lambda k: (k[2].day, KINDS.index(k[2].kind), k[0], k[1], k[2].what))
+    keyed.sort(key=lambda k: (k[2].day, KINDS.index(k[2].kind), k[0], k[1]))
     return Calendar(tuple(k[2] for k in keyed), tuple(notes), tuple(errors))
 
 

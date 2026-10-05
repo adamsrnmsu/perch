@@ -213,3 +213,35 @@ def test_blocks(tmp_path):
     assert len(empty) == 1 and empty[0]["block"] == "text"
     assert "last 7 days" in empty[0]["text"]
     assert json.dumps(got)
+
+
+def test_as_of_drops_live_only_entries_dated_after_the_week(tmp_path):
+    home, _ = _src(tmp_path)
+    (home.projects_dir / "apollo" / "monday.json").write_text(
+        '{"week": "2026-W17", "step": "board", "code": 2, "at": "2026-04-19T09:00:00"}'
+    )
+    src = sources.load(home, "apollo")
+    src = replace(src, errors=("monday.json",))
+    # W16 ends 04-19: the 04-20 fetch, the failure and the live error are not history
+    got = tape.project_tape(src, "apollo", date(2026, 9, 20), asof="2026-W16")
+    assert not [e for e in got if e.kind in ("board", "failed", "error")]
+    assert [e.kind for e in got if e.kind == "closed"]  # real closes stay
+    assert all(e.day <= date(2026, 4, 19) for e in got)
+
+
+def test_same_day_plan_moves_keep_plan_csv_order(tmp_path):
+    _, src = _src(tmp_path)
+    plan = AllocationPlan(
+        (
+            PlanEntry("Alice", date(2026, 1, 1), 0.5),
+            PlanEntry("Alice", date(2026, 4, 12), 0.75),  # an FTE change, listed first
+            PlanEntry("Bob", date(2026, 4, 12), 0.5),  # a join
+        )
+    )
+    got = tape.project_tape(
+        replace(src, money=replace(src.money, plan=plan)), "a", TODAY
+    )
+    assert [e.text for e in got if e.kind == "plan"] == [
+        "plan: an FTE change · FTE 0.5 → 0.75",
+        "plan: a join · FTE 0 → 0.5",
+    ]
