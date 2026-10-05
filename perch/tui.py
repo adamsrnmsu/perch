@@ -42,6 +42,7 @@ from textual.widgets import DataTable, Footer, Input, Static
 from textual.worker import get_current_worker
 
 from perch.cli import _bin_dir, _label, _watch
+from perch.core import asof as _asof
 from perch.core import blocks, detail, history, sources, tape
 from perch.core.command import parse
 from perch.core.config import load_config
@@ -170,16 +171,37 @@ def _step_cells(cells) -> tuple[Text, ...]:
     return tuple(Text(*_SHOWN[cells[step].state]) for step in STEPS)
 
 
-def snapshot(home: Home, name: str) -> tuple[tuple[str | Text, ...], Change | None]:
-    """One project's cells and its week-on-week change, from one read of history."""
-    steps = _step_cells(status(home, name, date.today()))  # noqa: DTZ011 -- never raises
+NA = "n/a"  # an as-of cell that is not historical: the step cells and Flags
+
+
+def snapshot(
+    home: Home, name: str, asof: str | None = None
+) -> tuple[tuple[str | Text, ...], Change | None]:
+    """One project's cells and its week-on-week change, from one read of history.
+
+    With ``asof`` (a recorded week) the step cells and Flags are `n/a`, and
+    the team figures are that week's own row: `—` when the project has none.
+    """
+    if asof:
+        steps = tuple(Text(NA, style="dim") for _ in STEPS)
+    else:
+        steps = _step_cells(status(home, name, date.today()))  # noqa: DTZ011 -- never raises
     try:
         config = load_config(home.config_path(name), require_dump=False)
         rows = history.load(config.history)
-        last = max((r["week"] for r in rows), default=None)
-        team = next((r for r in rows if r["week"] == last and r["kind"] == "team"), {})
-        moved = change(rows)
-        trend = spark(series(rows, "headroom").values())
+        if asof:
+            rows = _asof.until(rows, asof)
+            team = _asof.team_as_of(rows, asof) or {}
+            moved = change(rows)
+            moved = moved if moved and moved.after == asof else None
+            trend = spark(series(rows, "headroom").values()) if team else ""
+        else:
+            last = max((r["week"] for r in rows), default=None)
+            team = next(
+                (r for r in rows if r["week"] == last and r["kind"] == "team"), {}
+            )
+            moved = change(rows)
+            trend = spark(series(rows, "headroom").values())
     except Exception as exc:  # noqa: BLE001 -- a display boundary: show, never crash
         return (
             name,
@@ -200,7 +222,7 @@ def snapshot(home: Home, name: str) -> tuple[tuple[str | Text, ...], Change | No
         _money(team.get("headroom")),
         trend,
         *steps,
-        _flags(home.config_path(name)),
+        Text(NA, style="dim") if asof else _flags(home.config_path(name)),
     ), moved
 
 
@@ -446,6 +468,8 @@ class PerchTUI(App):
     #detail { width: 2fr; border-left: solid $panel; padding: 0 1; }
     #detail.off, .-narrow #detail { display: none; }
     #output { width: 2fr; border-left: solid $panel; padding: 0 1; }
+    #asof { display: none; background: $warning; color: $background; text-style: bold; padding: 0 1; }
+    #projects.historical { opacity: 0.8; }
     #tape { height: 8; display: none; padding: 0 1; }
     #command { display: none; dock: bottom; }
     """
@@ -456,6 +480,9 @@ class PerchTUI(App):
         ("c", "command('CUT ')", "cut"),
         ("i", "info", "info"),
         ("o", "open", "open"),
+        ("left_square_bracket", "asof(-1)", "as of"),
+        Binding("right_square_bracket", "asof(1)", show=False),
+        Binding("L", "live", show=False),
         Binding("v", "toggle_detail", show=False),
         Binding("t", "toggle_tape", show=False),
         ("h", "hours", "hours"),
@@ -476,7 +503,7 @@ class PerchTUI(App):
         self.child: subprocess.Popen | None = None  # the running command's process
         self.changes: dict[str, Change | None] = {}  # project -> its latest change
         self.alerted: set[tuple[str, str]] = set()  # (project, week) already toasted
-        self.asof_week: str | None = None  # set by the as-of task; None is live
+        self.asof_week: str | None = None  # the recorded week on view; None is live
         self.src: dict[str, sources.Sources] = {}  # the slow tier's loads
         self.stamps: dict[str, float] = {}  # project -> input mtime at its last load
         self.details: dict[str, detail.Detail] = {}
@@ -485,6 +512,7 @@ class PerchTUI(App):
         self.tape_on = True
 
     def compose(self) -> ComposeResult:
+        yield Static(id="asof")
         with Horizontal():
             yield Grid(id="projects", cursor_type="cell")
             yield Static(Text("loading…", style="dim"), id="detail")
@@ -535,6 +563,13 @@ class PerchTUI(App):
         self, name: str, stamp: float, src: sources.Sources, built, entries
     ) -> None:
         self.src[name], self.stamps[name], self.details[name] = src, stamp, built
+        if self.asof_week:  # the thread built the live tape: redo it as of the week
+            entries = tape.project_tape(
+                src,
+                name,
+                date.today(),  # noqa: DTZ011
+                asof=self.asof_week,
+            )
         self.tape_by[name] = entries
         self._paint_detail()
         self._paint_tape()
@@ -588,9 +623,19 @@ class PerchTUI(App):
     @work(thread=True, exclusive=True, group="reload")
     def _reload(self) -> None:
         names = self.home.projects()  # a project made meanwhile shows up
-        snaps = {n: snapshot(self.home, n) for n in names}
-        self.call_from_thread(self._rebuild, names, snaps)
+        week = self.asof_week
+        snaps = {n: self._snap(n, week) for n in names}
+        self.call_from_thread(self._if_current, week, self._rebuild, names, snaps)
         self.call_from_thread(self._warm_all, True)
+
+    def _snap(self, name: str, week: str | None) -> tuple:
+        """snapshot, naming the week only when there is one."""
+        return snapshot(self.home, name, week) if week else snapshot(self.home, name)
+
+    def _if_current(self, week: str | None, fn: Callable, *args) -> None:
+        """Deliver a worker's result only if the view is still the one it began in."""
+        if week == self.asof_week:
+            fn(*args)
 
     def _rebuild(self, names: list[str], snaps: dict) -> None:
         table = self.query_one("#projects", Grid)
@@ -612,8 +657,9 @@ class PerchTUI(App):
 
     @work(thread=True, exclusive=True, group="focus")
     def _refresh_behind(self) -> None:
-        snaps = {name: snapshot(self.home, name) for name in self.names}
-        self.call_from_thread(self._fill, snaps)
+        week = self.asof_week
+        snaps = {name: self._snap(name, week) for name in self.names}
+        self.call_from_thread(self._if_current, week, self._fill, snaps)
 
     def _fill(self, snaps: dict) -> None:
         """Rewrite the rows in place: the cursor stays. A project made meanwhile
@@ -629,8 +675,10 @@ class PerchTUI(App):
         self._report()
 
     def _report(self) -> None:
-        """One toast per stoplight flip."""
+        """One toast per stoplight flip; none while browsing history."""
         self._paint_detail()  # a move to the same cell fires no highlight
+        if self.asof_week:
+            return
         for name in self.names:
             moved = self.changes.get(name)
             if moved and moved.signal and (name, moved.after) not in self.alerted:
@@ -640,6 +688,74 @@ class PerchTUI(App):
                     f"{name}: stoplight {old} → {new} ({moved.after[5:]})",
                     severity="error" if new == "RED" else "warning",
                 )
+
+    def action_asof(self, delta: int) -> None:
+        self._go(self.asof_week, delta, "")
+
+    def action_live(self) -> None:
+        if self.asof_week:
+            self._go(self.asof_week, 0, "LIVE")
+
+    @work(thread=True, exclusive=True, group="asof")
+    def _go(self, base: str | None, delta: int, text: str) -> None:
+        """Resolve the target week, read every project as of it and the tape too,
+        all off the UI thread; `_enter_asof` then swaps the view in one go.
+        Known limit: two rapid `[` can read the same base and lose a step."""
+        worker = get_current_worker()
+        names = list(self.names)
+        rows = []
+        for n in names:
+            try:
+                config = load_config(self.home.config_path(n), require_dump=False)
+                rows.append(history.load(config.history))
+            except _ERRORS:
+                continue
+        recorded = _asof.weeks(rows)
+        try:
+            week = (
+                _asof.resolve(text, recorded)
+                if text
+                else _asof.step(recorded, base, delta)
+            )
+        except ValueError as exc:
+            self.call_from_thread(self.notify, str(exc), severity="error")
+            return
+        if not text and len(recorded) < 2:
+            self.call_from_thread(
+                self.notify, "only one week recorded: nothing to step to"
+            )
+            return
+        snaps = {n: self._snap(n, week) for n in names}
+        tapes = {
+            n: tape.project_tape(s, n, date.today(), asof=week)  # noqa: DTZ011
+            for n, s in dict(self.src).items()
+        }
+        if worker.is_cancelled:
+            return
+        try:
+            self.call_from_thread(self._enter_asof, week, names, snaps, tapes)
+        except RuntimeError:  # the app closed under the worker
+            return
+
+    def _enter_asof(
+        self, week: str | None, names: list[str], snaps: dict, tapes: dict
+    ) -> None:
+        self.asof_week = week
+        banner = self.query_one("#asof", Static)
+        banner.update(
+            Text(f"AS OF {week} · history, not live · [ ] step · L live")
+            if week
+            else Text("")
+        )
+        banner.display = week is not None
+        self.query_one("#projects", Grid).set_class(week is not None, "historical")
+        self.tape_by = tapes
+        self._rebuild(names, snaps)
+        self._paint_tape()
+
+    def _na(self) -> None:
+        week = (self.asof_week or "").split("-")[-1]
+        self.notify(f"as of {week}: n/a, press L for live")
 
     def _selected(self) -> str | None:
         if not self.names:
@@ -685,6 +801,9 @@ class PerchTUI(App):
 
     def on_grid_go(self) -> None:
         """Enter: a step's cell runs that step; any other column, the next one."""
+        if self.asof_week:
+            self._na()
+            return
         name = self._selected() if self._free() else None
         if name is None:
             return
@@ -760,9 +879,12 @@ class PerchTUI(App):
 
     @work(thread=True, group="row")
     def _row_done(self, name: str, card: RunCard, code: int) -> None:
-        snap = snapshot(self.home, name)
+        week = self.asof_week
+        snap = self._snap(name, week)
         checks = project_checks(self.home, name) if code else []
-        self.call_from_thread(self._apply_row, name, card, snap, checks)
+        self.call_from_thread(
+            self._if_current, week, self._apply_row, name, card, snap, checks
+        )
 
     def _apply_row(self, name: str, card: RunCard, snap: tuple, checks: list) -> None:
         if name not in self.names:  # removed while the worker ran
@@ -801,6 +923,9 @@ class PerchTUI(App):
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         self.action_close_command()
+        if _asof.is_command(event.value):
+            self._go(self.asof_week, 0, _asof.argument(event.value))
+            return
         try:
             command = parse(event.value, self.names, self._selected())
         except ValueError as exc:
@@ -823,6 +948,9 @@ class PerchTUI(App):
         if name is None:
             return
         column = COLUMNS[self.query_one(Grid).cursor_coordinate.column]
+        if self.asof_week and (column == "Flags" or column in STEPS):
+            self._na()
+            return
         if column == "Flags":
             self.action_run("w")
             return
@@ -840,7 +968,10 @@ class PerchTUI(App):
                 ]
             else:
                 config = load_config(self.home.config_path(name), require_dump=False)
-                lines = team_lines(history.load(config.history))
+                rows = history.load(config.history)
+                if self.asof_week:
+                    rows = _asof.until(rows, self.asof_week)
+                lines = team_lines(rows)
         except _ERRORS as exc:
             self.notify(f"{name}: {exc}", severity="error")
             return

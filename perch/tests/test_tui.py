@@ -20,6 +20,7 @@ from textual.widgets import DataTable, Input, Static
 from textual.worker import WorkerCancelled
 
 from perch import tui
+from perch.core import asof as _asof
 from perch.core import blocks as b
 from perch.core import tape
 from perch.core.watch import PLAN, PersonWatch, Signal, Watch
@@ -1722,3 +1723,213 @@ def test_burn_lines_draws_each_glyph_on_its_row():
         " ",
         " ",
     ]  # budget beats plan
+
+
+# --- as-of browsing -----------------------------------------------------------
+
+
+def _asof_home(tmp_path):
+    home = build_home(tmp_path, "apollo", "beta")
+    _weeks(
+        home,
+        "apollo",
+        (5000, "green"),
+        (2000, "yellow", 100000),
+        (-3000, "red", 90000),
+    )
+    _weeks(home, "beta", (1000, "green"), (500, "green"))
+    for name in ("apollo", "beta"):  # a row is dated in its own week, like a real run
+        path = home.projects_dir / name / "history.jsonl"
+        rows = [json.loads(x) for x in path.read_text().splitlines()]
+        for r in rows:
+            r["date"] = _asof.week_end(r["week"]).isoformat()
+        path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return home
+
+
+def _row(app, i=0):
+    return _cells(app)[i]
+
+
+def test_brackets_step_through_recorded_weeks_and_back_to_live(tmp_path):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        live = _cells(app)
+        assert live[0][2] == "RED"
+        await pilot.press("[")
+        await settle(app, pilot)
+        banner = app.query_one("#asof")
+        assert banner.display and "AS OF 2026-W37" in str(banner.render())
+        assert app.query_one("#projects").has_class("historical")
+        apollo, beta = _row(app, 0), _row(app, 1)
+        assert apollo[2:5] == ["YELLOW", "$2,000", "█▁"]
+        assert beta[2:5] == ["GREEN", "$500", "█▁"]
+        assert all(c == "n/a" for c in apollo[5:])
+        flip = app.query_one("#projects").get_row_at(0)[2]
+        assert flip.style == "reverse"
+        assert beta[2] == "GREEN"
+        assert app.query_one("#projects").get_row_at(1)[2].style != "reverse"
+        await pilot.press("[")
+        await settle(app, pilot)
+        assert _row(app, 0)[2:5] == ["GREEN", "$5,000", ""]
+        await pilot.press("]")
+        await pilot.press("]")
+        await settle(app, pilot)
+        assert app.asof_week is None and _cells(app) == live
+        assert not app.query_one("#asof").display
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_stepping_toasts_no_stoplight_flip(tmp_path):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        before = len(_notices(app))
+        await pilot.press("[")
+        await settle(app, pilot)
+        await pilot.press("L")
+        await settle(app, pilot)
+        assert len(_notices(app)) == before
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_asof_command_jumps_and_a_project_without_the_week_shows_dashes(tmp_path):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        app.action_command("ASOF W38")
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert app.asof_week == "2026-W38"
+        beta = _row(app, 1)
+        assert beta[2:5] == ["—", "—", ""]
+        assert app.query_one("#projects").get_row_at(1)[2].style != "reverse"
+        app.action_command("ASOF W50")
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert "no week W50 recorded: W36…W38" in _notices(app)
+        assert app.asof_week == "2026-W38"
+        app.action_command("ASOF LIVE")
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert app.asof_week is None
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_one_recorded_week_stays_live(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    _team_row(home, "apollo", 5.0, "green")
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        await pilot.press("[")
+        await settle(app, pilot)
+        assert app.asof_week is None and _notices(app)
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_asof_does_not_run_status_or_the_watch(tmp_path, monkeypatch):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+
+        def boom(*a, **k):
+            raise AssertionError("live-only call")
+
+        monkeypatch.setattr(tui, "status", boom)
+        monkeypatch.setattr(tui, "_flags", boom)
+        await pilot.press("[")
+        await settle(app, pilot)
+        assert app.asof_week == "2026-W37"
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_the_tape_is_recomputed_as_of_the_week(tmp_path):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        assert any("W37→W38" in e.text for e in app.tape_rows)
+        await pilot.press("[")
+        await settle(app, pilot)
+        texts = [e.text for e in app.tape_rows]
+        assert "W36→W37: GREEN→YELLOW, headroom −$3,000" in texts
+        assert not any("W37→W38" in t for t in texts)
+        assert "W36→W37" in str(app.query_one("#tape-body").render())
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_in_asof_i_and_enter_say_n_a_and_run_nothing(tmp_path, spawned):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        await pilot.press("[")
+        await settle(app, pilot)
+        n = len(_cards(app))
+        await pilot.press("right", "right", "right", "right", "right")  # a step cell
+        await pilot.press("i")
+        await pilot.press("enter")
+        await pilot.pause()
+        assert _notices(app).count("as of W37: n/a, press L for live") == 2
+        assert len(_cards(app)) == n and spawned == []
+        for _ in range(8):
+            await pilot.press("right")  # Flags
+        await pilot.press("i")
+        assert spawned == []
+        await pilot.press(
+            "left", "left", "left", "left", "left", "left", "left", "left"
+        )
+        # back to Headroom: team lines only up to the week
+        grid = app.query_one("#projects")
+        grid.move_cursor(row=0, column=3)
+        await pilot.press("i")
+        assert "W38" not in _cards(app)[-1][1]
+        assert "W37" in _cards(app)[-1][1]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_worker_result_for_another_view_is_dropped(tmp_path):
+    home = _asof_home(tmp_path)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        await pilot.press("[")
+        await settle(app, pilot)
+        hit = []
+        app._if_current(None, hit.append, 1)
+        app._if_current("2026-W37", hit.append, 2)
+        assert hit == [2]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_asof_snapshot_runs_off_the_ui_thread(tmp_path, monkeypatch):
+    home = _asof_home(tmp_path)
+    seen = []
+    original = tui.snapshot
+
+    def spy(h, n, *a):
+        seen.append(threading.current_thread() is threading.main_thread())
+        return original(h, n, *a)
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        monkeypatch.setattr(tui, "snapshot", spy)
+        await pilot.press("[")
+        await settle(app, pilot)
+        assert seen == [False, False]
+
+    run(tui.PerchTUI(home), script)
