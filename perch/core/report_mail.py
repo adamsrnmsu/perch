@@ -75,6 +75,36 @@ def _issue_total(q: Quarter) -> str:
     return _delta(sum(costed)) if costed else "—"
 
 
+def _pace(q: Quarter) -> str | None:
+    """Booked against planned hours, as a plain share: no verdict."""
+    p = q.position
+    if p.booked_quarter is None:
+        return None  # no readings in the quarter: hours_note already says so
+    if not p.planned_quarter:
+        return "No plan to compare booked hours with."
+    return f"Booked {p.booked_quarter / p.planned_quarter:.0%} of planned hours."
+
+
+def _scope(q: Quarter) -> str | None:
+    """Opened and closed issues and the net change in open work: no verdict."""
+    net = q.net_scope
+    if net is None:
+        if q.total.closed is not None:  # the dump reaches the quarter
+            return (
+                "The board dump has no creation dates; run `perch fetch` to "
+                "count opened issues."
+            )
+        return None
+    t = q.total
+    span = _span(*(q.closed_span or (q.start, q.through)))
+    if net == 0:
+        change = "no net change in open issues"
+    else:
+        issues = "issue" if abs(net) == 1 else "issues"
+        change = f"a net change of {net:+d} open {issues}"
+    return f"Opened {t.opened}, closed {t.closed} in {span}: {change}."
+
+
 def subject(q: Quarter) -> str:
     p = q.position
     signal = _signal(q)
@@ -158,6 +188,8 @@ def _blocks(q: Quarter) -> list[tuple]:
                     f"Labor spent {_span(q.year_start, to)} (year to date)",
                     _money(p.spent_year),
                 ),
+                (f"Hours planned {_span(q.start, to)}", _hours(p.planned_quarter)),
+                (f"Hours booked {_span(q.start, to)}", _hours(p.booked_quarter)),
                 (f"Budget on {q.start}", _money(p.budget_start)),
                 (f"Budget on {q.end}", _money(p.budget_end)),
                 (f"{forecast}, P10", _money(p.p10)),
@@ -176,6 +208,8 @@ def _blocks(q: Quarter) -> list[tuple]:
             ),
         )
     )
+    if pace := _pace(q):
+        out.append(("p", pace))
     if p.signal:
         out.append(
             (
@@ -264,6 +298,7 @@ def _blocks(q: Quarter) -> list[tuple]:
         (
             w.label,
             _span(w.start, w.end),
+            _count(w.opened),
             _count(w.closed),
             _hours(w.hours),
             _hours(w.per_issue),
@@ -273,18 +308,19 @@ def _blocks(q: Quarter) -> list[tuple]:
     total = "Total"
     if q.board_partial and q.closed_span:
         total = f"Total, closes counted {_span(*q.closed_span)}"
-    rows[-1] = (total, *rows[-1][1:4], _hours(q.total_per_issue))
+    rows[-1] = (total, *rows[-1][1:5], _hours(q.total_per_issue))
     if (w := q.previous) is not None:
         rows.append(
             (
                 f"Previous quarter, {w.label}",
                 _span(w.start, w.end),
+                _count(w.opened),
                 _count(w.closed),
                 _hours(w.hours),
                 _hours(w.per_issue),
             )
         )
-    header = ("Week", "Dates", "Closed", "Hours booked", "Hours per issue")
+    header = ("Week", "Dates", "Opened", "Closed", "Hours booked", "Hours per issue")
     out.append(("table", 2, header, rows))
     out.append(
         (
@@ -296,6 +332,8 @@ def _blocks(q: Quarter) -> list[tuple]:
             ),
         )
     )
+    if scope := _scope(q):
+        out.append(("p", scope))
 
     out.append(("h", "4. Waiting and staffing"))
     if q.board_note:

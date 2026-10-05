@@ -6,7 +6,7 @@ from email import policy
 from perch.core.report_mail import render_eml, render_md, subject
 from perch.core.watch import render
 from perch.tests.conftest import since
-from perch.tests.test_quarterly import make
+from perch.tests.test_quarterly import APRIL, created, make
 
 
 def test_the_markdown_has_every_section(quarter_world):
@@ -25,9 +25,9 @@ def test_the_markdown_has_every_section(quarter_world):
     assert "| Forecast at completion as of 2026-04-19, P50 |" in text
     assert "against the $120,000 budget in force on 2026-06-30" in text
     assert "| 2026-04-15 | Q2 increase | $120,000 |" in text
-    assert "| 2026-W15 | Apr 6 – Apr 12 | 1 | 15 | 15 |" in text
-    assert "| 2026-W16 | Apr 13 – Apr 19 | 0 | 15 | — |" in text
-    assert "| Total | Apr 1 – Apr 19 | 2 | 41 | 20 |" in text  # 285/7 h over 2
+    assert "| 2026-W15 | Apr 6 – Apr 12 | — | 1 | 15 | 15 |" in text
+    assert "| 2026-W16 | Apr 13 – Apr 19 | — | 0 | 15 | — |" in text
+    assert "| Total | Apr 1 – Apr 19 | — | 2 | 41 | 20 |" in text  # 285/7 h over 2
     assert "19 issue-days in Blocked; 1 issue moved back out of Done." in text
     assert "| 2026-05-01 | Bob | FTE change | 0.5 → 0.25 | -333 | -$16,633 |" in text
 
@@ -53,7 +53,7 @@ def test_the_previous_quarter_is_a_row_beside_the_total(world):
     since(world, "2026-01-01")
     text = render_md(make(world, "2026-Q2"))
     # 240 + 275/7 = 279.3 h over 11 issues = 25.4 h each.
-    assert "| Previous quarter, 2026-Q1 | Jan 1 – Mar 31 | 11 | 279 | 25 |" in text
+    assert "| Previous quarter, 2026-Q1 | Jan 1 – Mar 31 | — | 11 | 279 | 25 |" in text
     assert "Previous quarter, 2026-Q1: 0 issue-days in Blocked." in text
 
 
@@ -138,7 +138,7 @@ def test_a_partial_dump_gives_the_span_it_counts(world):
         "9 issues closed Jan 26 – Mar 31 (the board dump covers Jan 20 – Mar 31)"
     ) in text
     assert "0 issue-days were spent in Blocked Jan 20 – Mar 31." in text
-    assert "| Total, closes counted Jan 26 – Mar 31 | Jan 1 – Mar 31 | 9 |" in text
+    assert "| Total, closes counted Jan 26 – Mar 31 | Jan 1 – Mar 31 | — | 9 |" in text
 
 
 def test_a_finished_quarter_whose_readings_stop_early_says_through(world):
@@ -168,3 +168,49 @@ def test_issues_without_an_hourly_cost_are_named_as_left_out(world):
         "Issues with their own estimate came in — (modelled; 2 issues without a "
         "known hourly cost are not in the dollar total)."
     ) in opening(none)
+
+
+def test_pace_is_planned_and_booked_hours_in_plain_numbers(quarter_world):
+    """103.584 h planned and 285/7 = 40.7 h booked, Apr 1-19: 39%."""
+    text = render_md(make(quarter_world, "2026-Q2"))
+    assert "| Hours planned Apr 1 – Apr 19 | 104 |" in text
+    assert "| Hours booked Apr 1 – Apr 19 | 41 |" in text
+    assert "Booked 39% of planned hours." in text
+
+
+def test_without_a_plan_the_report_says_so(quarter_world):
+    q = make(quarter_world, "2026-Q2")
+    q = replace(q, position=replace(q.position, planned_quarter=None))
+    text = render_md(q)
+    assert "| Hours planned Apr 1 – Apr 19 | — |" in text
+    assert "No plan to compare booked hours with." in text
+
+
+def test_scope_is_opened_and_closed_with_the_net_change(quarter_world):
+    created(quarter_world, APRIL)
+    text = render_md(make(quarter_world, "2026-Q2"))
+    assert "| 2026-W15 | Apr 6 – Apr 12 | 2 | 1 | 15 | 15 |" in text
+    assert "| Total | Apr 1 – Apr 19 | 4 | 2 | 41 | 20 |" in text
+    assert (
+        "Opened 4, closed 2 in Apr 1 – Apr 19: a net change of +2 open issues." in text
+    )
+
+
+def test_a_net_change_of_one_or_none_reads_plainly(quarter_world):
+    created(quarter_world, {103: "2026-04-02", 105: "2026-04-07"})
+    text = render_md(make(quarter_world, "2026-Q2"))
+    assert "Opened 2, closed 2 in Apr 1 – Apr 19: no net change in open issues." in text
+    created(quarter_world, {103: "2026-04-02"})
+    text = render_md(make(quarter_world, "2026-Q2"))
+    assert (
+        "Opened 1, closed 2 in Apr 1 – Apr 19: a net change of -1 open issue." in text
+    )
+
+
+def test_a_dump_without_creation_days_says_how_to_count_opened(quarter_world):
+    text = render_md(make(quarter_world, "2026-Q2"))
+    assert (
+        "The board dump has no creation dates; run `perch fetch` to count "
+        "opened issues." in text
+    )
+    assert "net change" not in text
