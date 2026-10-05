@@ -1627,12 +1627,48 @@ def test_v_toggles_the_detail_pane(tmp_path):
     run(tui.PerchTUI(home), script)
 
 
-def test_the_detail_pane_hides_below_160_columns(tmp_path):
+def test_the_detail_pane_shows_at_120_columns_below_the_table(tmp_path):
     home = build_home(tmp_path, "apollo")
 
     async def go():
         async with tui.PerchTUI(home).run_test(size=(120, 30)) as pilot:
-            assert not pilot.app.query_one("#detail").display
+            app = pilot.app
+            pane, out, table = (
+                app.query_one(i) for i in ("#detail", "#output", "#projects")
+            )
+            assert pane.display
+            assert pane.region.y >= table.region.bottom - 1
+            assert pane.region.x < out.region.x
+            await pilot.press("v")
+            assert out.region.width >= 118
+
+    asyncio.run(go())
+
+
+@pytest.mark.parametrize("width", [120, 160, 200])
+def test_the_projects_table_never_scrolls_sideways(tmp_path, width):
+    home = build_home(tmp_path, "apollo")
+
+    async def go():
+        async with tui.PerchTUI(home).run_test(size=(width, 40)) as pilot:
+            await settle(pilot.app, pilot)
+            assert pilot.app.query_one("#projects").max_scroll_x == 0
+
+    asyncio.run(go())
+
+
+def test_the_burn_chart_follows_the_pane_width(tmp_path):
+    home = build_home(tmp_path, "apollo")
+
+    async def go():
+        async with tui.PerchTUI(home).run_test(size=(120, 40)) as pilot:
+            app = pilot.app
+            await settle(app, pilot)
+            first = max(len(r) for r in _detail_text(app).split("\n"))
+            await pilot.resize_terminal(200, 40)
+            await settle(app, pilot)
+            await pilot.pause(0.2)
+            assert max(len(r) for r in _detail_text(app).split("\n")) > first
 
     asyncio.run(go())
 

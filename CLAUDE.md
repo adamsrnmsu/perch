@@ -173,7 +173,7 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   project's row is redrawn. `:` opens the command line (`c` prefilled `CUT `),
   `i` explains the cursor's cell in an info card, the Trend column and the
   `#changes` strip read `core/trend.py`, and a stoplight flip toasts once.
-  `v` toggles the detail pane (`#detail`, hidden under 160 columns): burn, plan
+  `v` toggles the detail pane (`#detail`, bottom left under the full-width projects table, beside `#output`, which takes the whole row when it is off; the burn chart is drawn to its width and repainted on resize): burn, plan
   and forecast by month for the cursor's project, from `core/detail.py`. `t`
   toggles `#tape` (replaces the old changes strip). `[`/`]` browse recorded
   weeks (`L` or `ASOF LIVE` returns; step cells and Flags show `n/a`; no toasts

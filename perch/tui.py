@@ -100,7 +100,7 @@ def burn_lines(d: detail.Detail, width: int) -> Text:
     top = max(vals, default=0)
     if top <= 0:
         return Text("")
-    wide = max(1, min(width // len(b.months), 3))
+    wide = max(1, width // len(b.months))
     read = {(r.year, r.month) for r in b.reading_dates}
     grid = [[(" ", "") for _ in b.months] for _ in range(ROWS)]  # [row from top][month]
 
@@ -476,14 +476,19 @@ def tape_text(entries: list[tape.TapeEntry]) -> Text:
     return out
 
 
+class DetailPane(Static):
+    def on_resize(self) -> None:  # the burn chart is drawn to the pane's width
+        self.app._paint_detail()
+
+
 class PerchTUI(App):
     AUTO_FOCUS = "#projects"
-    HORIZONTAL_BREAKPOINTS = [(0, "-narrow"), (160, "-wide")]  # noqa: RUF012
     CSS = """
-    #projects { width: 3fr; }
-    #detail { width: 2fr; border-left: solid $panel; padding: 0 1; }
-    #detail.off, .-narrow #detail { display: none; }
-    #output { width: 2fr; border-left: solid $panel; padding: 0 1; }
+    #projects { height: auto; max-height: 40%; width: 100%; }
+    #lower { height: 1fr; border-top: solid $panel; }
+    #detail { width: 1fr; padding: 0 1; }
+    #detail.off { display: none; }
+    #output { width: 1fr; border-left: solid $panel; padding: 0 1; }
     #asof { display: none; background: $warning; color: $background; text-style: bold; padding: 0 1; }
     #projects.historical { opacity: 0.8; }
     #tape { height: 8; display: none; padding: 0 1; }
@@ -536,9 +541,9 @@ class PerchTUI(App):
 
     def compose(self) -> ComposeResult:
         yield Static(id="asof")
-        with Horizontal():
-            yield Grid(id="projects", cursor_type="cell")
-            yield Static(Text("loading…", style="dim"), id="detail")
+        yield Grid(id="projects", cursor_type="cell")
+        with Horizontal(id="lower"):
+            yield DetailPane(Text("loading…", style="dim"), id="detail")
             yield VerticalScroll(id="output")
         with VerticalScroll(id="tape"):
             yield Static(id="tape-body")
