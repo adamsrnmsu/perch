@@ -31,7 +31,7 @@ from pathlib import Path
 
 from rich.columns import Columns
 from rich.text import Text
-from textual import work
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
@@ -446,17 +446,29 @@ class RunCard(Vertical):
 
 
 class Grid(DataTable):
-    """Enter runs the cursor's cell; a click only moves the cursor.
+    """Enter runs the cursor's cell; a click moves the cursor and says so.
 
     DataTable also selects on a click of the cursor's cell, and a stray click
-    must never start a fetch, so Enter posts its own message instead.
+    must never start a fetch, so Enter posts its own message instead. A click
+    on a cell posts Pick: one click explains a step cell, a double click runs it.
     """
 
     class Go(Message):
         pass
 
+    class Pick(Message):
+        def __init__(self, double: bool) -> None:
+            super().__init__()
+            self.double = double
+
     def action_select_cursor(self) -> None:
         self.post_message(self.Go())
+
+    def on_click(self, event: events.Click) -> None:
+        # DataTable's own _on_click has already moved the cursor; the header
+        # row only sorts, so it picks nothing.
+        if event.y >= self.header_height:
+            self.post_message(self.Pick(event.chain >= 2))
 
 
 TAPE_LINES = 200
@@ -863,6 +875,16 @@ class PerchTUI(App):
         env = {"FORCE_COLOR": "1", "COLUMNS": str(width), blocks.ENV: "1"}
         self._stream(card, name, [str(_bin_dir() / "perch"), *args], env, refresh)
 
+    def on_grid_pick(self, event: Grid.Pick) -> None:
+        """A click on a step cell: one explains it, a double click runs it."""
+        column = COLUMNS[self.query_one(Grid).cursor_coordinate.column]
+        if column not in STEPS:
+            return
+        if event.double:
+            self.on_grid_go()
+        else:
+            self.action_info()
+
     def on_grid_go(self) -> None:
         """Enter: a step's cell runs that step; any other column, the next one."""
         if self.asof_week:
@@ -1038,6 +1060,7 @@ class PerchTUI(App):
                 lines = [
                     f"{cell.state} · {cell.when}",
                     *([cell.why] if cell.why else []),
+                    f"double-click or Enter runs {column}",
                 ]
             else:
                 config = load_config(self.home.config_path(name), require_dump=False)

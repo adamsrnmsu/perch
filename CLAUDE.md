@@ -169,7 +169,8 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `tui.py` -- `perch tui` (Textual): the projects table from what is on disk
   (the last recorded team row, `status` step cells, the watch's flag count only)
   and keys that run `perch <command> -p NAME` through `_spawn`, which tests fake.
-  Enter on a step cell runs `monday --from` that step; after a run only that
+  Enter on a step cell runs `monday --from` that step (a click shows its info
+  card, a double click runs it; a stray click never runs); after a run only that
   project's row is redrawn. `:` opens the command line (`c` prefilled `CUT `),
   `i` explains the cursor's cell in an info card, the Trend column and the
   `#changes` strip read `core/trend.py`, and a stoplight flip toasts once.

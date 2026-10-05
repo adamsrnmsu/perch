@@ -832,6 +832,59 @@ def test_a_click_on_the_cursor_cell_runs_nothing(tmp_path, spawned, monkeypatch)
     run(tui.PerchTUI(home), script)
 
 
+def _cell(app, column: str, row: int = 0) -> tuple[int, int]:
+    """The offset of a cell in the projects grid, for pilot.click."""
+    grid = app.query_one(tui.Grid)
+    widths = [c.get_render_width(grid) for c in grid.columns.values()]
+    return sum(widths[: tui.COLUMNS.index(column)]) + 1, row + 1  # +1: header
+
+
+def test_a_click_on_a_step_cell_shows_its_info_card_and_runs_nothing(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo", "beta")
+
+    async def script(app, pilot):
+        await pilot.pause()
+        await pilot.click("#projects", offset=_cell(app, "fetch", row=1))
+        await settle(app, pilot)
+        assert spawned == []
+        title, body, status = _cards(app)[-1]
+        assert (title, status) == ("fetch · beta", "info")
+        assert "double-click or Enter runs fetch" in body
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_double_click_on_a_step_cell_runs_that_step(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        await pilot.pause()
+        await pilot.click("#projects", offset=_cell(app, "fetch"), times=2)
+        await settle(app, pilot)
+        assert [argv[1:] for argv, _ in spawned] == [
+            list(tui.next_command("apollo", "fetch"))
+        ]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_a_click_on_a_step_cell_as_of_a_week_runs_nothing(tmp_path, spawned):
+    home = build_home(tmp_path, "apollo")
+    _weeks(home, "apollo", (100, "green"), (50, "green"))
+
+    async def script(app, pilot):
+        await pilot.pause()
+        await pilot.press("left_square_bracket")
+        await settle(app, pilot)
+        before = len(_cards(app))
+        await pilot.click("#projects", offset=_cell(app, "fetch"), times=2)
+        await settle(app, pilot)
+        assert spawned == [] and len(_cards(app)) == before
+        assert any("n/a, press L for live" in n for n in _notices(app))
+
+    run(tui.PerchTUI(home), script)
+
+
 def test_monday_all_refreshes_every_row_even_with_a_project_named_all(
     tmp_path, spawned, monkeypatch
 ):
