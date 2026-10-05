@@ -476,7 +476,12 @@ def tape_text(entries: list[tape.TapeEntry]) -> Text:
     return out
 
 
-class DetailPane(Static):
+class DetailPane(VerticalScroll):
+    """The cursor project's pane; scrolls when the lower row is shorter than it."""
+
+    def compose(self) -> ComposeResult:
+        yield Static(Text("loading…", style="dim"), id="detail_body")
+
     def on_resize(self) -> None:  # the burn chart is drawn to the pane's width
         self.app._paint_detail()
 
@@ -543,7 +548,7 @@ class PerchTUI(App):
         yield Static(id="asof")
         yield Grid(id="projects", cursor_type="cell")
         with Horizontal(id="lower"):
-            yield DetailPane(Text("loading…", style="dim"), id="detail")
+            yield DetailPane(id="detail")
             yield VerticalScroll(id="output")
         with VerticalScroll(id="tape"):
             yield Static(id="tape-body")
@@ -621,7 +626,7 @@ class PerchTUI(App):
 
     def _paint_detail(self) -> None:
         """The cursor project's pane, from the cache: no file is read here."""
-        pane = self.query_one("#detail", Static)
+        pane = self.query_one("#detail_body", Static)
         row = self.query_one("#projects", Grid).cursor_coordinate.row
         if not 0 <= row < len(self.names):  # fires during table.clear()
             pane.update(Text(""))

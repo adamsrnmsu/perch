@@ -1561,7 +1561,7 @@ def test_suite_map_entries_name_the_project(tmp_path):
 
 
 def _detail_text(app) -> str:
-    return str(app.query_one("#detail").render())
+    return str(app.query_one("#detail_body").render())
 
 
 def test_the_detail_pane_follows_the_cursor_and_a_move_loads_nothing(
@@ -2098,3 +2098,18 @@ def test_alert_files_are_read_off_the_ui_thread_after_startup(tmp_path, monkeypa
         assert len(app.hits["apollo"]) == 1
 
     run(tui.PerchTUI(home), script)
+
+
+def test_a_short_terminal_scrolls_the_detail_pane_instead_of_clipping_it(tmp_path):
+    names = [f"p{n:02d}" for n in range(20)]
+    home = build_home(tmp_path, *names)
+
+    async def go():
+        async with tui.PerchTUI(home).run_test(size=(120, 24)) as pilot:
+            app = pilot.app
+            await settle(app, pilot)
+            pane, lower = app.query_one("#detail"), app.query_one("#lower")
+            assert pane.region.bottom <= lower.region.bottom  # nothing off screen
+            assert pane.max_scroll_y > 0  # the rest is a scroll away
+
+    asyncio.run(go())
