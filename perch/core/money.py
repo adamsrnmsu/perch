@@ -14,6 +14,7 @@ from datetime import date
 from pathlib import Path
 
 from budgie.core.budget import Budget
+from budgie.core.burn import BurnSeries
 from budgie.core.burndown import BurndownStatus, burndown
 from budgie.core.calendar import YearSpan
 from budgie.core.costs import CostItem
@@ -49,6 +50,8 @@ class Money:
     planned_on: Callable[[str, date], float | None] | None = field(
         default=None, compare=False
     )
+    # Budgie's Snapshot.burn_series: the chart's monthly series. Lazy: it simulates.
+    burn: Callable[[], BurnSeries] | None = field(default=None, compare=False)
 
     @property
     def as_of(self) -> date | None:
@@ -140,6 +143,7 @@ def money_from(snap: Snapshot) -> Money:
         budget_revisions=snap.budget_revisions,
         plan=snap.plan,
         planned_on=snap.planned_through,
+        burn=snap.burn_series,
     )
 
 
