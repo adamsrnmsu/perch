@@ -192,12 +192,10 @@ def _team(money: Money, start: date, end: date, cost: bool) -> float:
 
 
 def _plan(money: Money, start: date, read_to: date) -> float | None:
-    """Hours Budgie's pace lines plan from `start` through `read_to`, summed
-    over the allocated people; None when nobody is allocated."""
-    if not money.pace:
-        return None
-    before = start - timedelta(days=1)
-    return sum(money.planned(name, before, read_to) for name in money.pace)
+    """Hours Budgie plans for the team from `start` through `read_to`, read on
+    the same days as booked hours (`Money.team_planned`); None when nobody is
+    planned."""
+    return money.team_planned(start - timedelta(days=1), read_to)
 
 
 def _position(

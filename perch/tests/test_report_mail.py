@@ -171,11 +171,12 @@ def test_issues_without_an_hourly_cost_are_named_as_left_out(world):
 
 
 def test_pace_is_planned_and_booked_hours_in_plain_numbers(quarter_world):
-    """103.584 h planned and 285/7 = 40.7 h booked, Apr 1-19: 39%."""
+    """7.968 x 95/7 = 108.1 h planned and 285/7 = 40.7 h booked, Apr 1-19:
+    38% (test_quarterly works the planned figure)."""
     text = render_md(make(quarter_world, "2026-Q2"))
-    assert "| Hours planned Apr 1 – Apr 19 | 104 |" in text
+    assert "| Hours planned Apr 1 – Apr 19 | 108 |" in text
     assert "| Hours booked Apr 1 – Apr 19 | 41 |" in text
-    assert "Booked 39% of planned hours." in text
+    assert "Booked 38% of planned hours." in text
 
 
 def test_without_a_plan_the_report_says_so(quarter_world):

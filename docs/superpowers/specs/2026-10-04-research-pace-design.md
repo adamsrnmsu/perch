@@ -33,9 +33,15 @@ history.jsonl. No new module, no new command, no TUI change.
 
 - `booked_quarter: float | None` -- `_team(money, start, read_to, cost=False)`.
   None when `spent_quarter` is None (no readings in the quarter).
-- `planned_quarter: float | None` -- `Money.planned(name, start - 1 day,
-  read_to)` summed over `money.pace` (Budgie's burn-down per allocated person;
-  its pace line follows plan.csv). None when `money.pace` is empty or
+- `planned_quarter: float | None` -- `Money.team_planned(start - 1 day,
+  read_to)`: each planned person's Budgie plan (their pace line, or plan.csv's
+  `allocated_hours` for someone planned without an allocation, Budgie's rule
+  when there is no allocations.csv) sampled on their reading days and
+  interpolated between them with Budgie's `spent_at`, exactly as booked hours
+  are. The plan counts working days while readings interpolate by calendar
+  day; reading the plan at the pace line directly inflated pace in any window
+  that starts or ends mid-week (an on-plan team read 143% in a quarter's
+  first week; review finding, 2026-10-04). None when nobody is planned or
   `read_to` is None.
 
 The ratio is not stored; renderers compute `booked / planned` when both are
@@ -98,6 +104,8 @@ names nobody next to them.
 - Pace for the conftest quarter: planned from the pace line, booked from the
   readings; the ratio in the report text.
 - No plan or allocations: `planned_quarter` is None and the report says so.
+- A team booking exactly to plan reads a pace of 1 in a quarter that starts
+  mid-week; plan.csv without allocations.csv is still planned.
 - Scope: conftest issues gain `created_at` for a few; per-week `opened`, the
   total, `net_scope` positive and a negative-net case.
 - A dump without `created_at` on any issue: every `opened` is None and the

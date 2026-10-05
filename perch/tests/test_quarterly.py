@@ -28,7 +28,7 @@ from perch.core.quarterly import (
     quarter_to_date,
 )
 from perch.core.report_mail import render_md
-from perch.tests.conftest import issue, since
+from perch.tests.conftest import issue, since, week
 
 FETCH_DAY = date(2026, 4, 20)
 
@@ -389,18 +389,20 @@ def test_a_fiscal_quarter_report_is_named_and_dated_by_the_span():
 
 
 def test_pace_is_hours_booked_against_hours_planned(quarter_world):
-    """Apr 1-19 holds 13 working days of 7.968 h. Alice and Bob are both
-    planned at 0.5 (Bob's cut is May 1), so 2 x 0.5 x 13 x 7.968 = 103.584 h
-    planned; booked is the 19 days at 15/7 h."""
+    """Planned is read on the reading days, as booked is. Alice reads Mar 22
+    and Apr 19, Bob Feb 22 and Apr 19; at 0.5 x 7.968 h a working day each,
+    the 20 working days Mar 23 - Apr 19 interpolate to 19/28 of them for Apr
+    1-19 (Bob's 40 over 56 days, the same): 7.968 x 20 x 19/28 = 7.968 x 95/7
+    = 108.137 h planned (Bob's cut is May 1). Booked is the 19 days at 15/7 h."""
     p = make(quarter_world, "2026-Q2").position
-    assert p.planned_quarter == pytest.approx(13 * 7.968)
+    assert p.planned_quarter == pytest.approx(7.968 * 95 / 7)
     assert p.booked_quarter == pytest.approx(285 / 7)
 
 
 def test_without_allocations_nothing_is_planned(quarter_world):
     config = load_config(quarter_world)
     board = load_board(config.board_dump)
-    money = replace(load_money(config.budgie_project), pace={})
+    money = replace(load_money(config.budgie_project), pace={}, plan=None)
     q = build(board, money, {}, None, config.people, "2026-Q2", FETCH_DAY, "apollo")
     assert q.position.planned_quarter is None
     assert q.position.booked_quarter == pytest.approx(285 / 7)
@@ -487,7 +489,7 @@ def test_the_history_figures_for_the_quarter_so_far(quarter_world):
     config = load_config(quarter_world)
     board, money = load_board(config.board_dump), load_money(config.budgie_project)
     got = quarter_to_date(board, money, FETCH_DAY)
-    assert got["pace"] == pytest.approx(285 / 7 / (13 * 7.968))
+    assert got["pace"] == pytest.approx(285 / 7 / (7.968 * 95 / 7))
     assert got["net_scope"] == 2
 
 
@@ -502,5 +504,36 @@ def test_outside_the_budgie_year_there_are_no_history_figures(quarter_world):
 def test_without_a_dump_only_the_pace_is_known(quarter_world):
     money = load_money(load_config(quarter_world).budgie_project)
     got = quarter_to_date(None, money, FETCH_DAY)
-    assert got["pace"] == pytest.approx(285 / 7 / (13 * 7.968))
+    assert got["pace"] == pytest.approx(285 / 7 / (7.968 * 95 / 7))
     assert got["net_scope"] is None
+
+
+def plan_readings(world, through_week):
+    """Rewrite weekly.csv so Alice and Bob book exactly what plan.csv plans,
+    read every Sunday from week 1 through `through_week` (Budgie's own plan
+    hours, so the test does no calendar arithmetic of its own)."""
+    snap = load_snapshot(world.parent / "fy26")
+    lines = ["name,week,hours_to_date"]
+    for name in ("Alice", "Bob"):
+        for n in range(1, through_week + 1):
+            hours = snap.plan.allocated_hours(name, snap.span, through=week(n))
+            lines.append(f"{name},{n},{hours}")
+    (world.parent / "fy26" / "weekly.csv").write_text("\n".join(lines) + "\n")
+
+
+def test_a_team_booking_to_plan_has_a_pace_of_one(quarter_world):
+    """Q2 starts on a Wednesday. Readings to Sunday Apr 5 interpolate booked
+    hours by calendar day while the plan counts working days, so reading the
+    plan at the same Sundays is what keeps an on-plan team at exactly 1."""
+    plan_readings(quarter_world, 14)
+    config = load_config(quarter_world)
+    board, money = load_board(config.board_dump), load_money(config.budgie_project)
+    assert money.as_of == week(14)
+    assert quarter_to_date(board, money, FETCH_DAY)["pace"] == pytest.approx(1.0)
+
+
+def test_a_plan_without_allocations_is_still_planned(quarter_world):
+    """Budgie plans from plan.csv alone when there is no allocations.csv."""
+    (quarter_world.parent / "fy26" / "allocations.csv").unlink()
+    p = make(quarter_world, "2026-Q2").position
+    assert p.planned_quarter == pytest.approx(7.968 * 95 / 7)

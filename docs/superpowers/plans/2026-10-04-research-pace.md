@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-04-research-pace-design.md`
 
+> **Amended after the final review (2026-10-04):** planned hours are `Money.team_planned` (the plan sampled on the reading days), not `Money.planned` over `money.pace`; Task 1's `13 * 7.968` became `7.968 * 95 / 7`. See the spec's Pace section and the ledger.
+
 **Bead:** perch-w1d. One child bead per task below (created before execution).
 
 ## Global Constraints
