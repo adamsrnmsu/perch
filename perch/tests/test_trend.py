@@ -126,3 +126,47 @@ def test_a_week_recorded_before_pace_shows_no_pace():
         "2026-W39  $1  GREEN",
         "2026-W40  −$12,000  RED  pace 92%",
     ]
+
+
+def _team_rows(*figs):
+    return [
+        {
+            "week": f"2026-W{36 + i}",
+            "kind": "team",
+            "name": "team",
+            "headroom": h,
+            "signal": s,
+        }
+        for i, (h, s) in enumerate(figs)
+    ]
+
+
+def test_changes_is_every_consecutive_pair_and_change_is_the_last():
+    from perch.core.trend import change, changes
+
+    rows = _team_rows((30000, "green"), (20000, "yellow"), (-12000, "red"))
+    got = changes(rows)
+    assert [(c.before, c.after) for c in got] == [
+        ("2026-W36", "2026-W37"),
+        ("2026-W37", "2026-W38"),
+    ]
+    assert got[0].signal == ("green", "yellow") and got[0].deltas == {
+        "headroom": -10000
+    }
+    assert got[1].signal == ("yellow", "red") and got[1].deltas == {"headroom": -32000}
+    assert change(rows) == got[-1]
+
+
+def test_changes_needs_two_weeks():
+    from perch.core.trend import change, changes
+
+    assert changes(_team_rows((1, "green"))) == [] and changes([]) == []
+    assert change([]) is None
+
+
+def test_money_and_share_are_public_and_the_old_names_stay():
+    from perch.core import trend
+
+    assert trend.money(-3000) == "−$3,000" and trend.money(None) == "—"
+    assert trend.money(5, signed=True) == "+$5" and trend.share(0.85) == "85%"
+    assert trend._money is trend.money and trend._share is trend.share

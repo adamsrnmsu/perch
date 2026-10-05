@@ -110,6 +110,15 @@ def project_checks(home: Home, name: str) -> list[Check]:
     return checks
 
 
+def alert_checks(home: Home) -> list[Check]:
+    """One check for the alert rules: none set is fine, a bad one names its key."""
+    try:
+        rules = home.alerts()
+    except ValueError as exc:
+        return [Check(False, str(exc), f"edit {home.root / HOME_NAME}")]
+    return [Check(True, f"alerts: {len(rules)} rule{'s' * (len(rules) != 1)}")]
+
+
 def freshness(home: Home, name: str) -> list[tuple[str, str]]:
     """When the dump, weekly.csv and history were last written ("never" if not)."""
     try:

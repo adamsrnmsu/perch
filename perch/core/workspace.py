@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
@@ -25,7 +25,7 @@ HOME_NAME = "perch-home.yaml"
 HOME_ENV = "PERCH_HOME"
 PROJECTS_DIR = "projects"
 BUDGET_DIR = "budget"  # Budgie's container: `budgie init NAME` writes budget/NAME
-_HOME_KEYS = {"gitboard_dir"}
+_HOME_KEYS = {"gitboard_dir", "alerts"}
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
 
 SCAFFOLD = """\
@@ -57,6 +57,13 @@ class Home:
 
     root: Path
     gitboard_dir: Path
+    alerts_raw: object = field(default=None, compare=False)  # unvalidated `alerts:`
+
+    def alerts(self):
+        """The validated alert rules; ValueError naming the key when malformed."""
+        from perch.core import alerts
+
+        return alerts.parse(self.alerts_raw, self.projects(), HOME_NAME)
 
     @property
     def projects_dir(self) -> Path:
@@ -141,7 +148,7 @@ def load_home(path: Path) -> Home:
         raise WorkspaceError(f"{path.name}: `gitboard_dir` is required")
     root = path.resolve().parent
     gitboard = (root / Path(str(data["gitboard_dir"])).expanduser()).resolve()
-    return Home(root=root, gitboard_dir=gitboard)
+    return Home(root=root, gitboard_dir=gitboard, alerts_raw=data.get("alerts"))
 
 
 def find_home(start: Path, env: Mapping[str, str]) -> Home:

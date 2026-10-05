@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 
 from perch.core.history import figures
 
@@ -40,34 +41,48 @@ class Change:
     deltas: dict[str, float]  # key -> after - before, nonzero only
 
 
+def changes(rows: list[dict]) -> list[Change]:
+    """Every consecutive pair of recorded team weeks, oldest first."""
+    weeks = sorted({r["week"]: r for r in rows if r["kind"] == "team"}.items())
+    out = []
+    for (before, old), (after, new) in pairwise(weeks):
+        flip = (old.get("signal"), new.get("signal"))
+        deltas = {
+            key: new[key] - old[key]
+            for key, _ in _DELTAS
+            if old.get(key) is not None
+            and new.get(key) is not None
+            and abs(new[key] - old[key]) >= 0.5
+        }
+        out.append(
+            Change(
+                before,
+                after,
+                flip if all(flip) and flip[0] != flip[1] else None,
+                deltas,
+            )
+        )
+    return out
+
+
 def change(rows: list[dict]) -> Change | None:
     """The team row of the last two recorded weeks; None when fewer than two."""
-    weeks = sorted({r["week"]: r for r in rows if r["kind"] == "team"}.items())
-    if len(weeks) < 2:
-        return None
-    (before, old), (after, new) = weeks[-2:]
-    flip = (old.get("signal"), new.get("signal"))
-    deltas = {
-        key: new[key] - old[key]
-        for key, _ in _DELTAS
-        if old.get(key) is not None
-        and new.get(key) is not None
-        and abs(new[key] - old[key]) >= 0.5
-    }
-    return Change(
-        before, after, flip if all(flip) and flip[0] != flip[1] else None, deltas
-    )
+    got = changes(rows)
+    return got[-1] if got else None
 
 
-def _money(value: float | None, signed: bool = False) -> str:
+def money(value: float | None, signed: bool = False) -> str:
     if value is None:
         return "—"
     sign = ("+" if signed else "") if value >= 0 else "−"
     return f"{sign}${abs(value):,.0f}"
 
 
-def _share(value: float | None) -> str:
+def share(value: float | None) -> str:
     return "—" if value is None else f"{value:.0%}"
+
+
+_money, _share = money, share  # the names tui.py and the older tests import
 
 
 def describe(name: str, change: Change | None) -> str:
