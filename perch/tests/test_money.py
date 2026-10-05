@@ -121,3 +121,11 @@ def test_the_dated_budget_and_plan_pass_through(quarter_world):
 def test_a_pinned_budget_has_no_revisions(world):
     money = load_money(world.parent / "fy26")
     assert money.budget_revisions is None and money.plan is None
+
+
+def test_planned_hours_come_from_budgies_planned_through(quarter_world):
+    snap = load_snapshot(quarter_world.parent / "fy26")
+    money = money_from(snap)
+    day = date(2026, 4, 19)
+    assert money.planned_on("Alice", day) == snap.planned_through("Alice", day)
+    assert money.planned_on("Zed", day) is None

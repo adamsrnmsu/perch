@@ -402,7 +402,7 @@ def test_pace_is_hours_booked_against_hours_planned(quarter_world):
 def test_without_allocations_nothing_is_planned(quarter_world):
     config = load_config(quarter_world)
     board = load_board(config.board_dump)
-    money = replace(load_money(config.budgie_project), pace={}, plan=None)
+    money = replace(load_money(config.budgie_project), allocated={})
     q = build(board, money, {}, None, config.people, "2026-Q2", FETCH_DAY, "apollo")
     assert q.position.planned_quarter is None
     assert q.position.booked_quarter == pytest.approx(285 / 7)

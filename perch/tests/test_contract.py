@@ -41,6 +41,7 @@ def test_budgie_core_names_perch_uses():
         "allocations",  # money_from: one pace line per allocation
         "plan",
         "what_if",
+        "planned_through",  # money_from: Money.team_planned's plan per person
     ):
         assert name in Snapshot.__dataclass_fields__ or hasattr(Snapshot, name), name
     assert {"budget", "plan_entries"} <= set(
