@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 from contextlib import nullcontext
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ from textual.worker import WorkerCancelled
 
 from perch import tui
 from perch.core import blocks as b
+from perch.core import tape
 from perch.core.watch import PLAN, PersonWatch, Signal, Watch
 from perch.tests.conftest import build_home
 
@@ -891,7 +893,7 @@ def _weeks(home, name, *figs):
     """Team rows from W36, one per (headroom, signal[, budget]), plus a person row."""
     rows = []
     for i, (headroom, signal, *budget) in enumerate(figs):
-        week = {"week": f"2026-W{36 + i}", "date": "2026-09-01"}
+        week = {"week": f"2026-W{36 + i}", "date": date.today().isoformat()}  # noqa: DTZ011
         team = {**week, "kind": "team", "name": "team", "headroom": headroom}
         team["signal"] = signal
         if budget:
@@ -1095,31 +1097,52 @@ def test_the_trend_cell_is_a_sparkline_of_recorded_headroom(tmp_path):
     run(tui.PerchTUI(home), script)
 
 
-def test_the_changes_strip_describes_each_project_in_order(tmp_path):
+def test_the_tape_lists_each_projects_changes_in_order(tmp_path):
     home = build_home(tmp_path, "apollo", "beta", "gamma")
     _weeks(home, "apollo", (100, "green"), (-50, "red", 10))
     _weeks(home, "gamma", (100, "yellow"), (200, "yellow"))
     _team_row(home, "beta", 5.0, "green")  # one week: nothing to say
 
     async def script(app, pilot):
-        strip = app.query_one("#changes")
-        assert strip.display
-        assert str(strip.render()) == (
-            "apollo W36→W37: GREEN→RED, headroom −$150  ·  "
-            "gamma W36→W37: headroom +$100"
-        )
+        await settle(app, pilot)
+        assert app.query_one("#tape").display
+        lines = str(app.query_one("#tape-body").render()).splitlines()
+        today = f"{date.today():%m-%d}"  # noqa: DTZ011
+        flip = f"{today}  apollo  flip  W36→W37: GREEN→RED, headroom −$150"
+        move = f"{today}  gamma  figures  W36→W37: headroom +$100"
+        assert lines.index(flip) < lines.index(move)
+        assert not any("beta  flip" in x for x in lines)
 
     run(tui.PerchTUI(home), script)
 
 
-def test_the_strip_is_hidden_with_one_week(tmp_path):
+def test_the_tape_is_hidden_when_empty_and_t_toggles_it(tmp_path):
     home = build_home(tmp_path, "apollo")
     _team_row(home, "apollo", 5.0, "green")
 
     async def script(app, pilot):
-        assert not app.query_one("#changes").display
+        await settle(app, pilot)
+        assert not app.tape_rows and not app.query_one("#tape").display
+        app.tape_by["apollo"] = [tape.TapeEntry(date.today(), "apollo", "board", "x")]  # noqa: DTZ011
+        await pilot.press("t")
+        assert not app.tape_on and not app.query_one("#tape").display
+        await pilot.press("t")
+        assert app.tape_on and app.query_one("#tape").display
 
     run(tui.PerchTUI(home), script)
+
+
+def test_tape_text_styles_and_caps_lines():
+    d = date(2026, 4, 19)
+    es = [
+        tape.TapeEntry(d, "a", "hours", "h"),
+        tape.TapeEntry(d, "a", "failed", "f"),
+        tape.TapeEntry(d, "a", "error", "e"),
+    ]
+    t = tui.tape_text(es)
+    assert t.plain.splitlines()[1] == "04-19  a  failed  f"
+    assert [s.style for s in t.spans] == ["dim", "red", "yellow"]
+    assert len(tui.tape_text(es * 100).plain.splitlines()) == 200
 
 
 def test_a_flipped_stoplight_is_reversed_and_toasts_once(tmp_path):
@@ -1166,7 +1189,7 @@ def test_a_flip_a_run_records_toasts_when_its_row_refreshes(tmp_path, monkeypatc
         await pilot.press("b")
         await settle(app, pilot)
         assert "apollo: stoplight GREEN → RED (W38)" in _notices(app)
-        assert "W37→W38" in str(app.query_one("#changes").render())
+        assert "W37→W38" in str(app.query_one("#tape-body").render())
 
     run(tui.PerchTUI(home), script)
 

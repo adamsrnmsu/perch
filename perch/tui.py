@@ -42,7 +42,7 @@ from textual.widgets import DataTable, Footer, Input, Static
 from textual.worker import get_current_worker
 
 from perch.cli import _bin_dir, _label, _watch
-from perch.core import blocks, detail, history, sources
+from perch.core import blocks, detail, history, sources, tape
 from perch.core.command import parse
 from perch.core.config import load_config
 from perch.core.doctor import project_checks
@@ -52,7 +52,6 @@ from perch.core.trend import (
     Change,
     _money,
     change,
-    describe,
     money,
     series,
     spark,
@@ -422,6 +421,23 @@ class Grid(DataTable):
         self.post_message(self.Go())
 
 
+TAPE_LINES = 200
+_TAPE_STYLE = {"hours": "dim", "failed": "red", "error": "yellow"}
+
+
+def tape_text(entries: list[tape.TapeEntry]) -> Text:
+    """The tape, newest first, at most TAPE_LINES lines. Text, never markup."""
+    out = Text()
+    for i, e in enumerate(entries[:TAPE_LINES]):
+        if i:
+            out.append("\n")
+        out.append(
+            f"{e.day:%m-%d}  {e.project}  {e.kind}  {e.text}",
+            style=_TAPE_STYLE.get(e.kind, ""),
+        )
+    return out
+
+
 class PerchTUI(App):
     AUTO_FOCUS = "#projects"
     HORIZONTAL_BREAKPOINTS = [(0, "-narrow"), (160, "-wide")]  # noqa: RUF012
@@ -430,7 +446,7 @@ class PerchTUI(App):
     #detail { width: 2fr; border-left: solid $panel; padding: 0 1; }
     #detail.off, .-narrow #detail { display: none; }
     #output { width: 2fr; border-left: solid $panel; padding: 0 1; }
-    #changes { display: none; padding: 0 1; }
+    #tape { height: 8; display: none; padding: 0 1; }
     #command { display: none; dock: bottom; }
     """
     BINDINGS = [  # noqa: RUF012 -- Textual reads it off the class
@@ -441,6 +457,7 @@ class PerchTUI(App):
         ("i", "info", "info"),
         ("o", "open", "open"),
         Binding("v", "toggle_detail", show=False),
+        Binding("t", "toggle_tape", show=False),
         ("h", "hours", "hours"),
         ("R", "walk", "walk"),
         ("r", "refresh", "refresh"),
@@ -463,13 +480,17 @@ class PerchTUI(App):
         self.src: dict[str, sources.Sources] = {}  # the slow tier's loads
         self.stamps: dict[str, float] = {}  # project -> input mtime at its last load
         self.details: dict[str, detail.Detail] = {}
+        self.tape_by: dict[str, list[tape.TapeEntry]] = {}
+        self.tape_rows: list[tape.TapeEntry] = []
+        self.tape_on = True
 
     def compose(self) -> ComposeResult:
-        yield Static(id="changes")
         with Horizontal():
             yield Grid(id="projects", cursor_type="cell")
             yield Static(Text("loading…", style="dim"), id="detail")
             yield VerticalScroll(id="output")
+        with VerticalScroll(id="tape"):
+            yield Static(id="tape-body")
         yield Input(id="command", placeholder="apollo CUT 700k · ALL MON · MON weekly")
         yield Footer()
 
@@ -501,17 +522,32 @@ class PerchTUI(App):
                     continue
                 src = sources.load(self.home, name)
                 built = detail.build(name, src)
+                entries = tape.project_tape(src, name, date.today())  # noqa: DTZ011
                 if worker.is_cancelled:
                     return
-                self.call_from_thread(self._warmed, name, stamp, src, built)
+                self.call_from_thread(self._warmed, name, stamp, src, built, entries)
             except RuntimeError:  # the app closed under the worker
                 return
             except Exception:  # noqa: BLE001, S112 -- one project must not stop the rest
                 continue
 
-    def _warmed(self, name: str, stamp: float, src: sources.Sources, built) -> None:
+    def _warmed(
+        self, name: str, stamp: float, src: sources.Sources, built, entries
+    ) -> None:
         self.src[name], self.stamps[name], self.details[name] = src, stamp, built
+        self.tape_by[name] = entries
         self._paint_detail()
+        self._paint_tape()
+
+    def _paint_tape(self) -> None:
+        self.tape_rows = tape.merge(self.tape_by, self.names)
+        body = self.query_one("#tape-body", Static)
+        body.update(tape_text(self.tape_rows))
+        self.query_one("#tape").display = bool(self.tape_rows) and self.tape_on
+
+    def action_toggle_tape(self) -> None:
+        self.tape_on = not self.tape_on
+        self._paint_tape()
 
     def action_toggle_detail(self) -> None:
         self.query_one("#detail").toggle_class("off")
@@ -593,12 +629,8 @@ class PerchTUI(App):
         self._report()
 
     def _report(self) -> None:
-        """The what-changed line, and one toast per stoplight flip."""
+        """One toast per stoplight flip."""
         self._paint_detail()  # a move to the same cell fires no highlight
-        lines = [describe(n, self.changes.get(n)) for n in self.names]
-        strip = self.query_one("#changes", Static)
-        strip.update(Text("  ·  ".join(line for line in lines if line)))
-        strip.display = any(lines)
         for name in self.names:
             moved = self.changes.get(name)
             if moved and moved.signal and (name, moved.after) not in self.alerted:
