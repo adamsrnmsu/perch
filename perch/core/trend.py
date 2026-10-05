@@ -66,6 +66,10 @@ def _money(value: float | None, signed: bool = False) -> str:
     return f"{sign}${abs(value):,.0f}"
 
 
+def _share(value: float | None) -> str:
+    return "—" if value is None else f"{value:.0%}"
+
+
 def describe(name: str, change: Change | None) -> str:
     """`apollo W39→W40: YELLOW→RED, headroom −$12,000`; "" when nothing changed."""
     if change is None:
@@ -82,13 +86,15 @@ def describe(name: str, change: Change | None) -> str:
 
 
 def team_lines(rows: list[dict]) -> list[str]:
-    """The drill text: the latest week's figures, then headroom by week."""
+    """The drill text: the latest week's figures, then headroom (and pace, from
+    when it was recorded) by week."""
     team = sorted((r for r in rows if r["kind"] == "team"), key=lambda r: r["week"])
     if not team:
         return ["no week recorded yet: run perch board"]
     last = team[-1]
     prob = last.get("prob_over")
     left = last.get("left")
+    scope = last.get("net_scope")
     clear = " / ".join(
         _money(last.get(k)) for k in ("clear_p10", "clear_p50", "clear_p90")
     )
@@ -100,9 +106,13 @@ def team_lines(rows: list[dict]) -> list[str]:
         f" · headroom {_money(last.get('headroom'))}"
         f" · left {'—' if left is None else f'{left:,.0f}h'}"
         f" · clear {clear}"
+        f" · pace {_share(last.get('pace'))}"
+        f" · net scope {'—' if scope is None else f'{scope:+d}'}"
     )
     signals = {r["week"]: (r.get("signal") or "—").upper() for r in team}
+    paces = {r["week"]: r.get("pace") for r in team}
     return [head] + [
         f"{week}  {_money(value)}  {signals[week]}"
+        + ("" if paces[week] is None else f"  pace {_share(paces[week])}")
         for week, value in series(rows, "headroom").items()
     ]
