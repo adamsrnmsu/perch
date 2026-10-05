@@ -39,9 +39,10 @@ from textual.coordinate import Coordinate
 from textual.message import Message
 from textual.widget import Widget
 from textual.widgets import DataTable, Footer, Input, Static
+from textual.worker import get_current_worker
 
 from perch.cli import _bin_dir, _label, _watch
-from perch.core import blocks, history
+from perch.core import blocks, detail, history, sources
 from perch.core.command import parse
 from perch.core.config import load_config
 from perch.core.doctor import project_checks
@@ -52,6 +53,7 @@ from perch.core.trend import (
     _money,
     change,
     describe,
+    money,
     series,
     spark,
     team_lines,
@@ -75,6 +77,54 @@ COMMANDS = {  # key -> the perch command it runs on the selected project
     "w": "watch",
     "Q": "quarterly",
 }
+
+
+BAND, ROWS = "▒", 8  # the fan's glyph; the chart's height
+
+
+def _level(v: float, top: float) -> int:
+    """Which of the ROWS bands from the bottom (0) a value falls in."""
+    return min(ROWS - 1, max(0, int(v / top * ROWS)))
+
+
+def burn_lines(d: detail.Detail, width: int) -> Text:
+    """Budgie's burn series as 8 rows by 12 month columns, drawn by glyph:
+    `─` budget, `·` plan, `█` a month holding a reading, `▓` an interpolated
+    month, `▒` the P10 to P90 fan. Later marks overwrite earlier ones."""
+    b = d.burn
+    if b is None or not b.months:
+        return Text("")
+    vals = [v for s in (b.spent, b.plan, b.budget, b.p90) for v in s if v is not None]
+    top = max(vals, default=0)
+    if top <= 0:
+        return Text("")
+    wide = max(1, min(width // len(b.months), 3))
+    read = {(r.year, r.month) for r in b.reading_dates}
+    grid = [[(" ", "") for _ in b.months] for _ in range(ROWS)]  # [row from top][month]
+
+    def put(i: int, level: int, mark: str, style: str) -> None:
+        grid[ROWS - 1 - level][i] = (mark, style)
+
+    for i, month in enumerate(b.months):
+        if b.p90 and b.p10[i] < b.p90[i]:
+            for k in range(_level(b.p10[i], top), _level(b.p90[i], top) + 1):
+                put(i, k, BAND, "blue")
+        if (spent := b.spent[i]) is not None:
+            hit = (month.year, month.month) in read
+            for k in range(ROWS):
+                if spent > k * top / ROWS:
+                    put(i, k, "█" if hit else "▓", "green" if hit else "dim green")
+        if b.plan[i] is not None:
+            put(i, _level(b.plan[i], top), "·", "yellow")
+        if b.budget[i] is not None:
+            put(i, _level(b.budget[i], top), "─", "cyan")
+    out = Text()
+    for r, cells in enumerate(grid):
+        for mark, style in cells:
+            out.append(mark * wide, style=style)
+        if r < ROWS - 1:
+            out.append("\n")
+    return out
 
 
 KEEP = 20  # run cards kept in the output pane
@@ -374,8 +424,11 @@ class Grid(DataTable):
 
 class PerchTUI(App):
     AUTO_FOCUS = "#projects"
+    HORIZONTAL_BREAKPOINTS = [(0, "-narrow"), (160, "-wide")]  # noqa: RUF012
     CSS = """
     #projects { width: 3fr; }
+    #detail { width: 2fr; border-left: solid $panel; padding: 0 1; }
+    #detail.off, .-narrow #detail { display: none; }
     #output { width: 2fr; border-left: solid $panel; padding: 0 1; }
     #changes { display: none; padding: 0 1; }
     #command { display: none; dock: bottom; }
@@ -387,6 +440,7 @@ class PerchTUI(App):
         ("c", "command('CUT ')", "cut"),
         ("i", "info", "info"),
         ("o", "open", "open"),
+        Binding("v", "toggle_detail", show=False),
         ("h", "hours", "hours"),
         ("R", "walk", "walk"),
         ("r", "refresh", "refresh"),
@@ -405,11 +459,16 @@ class PerchTUI(App):
         self.child: subprocess.Popen | None = None  # the running command's process
         self.changes: dict[str, Change | None] = {}  # project -> its latest change
         self.alerted: set[tuple[str, str]] = set()  # (project, week) already toasted
+        self.asof_week: str | None = None  # set by the as-of task; None is live
+        self.src: dict[str, sources.Sources] = {}  # the slow tier's loads
+        self.stamps: dict[str, float] = {}  # project -> input mtime at its last load
+        self.details: dict[str, detail.Detail] = {}
 
     def compose(self) -> ComposeResult:
         yield Static(id="changes")
         with Horizontal():
             yield Grid(id="projects", cursor_type="cell")
+            yield Static(Text("loading…", style="dim"), id="detail")
             yield VerticalScroll(id="output")
         yield Input(id="command", placeholder="apollo CUT 700k · ALL MON · MON weekly")
         yield Footer()
@@ -418,15 +477,84 @@ class PerchTUI(App):
         self.query_one("#projects", Grid).add_columns(*COLUMNS)
         names = self.home.projects()  # first paint: the table is never empty
         self._rebuild(names, {n: snapshot(self.home, n) for n in names})
+        self._warm_all(True)
 
     def action_refresh(self) -> None:
-        self._reload()
+        self._reload()  # which then warms the slow tier, forced
+
+    @work(thread=True, exclusive=True, group="slow")
+    def _warm_all(self, force: bool = False) -> None:
+        """The slow tier: Sources once per project, then the pane's Detail, one
+        project at a time. A project whose inputs are unchanged is skipped unless
+        forced. A cancelled thread worker keeps running, so it checks itself."""
+        worker = get_current_worker()
+        for name in list(self.names):
+            if worker.is_cancelled:
+                return
+            try:
+                stamp = sources.stamp(self.home, name)
+                if (
+                    not force
+                    and name in self.details
+                    and self.stamps.get(name) == stamp
+                ):
+                    continue
+                src = sources.load(self.home, name)
+                built = detail.build(name, src)
+                if worker.is_cancelled:
+                    return
+                self.call_from_thread(self._warmed, name, stamp, src, built)
+            except RuntimeError:  # the app closed under the worker
+                return
+            except Exception:  # noqa: BLE001, S112 -- one project must not stop the rest
+                continue
+
+    def _warmed(self, name: str, stamp: float, src: sources.Sources, built) -> None:
+        self.src[name], self.stamps[name], self.details[name] = src, stamp, built
+        self._paint_detail()
+
+    def action_toggle_detail(self) -> None:
+        self.query_one("#detail").toggle_class("off")
+
+    def on_data_table_cell_highlighted(self, event: DataTable.CellHighlighted) -> None:
+        if event.data_table.id == "projects":  # card tables are DataTables too
+            self._paint_detail()
+
+    def _paint_detail(self) -> None:
+        """The cursor project's pane, from the cache: no file is read here."""
+        pane = self.query_one("#detail", Static)
+        row = self.query_one("#projects", Grid).cursor_coordinate.row
+        if not 0 <= row < len(self.names):  # fires during table.clear()
+            pane.update(Text(""))
+            return
+        name = self.names[row]
+        d = self.details.get(name)
+        if d is None:
+            pane.update(Text(f"{name}\nloading…", style="dim"))
+            return
+        top, *rest = detail.lines(d, self.asof_week)
+        out = Text(name, style="bold")
+        out.append(f"\n{top}\n")
+        if self.asof_week:
+            out.append("burn chart is live only · L\n", style="dim")
+        elif d.burn is not None and d.burn.months and d.burn.p90 + d.burn.spent:
+            width = max(pane.size.width - 3, 12)
+            out.append_text(burn_lines(d, width))
+            fan = "fan seeded" if d.burn.p90 else "no fan"
+            out.append(
+                f"\nlabor only · cost lines {money(d.non_labor)} excluded"
+                f" · {len(d.burn.reading_dates)} readings · {fan}\n",
+                style="dim",
+            )
+        out.append("\n".join(rest))
+        pane.update(out)
 
     @work(thread=True, exclusive=True, group="reload")
     def _reload(self) -> None:
         names = self.home.projects()  # a project made meanwhile shows up
         snaps = {n: snapshot(self.home, n) for n in names}
         self.call_from_thread(self._rebuild, names, snaps)
+        self.call_from_thread(self._warm_all, True)
 
     def _rebuild(self, names: list[str], snaps: dict) -> None:
         table = self.query_one("#projects", Grid)
@@ -444,6 +572,7 @@ class PerchTUI(App):
         """Back in front (a hop in perch suite): refresh behind the table, so the
         hop is instant and the cells catch up a moment later."""
         self._refresh_behind()
+        self._warm_all()  # unforced: only projects whose files changed
 
     @work(thread=True, exclusive=True, group="focus")
     def _refresh_behind(self) -> None:
@@ -465,6 +594,7 @@ class PerchTUI(App):
 
     def _report(self) -> None:
         """The what-changed line, and one toast per stoplight flip."""
+        self._paint_detail()  # a move to the same cell fires no highlight
         lines = [describe(n, self.changes.get(n)) for n in self.names]
         strip = self.query_one("#changes", Static)
         strip.update(Text("  ·  ".join(line for line in lines if line)))
@@ -594,6 +724,7 @@ class PerchTUI(App):
             self.action_refresh()
             return
         self._row_done(name, card, code)
+        self._warm_all(True)
 
     @work(thread=True, group="row")
     def _row_done(self, name: str, card: RunCard, code: int) -> None:

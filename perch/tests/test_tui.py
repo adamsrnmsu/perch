@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 from textual.widgets import DataTable, Input, Static
+from textual.worker import WorkerCancelled
 
 from perch import tui
 from perch.core import blocks as b
@@ -70,7 +71,12 @@ def run(app, script):
 
 
 async def settle(app, pilot):
-    await app.workers.wait_for_complete()
+    while True:
+        try:  # an exclusive worker (the slow tier) cancels its predecessor
+            await app.workers.wait_for_complete()
+            break
+        except WorkerCancelled:
+            continue
     await pilot.pause()
 
 
@@ -1528,3 +1534,168 @@ def test_suite_map_entries_name_the_project(tmp_path):
     m = tui.suite_map(home, "apollo")
     assert m["budgie"]["project"] == m["gitboard"]["project"] == "apollo"
     assert "project" not in m["perch"]  # a hop to perch never restarts it
+
+
+def _detail_text(app) -> str:
+    return str(app.query_one("#detail").render())
+
+
+def test_the_detail_pane_follows_the_cursor_and_a_move_loads_nothing(
+    tmp_path, monkeypatch
+):
+    from perch.core import sources
+
+    home = build_home(tmp_path, "apollo", "beta")
+    calls = []
+    real = sources.load
+    monkeypatch.setattr(sources, "load", lambda h, n: calls.append(n) or real(h, n))
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        assert sorted(calls) == ["apollo", "beta"]
+        assert _detail_text(app).startswith("apollo")
+        assert "cost lines $5,000 excluded · 4 readings · fan seeded" in _detail_text(
+            app
+        )
+        calls.clear()
+        await pilot.press("down")
+        await pilot.pause()
+        assert _detail_text(app).startswith("beta")
+        assert calls == []  # a cursor move reads a dict
+        await pilot.press("r")
+        await settle(app, pilot)
+        assert sorted(calls) == ["apollo", "beta"]  # r forces one load each
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_the_slow_tier_skips_an_unchanged_project_unless_forced(tmp_path, monkeypatch):
+    from perch.core import sources
+
+    home = build_home(tmp_path, "apollo")
+    calls = []
+    real = sources.load
+    monkeypatch.setattr(sources, "load", lambda h, n: calls.append(n) or real(h, n))
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        app._warm_all()
+        await settle(app, pilot)
+        assert calls == ["apollo"]
+        app._warm_all(True)
+        await settle(app, pilot)
+        assert calls == ["apollo", "apollo"]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_v_toggles_the_detail_pane(tmp_path):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        pane = app.query_one("#detail")
+        assert pane.display
+        await pilot.press("v")
+        assert pane.has_class("off") and not pane.display
+        await pilot.press("v")
+        assert pane.display
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_the_detail_pane_hides_below_160_columns(tmp_path):
+    home = build_home(tmp_path, "apollo")
+
+    async def go():
+        async with tui.PerchTUI(home).run_test(size=(120, 30)) as pilot:
+            assert not pilot.app.query_one("#detail").display
+
+    asyncio.run(go())
+
+
+def test_as_of_replaces_the_chart_and_cuts_the_spark(tmp_path):
+    home = build_home(tmp_path, "apollo")
+
+    async def script(app, pilot):
+        await settle(app, pilot)
+        assert "burn chart is live only" not in _detail_text(app)
+        app.asof_week = "2026-W17"
+        app._paint_detail()
+        assert "burn chart is live only · L" in _detail_text(app)
+        assert "█" not in _detail_text(app).split("live only")[1].split("\n")[0]
+
+    run(tui.PerchTUI(home), script)
+
+
+def test_burn_lines_draws_each_glyph_on_its_row():
+    from datetime import date
+
+    from budgie.core.burn import BurnSeries
+
+    months = tuple(date(2026, m, 28) for m in (1, 2, 3, 4))
+    # top = 80; levels are 10 apart: 80 -> row 0, 40 -> row 4, 20 -> row 6
+    d = tui.detail.Detail(
+        "p",
+        {},
+        BurnSeries(
+            months=months,
+            spent=(20.0, 20.0, None, None),
+            spent_as_of=None,
+            plan=(10.0, 30.0, 50.0, 70.0),
+            budget=(80.0, 80.0, 80.0, 80.0),
+            p10=(20.0, 20.0, 30.0, 40.0),
+            p50=(20.0, 20.0, 40.0, 50.0),
+            p90=(20.0, 20.0, 50.0, 60.0),
+            reading_dates=(date(2026, 1, 25),),
+            as_of=date(2026, 2, 28),
+        ),
+        None,
+        None,
+        None,
+        None,
+        None,
+        0.0,
+        "",
+    )
+    rows = tui.burn_lines(d, 4).plain.split("\n")
+    assert len(rows) == 8
+    assert rows[0] == "────"  # budget
+    assert [r[0] for r in rows] == list("─      ")[:1] + [
+        " ",
+        " ",
+        " ",
+        " ",
+        " ",
+        "·",
+        "█",
+    ]
+    assert [r[1] for r in rows] == [
+        "─",
+        " ",
+        " ",
+        " ",
+        "·",
+        " ",
+        "▓",
+        "▓",
+    ]  # no Feb reading
+    assert [r[2] for r in rows] == [
+        "─",
+        " ",
+        "·",
+        "▒",
+        "▒",
+        " ",
+        " ",
+        " ",
+    ]  # fan, plan on top
+    assert [r[3] for r in rows] == [
+        "─",
+        "▒",
+        "▒",
+        "▒",
+        " ",
+        " ",
+        " ",
+        " ",
+    ]  # budget beats plan
