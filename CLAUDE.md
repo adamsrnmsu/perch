@@ -128,8 +128,8 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   Team level only: names appear only in staffing changes. Quarters are
   Budgie's `YearSpan.quarters` (fiscal when the Budgie project sets
   `year_start`), named `2026-Q3` or `FY27-Q1`. Pace is booked over planned
-  hours (`Money.team_planned` reads the plan on the reading days, as booked
-  hours are read, or a mid-week window inflates it); scope is issues opened
+  hours (`Money.team_planned` reads Budgie's `Snapshot.planned_through` on
+  the reading days, as booked hours are read, or a mid-week window inflates it); scope is issues opened
   (`created_on`) against closed per ISO week, None for every week when any
   issue lacks a creation day. Both in neutral words: the draft goes to
   funders. `quarter_to_date` gives `perch board` the same two figures for

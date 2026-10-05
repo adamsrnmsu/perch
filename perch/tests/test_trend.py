@@ -70,7 +70,7 @@ def test_team_lines_no_history():
 
 def seeded():
     return [
-        team("2026-W39", signal="YELLOW", headroom=5000.0),
+        team("2026-W39", signal="YELLOW", headroom=5000.0, pace=0.8),
         team(
             "2026-W40",
             signal="RED",
@@ -82,6 +82,8 @@ def seeded():
             clear_p10=180000.0,
             clear_p50=200000.0,
             clear_p90=None,
+            pace=0.92,
+            net_scope=2,
         ),
     ]
 
@@ -91,15 +93,19 @@ def test_team_lines_seeded():
         (
             "RED · over 35% · budget $200,000 · spent $120,000 · headroom −$12,000"
             " · left 340h · clear $180,000 / $200,000 / —"
+            " · pace 92% · net scope +2"
         ),
-        "2026-W39  $5,000  YELLOW",
-        "2026-W40  −$12,000  RED",
+        "2026-W39  $5,000  YELLOW  pace 80%",
+        "2026-W40  −$12,000  RED  pace 92%",
     ]
 
 
 def test_team_lines_missing_figures_are_dashes():
     assert team_lines([team("2026-W40")]) == [
-        "— · over — · budget — · spent — · headroom — · left — · clear — / — / —",
+        (
+            "— · over — · budget — · spent — · headroom — · left — · clear — / — / —"
+            " · pace — · net scope —"
+        ),
     ]
 
 
@@ -112,3 +118,11 @@ def test_no_person_or_ranking_words_in_output():
     text = "\n".join(team_lines(rows)) + describe("apollo", c) + repr(c)
     assert "zelda" not in text.lower()
     assert not [w for w in BANNED if w in text.lower()]
+
+
+def test_a_week_recorded_before_pace_shows_no_pace():
+    rows = [team("2026-W39", signal="GREEN", headroom=1.0), *seeded()[1:]]
+    assert team_lines(rows)[1:] == [
+        "2026-W39  $1  GREEN",
+        "2026-W40  −$12,000  RED  pace 92%",
+    ]
