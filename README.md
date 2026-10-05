@@ -172,8 +172,9 @@ each milestone's open work. It never says which issues to drop.
 
 `perch quarterly` writes the funder's quarterly report as an Outlook draft,
 `projects/<name>/quarterly/<quarter>.eml`, plus a `.md` copy: budget position
-and Budgie's forecast at completion, estimate misses in dollars (MODELLED),
-issues closed and hours booked per ISO week, blocked issue-days, and the
+and Budgie's forecast at completion, hours booked against hours planned,
+estimate misses in dollars (MODELLED), issues opened and closed and hours
+booked per ISO week with the net change in open issues, blocked issue-days, and the
 quarter's `plan.csv` changes. The default is the last complete quarter of the
 Budgie year. Quarters follow the Budgie project's `year_start`: a calendar year
 names them `2026-Q3`, a fiscal year `FY27-Q1`. It is rebuilt from the readings, budget.csv, plan.csv and the
@@ -222,7 +223,9 @@ epic::billing,400,320,520
   a year forecast; `budgie forecast` is.
 - Every `perch board` run records the week in `history.jsonl` (ignored by git:
   it is per-person data). `perch weekly` and `perch cut` read it, and a trend
-  can only start the day you begin recording.
+  can only start the day you begin recording. The team row also keeps the
+  quarter so far's pace (booked over planned hours) and net scope (opened
+  less closed issues), so a research trend can start.
 
 perch never ranks people. A rate is a property of the join, not a score.
 

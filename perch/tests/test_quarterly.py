@@ -21,7 +21,12 @@ from perch.core.config import load_config
 from perch.core.estimates import load_estimates
 from perch.core.join import calibrate
 from perch.core.money import Money, load_money, load_snapshot
-from perch.core.quarterly import build, last_complete_quarter, parse_quarter
+from perch.core.quarterly import (
+    build,
+    last_complete_quarter,
+    parse_quarter,
+    quarter_to_date,
+)
 from perch.core.report_mail import render_md
 from perch.tests.conftest import issue, since
 
@@ -473,3 +478,29 @@ def test_the_previous_quarter_counts_opened_too(world):
     since(world, "2026-01-01")
     prev = make(world, "2026-Q2").previous
     assert (prev.opened, prev.closed) == (16, 11)
+
+
+def test_the_history_figures_for_the_quarter_so_far(quarter_world):
+    """The latest reading is Apr 19, so Q2 through Apr 19: the pace and net
+    scope the report shows."""
+    created(quarter_world, APRIL)
+    config = load_config(quarter_world)
+    board, money = load_board(config.board_dump), load_money(config.budgie_project)
+    got = quarter_to_date(board, money, FETCH_DAY)
+    assert got["pace"] == pytest.approx(285 / 7 / (13 * 7.968))
+    assert got["net_scope"] == 2
+
+
+def test_outside_the_budgie_year_there_are_no_history_figures(quarter_world):
+    config = load_config(quarter_world)
+    board = load_board(config.board_dump)
+    money = replace(load_money(config.budgie_project), readings={})
+    got = quarter_to_date(board, money, date(2027, 2, 1))
+    assert got == {"pace": None, "net_scope": None}
+
+
+def test_without_a_dump_only_the_pace_is_known(quarter_world):
+    money = load_money(load_config(quarter_world).budgie_project)
+    got = quarter_to_date(None, money, FETCH_DAY)
+    assert got["pace"] == pytest.approx(285 / 7 / (13 * 7.968))
+    assert got["net_scope"] is None

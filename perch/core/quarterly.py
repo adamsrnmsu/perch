@@ -438,6 +438,37 @@ def _day(day: date) -> str:
     return f"{day:%b} {day.day}"
 
 
+def _through(
+    money: Money, start: date, end: date, today: date
+) -> tuple[date, date | None]:
+    """(through, read_to) for the quarter [start, end] seen on `today`: its end,
+    or the latest reading while it runs; and where spent stops."""
+    through = min(end, money.as_of or today) if today <= end else end
+    through = max(through, start)
+    as_of = money.as_of
+    return through, (min(through, as_of) if as_of else None)
+
+
+def quarter_to_date(board: Board | None, money: Money, today: date) -> dict:
+    """`pace` (booked over planned hours) and `net_scope` for the quarter
+    holding `today`, or the latest reading if that is earlier: the history
+    row's figures, from the same window code as `build` and without its
+    forecast. Both None outside the Budgie year."""
+    day = min(today, money.as_of or today)
+    found = [(a, b) for a, b in money.span.quarters if a <= day <= b]
+    if not found:
+        return {"pace": None, "net_scope": None}
+    start, end = found[0]
+    through, read_to = _through(money, start, end, today)
+    read = read_to is not None and read_to >= start
+    booked = _team(money, start, read_to, cost=False) if read else None
+    planned = _plan(money, start, read_to) if read else None
+    return {
+        "pace": booked / planned if booked is not None and planned else None,
+        "net_scope": _net(_weeks(board, money, start, through)),
+    }
+
+
 def build(
     board: Board | None,
     money: Money,
@@ -451,11 +482,8 @@ def build(
     """The quarter's report. `board` is None when there is no dump yet."""
     start, end = parse_quarter(quarter, money.span)
     to_date = today <= end
-    through = min(end, money.as_of or today) if to_date else end
-    through = max(through, start)
-
+    through, read_to = _through(money, start, end, today)
     as_of = money.as_of
-    read_to = min(through, as_of) if as_of else None
     if as_of is None:
         hours_note = NO_READINGS
     elif as_of < start:
