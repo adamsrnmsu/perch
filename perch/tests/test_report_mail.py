@@ -215,3 +215,12 @@ def test_a_dump_without_creation_days_says_how_to_count_opened(quarter_world):
         "opened issues." in text
     )
     assert "net change" not in text
+
+
+def test_a_plan_of_no_hours_says_so_beside_what_was_booked(quarter_world):
+    q = make(quarter_world, "2026-Q2")
+    q = replace(q, position=replace(q.position, planned_quarter=0.0))
+    text = render_md(q)
+    assert "| Hours planned Apr 1 – Apr 19 | 0 |" in text
+    assert "No hours are planned for Apr 1 – Apr 19; 41 booked." in text
+    assert "No plan to compare" not in text

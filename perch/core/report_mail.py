@@ -80,8 +80,11 @@ def _pace(q: Quarter) -> str | None:
     p = q.position
     if p.booked_quarter is None:
         return None  # no readings in the quarter: hours_note already says so
-    if not p.planned_quarter:
+    if p.planned_quarter is None:
         return "No plan to compare booked hours with."
+    if p.planned_quarter <= 0:
+        span = _span(q.start, q.read_to or q.through)
+        return f"No hours are planned for {span}; {_hours(p.booked_quarter)} booked."
     return f"Booked {p.booked_quarter / p.planned_quarter:.0%} of planned hours."
 
 
