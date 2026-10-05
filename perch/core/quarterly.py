@@ -80,6 +80,8 @@ class Week:
     end: date
     closed: int | None  # None: no board dump
     hours: float | None  # None: no readings
+    # None: outside the dump, or a dump without every issue's creation day
+    opened: int | None = None
 
     @property
     def per_issue(self) -> float | None:
@@ -152,13 +154,21 @@ class Quarter:
     def total(self) -> Week:
         closed = [w.closed for w in self.weeks if w.closed is not None]
         hours = [w.hours for w in self.weeks if w.hours is not None]
+        opened = [w.opened for w in self.weeks if w.opened is not None]
         return Week(
             self.name,
             self.start,
             self.through,
             sum(closed) if closed else None,
             sum(hours) if hours else None,
+            sum(opened) if opened else None,
         )
+
+    @property
+    def net_scope(self) -> int | None:
+        """Issues opened less issues closed in the quarter; None without
+        creation days."""
+        return _net(self.weeks)
 
     @property
     def total_per_issue(self) -> float | None:
@@ -235,12 +245,13 @@ def _weeks(board: Board | None, money: Money, start: date, through: date):
     while monday <= through:
         a, b = max(monday, start), min(monday + timedelta(days=6), through)
         year, number, _ = monday.isocalendar()
-        closed = None
+        closed = opened = None
         if board is not None and _since(board) <= a and b <= board.fetched_on:
             closed = sum(1 for i in board.closed if a <= i.closed_on <= b)
+            opened = _opened(board, a, b)
         read = money.as_of is not None and b <= money.as_of
         hours = _team(money, a, b, cost=False) if read else None
-        out.append(Week(f"{year}-W{number:02d}", a, b, closed, hours))
+        out.append(Week(f"{year}-W{number:02d}", a, b, closed, hours, opened))
         monday += timedelta(days=7)
     return tuple(out)
 
@@ -320,6 +331,21 @@ def _since(board: Board) -> date:
     return board.since or board.fetched_on - timedelta(days=DUMP_DAYS)
 
 
+def _opened(board: Board, a: date, b: date) -> int | None:
+    """Issues created from `a` through `b`. None when any issue in the dump has
+    no creation day: a partial count would undercount what opened."""
+    if any(i.created_on is None for i in board.issues):
+        return None
+    return sum(1 for i in board.issues if a <= i.created_on <= b)
+
+
+def _net(weeks) -> int | None:
+    """Opened less closed over the weeks whose opened count is known (a known
+    opened count implies a known closed count)."""
+    known = [w for w in weeks if w.opened is not None]
+    return sum(w.opened - w.closed for w in known) if known else None
+
+
 def _previous(
     board: Board, money: Money, start: date
 ) -> tuple[Week | None, int | None]:
@@ -339,7 +365,8 @@ def _previous(
     hours = _team(money, first, end, cost=False) if read else None
     name = f"{money.span.label}-Q{n}"
     blocked = _blocked_days(board, first, end, board.since)
-    return Week(name, first, end, closed, hours), blocked
+    opened = _opened(board, first, end)
+    return Week(name, first, end, closed, hours, opened), blocked
 
 
 def _misses(board, estimates, rates, people, money, start, through):

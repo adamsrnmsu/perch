@@ -405,3 +405,71 @@ def test_readings_that_stop_before_the_quarter_give_no_pace(world):
     # The readings end Apr 19, before Q3: neither figure, not planned alone.
     p = make(world, "2026-Q3").position
     assert (p.booked_quarter, p.planned_quarter) == (None, None)
+
+
+# Issues created in Q2; every other issue gets created()'s default, Jan 2.
+APRIL = {103: "2026-04-02", 105: "2026-04-07", 106: "2026-04-08", 107: "2026-04-14"}
+
+
+def created(world, days, default="2026-01-02"):
+    """Give every issue in the world's dump a `created_at`: `days` maps an iid
+    to its day, the rest get `default`."""
+    dump = world.parent / "dump.json"
+    meta = json.loads(dump.read_text())
+    for record in meta["history"]:
+        record["created_at"] = f"{days.get(record['iid'], default)}T09:00:00.000Z"
+    dump.write_text(json.dumps(meta))
+
+
+def test_opened_issues_by_iso_week(quarter_world):
+    """#103 on Apr 2 (W14), #105 and #106 on Apr 7 and 8 (W15), #107 on Apr 14
+    (W16); closes are Bob's #13 (W14) and Alice's #8 (W15)."""
+    created(quarter_world, APRIL)
+    q = make(quarter_world, "2026-Q2")
+    assert [w.opened for w in q.weeks] == [1, 2, 1]
+    assert (q.total.opened, q.total.closed) == (4, 2)
+    assert q.net_scope == 2
+
+
+def test_open_work_can_shrink(quarter_world):
+    created(quarter_world, {103: "2026-04-02"})
+    q = make(quarter_world, "2026-Q2")
+    assert [w.opened for w in q.weeks] == [1, 0, 0]
+    assert q.net_scope == -1
+
+
+def test_a_dump_without_creation_days_counts_no_opened(quarter_world):
+    q = make(quarter_world, "2026-Q2")  # the world's dump has no created_at
+    assert [w.opened for w in q.weeks] == [None] * 3
+    assert q.total.opened is None and q.net_scope is None
+
+
+def test_a_dump_missing_some_creation_days_counts_no_opened(quarter_world):
+    """A partial count would undercount what opened: all or nothing."""
+    created(quarter_world, APRIL)
+    dump = quarter_world.parent / "dump.json"
+    meta = json.loads(dump.read_text())
+    del meta["history"][0]["created_at"]
+    dump.write_text(json.dumps(meta))
+    q = make(quarter_world, "2026-Q2")
+    assert [w.opened for w in q.weeks] == [None] * 3
+    assert q.net_scope is None
+
+
+def test_a_week_outside_the_dump_has_no_opened_count(world):
+    """Weeks starting before Jan 20 are outside the dump, as for closes. Every
+    issue was created Jan 2, so the counted weeks open nothing and close 9."""
+    created(world, {})
+    q = make(world, "2026-Q1")
+    assert [w.opened for w in q.weeks[:4]] == [None] * 4
+    assert q.total.opened == 0
+    assert q.net_scope == -9
+
+
+def test_the_previous_quarter_counts_opened_too(world):
+    """20 issues in the dump (#1-#13 closed, #101-#107 open); 4 created in
+    April, so 16 opened in Q1."""
+    created(world, APRIL)
+    since(world, "2026-01-01")
+    prev = make(world, "2026-Q2").previous
+    assert (prev.opened, prev.closed) == (16, 11)
