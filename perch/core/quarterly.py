@@ -67,6 +67,10 @@ class Position:
     p90: float
     signal: SignalResult | None
     non_labor: float  # the year's cost lines, in the forecast, not in spent
+    # Hours, start of the quarter through read_to; None without readings in it.
+    booked_quarter: float | None = None
+    # Budgie's pace lines over the same days; None also without allocations.
+    planned_quarter: float | None = None
 
 
 @dataclass(frozen=True)
@@ -76,6 +80,8 @@ class Week:
     end: date
     closed: int | None  # None: no board dump
     hours: float | None  # None: no readings
+    # None: outside the dump, or a dump without every issue's creation day
+    opened: int | None = None
 
     @property
     def per_issue(self) -> float | None:
@@ -148,13 +154,21 @@ class Quarter:
     def total(self) -> Week:
         closed = [w.closed for w in self.weeks if w.closed is not None]
         hours = [w.hours for w in self.weeks if w.hours is not None]
+        opened = [w.opened for w in self.weeks if w.opened is not None]
         return Week(
             self.name,
             self.start,
             self.through,
             sum(closed) if closed else None,
             sum(hours) if hours else None,
+            sum(opened) if opened else None,
         )
+
+    @property
+    def net_scope(self) -> int | None:
+        """Issues opened less issues closed in the quarter; None without
+        creation days."""
+        return _net(self.weeks)
 
     @property
     def total_per_issue(self) -> float | None:
@@ -177,6 +191,13 @@ def _team(money: Money, start: date, end: date, cost: bool) -> float:
     )
 
 
+def _plan(money: Money, start: date, read_to: date) -> float | None:
+    """Hours Budgie plans for the team from `start` through `read_to`, read on
+    the same days as booked hours (`Money.team_planned`); None when nobody is
+    planned."""
+    return money.team_planned(start - timedelta(days=1), read_to)
+
+
 def _position(
     money: Money, start: date, end: date, through: date, read_to: date | None
 ) -> Position:
@@ -196,10 +217,9 @@ def _position(
     )
     budget = budget_on(end)
     year_start = money.span.first
+    read = read_to is not None and read_to >= start
     return Position(
-        spent_quarter=_team(money, start, read_to, cost=True)
-        if read_to and read_to >= start
-        else None,
+        spent_quarter=_team(money, start, read_to, cost=True) if read else None,
         spent_year=_team(money, year_start, read_to, cost=True) if read_to else None,
         budget_start=budget_on(start),
         budget_end=budget,
@@ -210,6 +230,8 @@ def _position(
         p90=sim.percentile(90),
         signal=None if budget is None else evaluate(sim, budget),
         non_labor=money.non_labor,
+        booked_quarter=_team(money, start, read_to, cost=False) if read else None,
+        planned_quarter=_plan(money, start, read_to) if read else None,
     )
 
 
@@ -221,12 +243,13 @@ def _weeks(board: Board | None, money: Money, start: date, through: date):
     while monday <= through:
         a, b = max(monday, start), min(monday + timedelta(days=6), through)
         year, number, _ = monday.isocalendar()
-        closed = None
+        closed = opened = None
         if board is not None and _since(board) <= a and b <= board.fetched_on:
             closed = sum(1 for i in board.closed if a <= i.closed_on <= b)
+            opened = _opened(board, a, b)
         read = money.as_of is not None and b <= money.as_of
         hours = _team(money, a, b, cost=False) if read else None
-        out.append(Week(f"{year}-W{number:02d}", a, b, closed, hours))
+        out.append(Week(f"{year}-W{number:02d}", a, b, closed, hours, opened))
         monday += timedelta(days=7)
     return tuple(out)
 
@@ -306,6 +329,21 @@ def _since(board: Board) -> date:
     return board.since or board.fetched_on - timedelta(days=DUMP_DAYS)
 
 
+def _opened(board: Board, a: date, b: date) -> int | None:
+    """Issues created from `a` through `b`. None when any issue in the dump has
+    no creation day: a partial count would undercount what opened."""
+    if any(i.created_on is None for i in board.issues):
+        return None
+    return sum(1 for i in board.issues if a <= i.created_on <= b)
+
+
+def _net(weeks) -> int | None:
+    """Opened less closed over the weeks whose opened count is known (a known
+    opened count implies a known closed count)."""
+    known = [w for w in weeks if w.opened is not None]
+    return sum(w.opened - w.closed for w in known) if known else None
+
+
 def _previous(
     board: Board, money: Money, start: date
 ) -> tuple[Week | None, int | None]:
@@ -325,7 +363,8 @@ def _previous(
     hours = _team(money, first, end, cost=False) if read else None
     name = f"{money.span.label}-Q{n}"
     blocked = _blocked_days(board, first, end, board.since)
-    return Week(name, first, end, closed, hours), blocked
+    opened = _opened(board, first, end)
+    return Week(name, first, end, closed, hours, opened), blocked
 
 
 def _misses(board, estimates, rates, people, money, start, through):
@@ -397,6 +436,37 @@ def _day(day: date) -> str:
     return f"{day:%b} {day.day}"
 
 
+def _through(
+    money: Money, start: date, end: date, today: date
+) -> tuple[date, date | None]:
+    """(through, read_to) for the quarter [start, end] seen on `today`: its end,
+    or the latest reading while it runs; and where spent stops."""
+    through = min(end, money.as_of or today) if today <= end else end
+    through = max(through, start)
+    as_of = money.as_of
+    return through, (min(through, as_of) if as_of else None)
+
+
+def quarter_to_date(board: Board | None, money: Money, today: date) -> dict:
+    """`pace` (booked over planned hours) and `net_scope` for the quarter
+    holding `today`, or the latest reading if that is earlier: the history
+    row's figures, from the same window code as `build` and without its
+    forecast. Both None outside the Budgie year."""
+    day = min(today, money.as_of or today)
+    found = [(a, b) for a, b in money.span.quarters if a <= day <= b]
+    if not found:
+        return {"pace": None, "net_scope": None}
+    start, end = found[0]
+    through, read_to = _through(money, start, end, today)
+    read = read_to is not None and read_to >= start
+    booked = _team(money, start, read_to, cost=False) if read else None
+    planned = _plan(money, start, read_to) if read else None
+    return {
+        "pace": booked / planned if booked is not None and planned else None,
+        "net_scope": _net(_weeks(board, money, start, through)),
+    }
+
+
 def build(
     board: Board | None,
     money: Money,
@@ -410,11 +480,8 @@ def build(
     """The quarter's report. `board` is None when there is no dump yet."""
     start, end = parse_quarter(quarter, money.span)
     to_date = today <= end
-    through = min(end, money.as_of or today) if to_date else end
-    through = max(through, start)
-
+    through, read_to = _through(money, start, end, today)
     as_of = money.as_of
-    read_to = min(through, as_of) if as_of else None
     if as_of is None:
         hours_note = NO_READINGS
     elif as_of < start:

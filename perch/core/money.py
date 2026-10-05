@@ -70,6 +70,45 @@ class Money:
         pace = self.pace.get(name)
         return None if pace is None else pace.expected_on(end) - pace.expected_on(start)
 
+    def _plan_on(self, name: str, day: date) -> float:
+        """Budgie's plan for `name`, cumulative through `day`: their pace line,
+        or plan.csv's hours for someone it plans without an allocation."""
+        if day < self.span.first:
+            return 0.0
+        pace = self.pace.get(name)
+        if pace is not None:
+            return pace.expected_on(day)
+        return self.plan.allocated_hours(name, self.span, self.pto, through=day)
+
+    def team_planned(self, start: date, end: date) -> float | None:
+        """Planned team hours after ``start`` through ``end``, read the way
+        `booked` reads hours: sampled on each person's reading days (the team's,
+        for someone without readings) and interpolated between them by Budgie's
+        `spent_at`. The plan counts working days and readings interpolate by
+        calendar day, so only the same sampling makes the two comparable.
+
+        Budgie's planned people: the allocated, else everyone plan.csv plans
+        (Budgie's rule when there is no allocations.csv). Someone who books
+        without being planned adds to booked hours only. None when nobody is
+        planned or nothing has been read.
+        """
+        if self.pace:
+            names = list(self.pace)
+        elif self.plan is not None:
+            names = self.plan.names
+        else:
+            return None
+        team = sorted({day for series in self.readings.values() for day, _ in series})
+        if not names or not team:
+            return None
+
+        def at(name: str, day: date) -> float:
+            days = [d for d, _ in self.readings.get(name, ())] or team
+            series = [(d, self._plan_on(name, d)) for d in days]
+            return spent_at(series, max(day, self.span.zero), self.span)
+
+        return sum(at(name, end) - at(name, start) for name in names)
+
     def booked(self, name: str, start: date, end: date) -> float | None:
         """Hours booked after ``start`` through ``end``, interpolated between
         readings the way Budgie's monthly view does. None without readings."""

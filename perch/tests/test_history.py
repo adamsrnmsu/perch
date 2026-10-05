@@ -42,3 +42,16 @@ def test_the_team_row_records_budget_left_and_signal(world):
     assert team["budget"] == 100000
     assert team["left"] == (996 - 200) + (996 - 120)
     assert team["signal"] == "good"
+
+
+def test_the_team_row_records_the_quarters_pace_and_scope(world):
+    from perch.cli import _load
+    from perch.core.join import person_rows, rollup
+
+    config, board, money, estimates, rates = _load(world)
+    rows = person_rows(board, estimates, rates, config.people, money)
+    summary = rollup(rows, money)
+    team = rows_for(rows, rates, summary, quarter={"pace": 0.4, "net_scope": 2})[-1]
+    assert (team["pace"], team["net_scope"]) == (0.4, 2)
+    team = rows_for(rows, rates, summary)[-1]
+    assert (team["pace"], team["net_scope"]) == (None, None)

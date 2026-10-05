@@ -221,6 +221,7 @@ def board(config_path, project, seed, iterations, no_history):
     from perch.core.accuracy import by_person
     from perch.core.history import record, rows_for
     from perch.core.join import notes, person_rows, rollup
+    from perch.core.quarterly import quarter_to_date
 
     try:
         config, the_board, money, estimates, rates = _load(
@@ -301,6 +302,7 @@ def board(config_path, project, seed, iterations, no_history):
                 summary,
                 accuracy if estimates else (),
                 left=sum(money.left.values()),
+                quarter=quarter_to_date(the_board, money, the_board.fetched_on),
             ),
         )
 

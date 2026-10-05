@@ -1,5 +1,6 @@
 import json
 
+import pytest
 from click.testing import CliRunner
 
 from perch.cli import cli
@@ -24,6 +25,13 @@ def test_board_prints_the_join_and_records_the_week(world):
     ]
     assert {r["week"] for r in rows} == {"2026-W17"}
     assert {r["kind"] for r in rows} == {"person", "type", "accuracy", "team"}
+    team = next(r for r in rows if r["kind"] == "team")
+    # Q2 to Apr 19: 285/7 h booked. This world has no plan.csv, so Budgie's
+    # pace line is straight across the calendar year: 2 x 0.5 x 1,992 x 19/365
+    # = 103.693 h planned (quarter_world's plan.csv gives 103.584 by working
+    # days). The dump has no created_at, so no scope.
+    assert team["pace"] == pytest.approx(285 / 7 / (1992 * 19 / 365))
+    assert team["net_scope"] is None
     alice = next(r for r in rows if r["kind"] == "person" and r["name"] == "Alice")
     assert (alice["open"], round(alice["hours"]), round(alice["rate"])) == (3, 60, 25)
 

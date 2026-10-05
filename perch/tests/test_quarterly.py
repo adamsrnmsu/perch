@@ -6,6 +6,7 @@ team books 15/7 h a day from Mar 22 to Apr 19, and $1,250/7 a day.
 """
 
 import json
+from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -20,9 +21,14 @@ from perch.core.config import load_config
 from perch.core.estimates import load_estimates
 from perch.core.join import calibrate
 from perch.core.money import Money, load_money, load_snapshot
-from perch.core.quarterly import build, last_complete_quarter, parse_quarter
+from perch.core.quarterly import (
+    build,
+    last_complete_quarter,
+    parse_quarter,
+    quarter_to_date,
+)
 from perch.core.report_mail import render_md
-from perch.tests.conftest import issue, since
+from perch.tests.conftest import issue, since, week
 
 FETCH_DAY = date(2026, 4, 20)
 
@@ -380,3 +386,154 @@ def test_a_fiscal_quarter_report_is_named_and_dated_by_the_span():
         date(2026, 10, 1),
     )
     assert "FY27-Q1 runs Oct 1 – Dec 31" in render_md(q)
+
+
+def test_pace_is_hours_booked_against_hours_planned(quarter_world):
+    """Planned is read on the reading days, as booked is. Alice reads Mar 22
+    and Apr 19, Bob Feb 22 and Apr 19; at 0.5 x 7.968 h a working day each,
+    the 20 working days Mar 23 - Apr 19 interpolate to 19/28 of them for Apr
+    1-19 (Bob's 40 over 56 days, the same): 7.968 x 20 x 19/28 = 7.968 x 95/7
+    = 108.137 h planned (Bob's cut is May 1). Booked is the 19 days at 15/7 h."""
+    p = make(quarter_world, "2026-Q2").position
+    assert p.planned_quarter == pytest.approx(7.968 * 95 / 7)
+    assert p.booked_quarter == pytest.approx(285 / 7)
+
+
+def test_without_allocations_nothing_is_planned(quarter_world):
+    config = load_config(quarter_world)
+    board = load_board(config.board_dump)
+    money = replace(load_money(config.budgie_project), pace={}, plan=None)
+    q = build(board, money, {}, None, config.people, "2026-Q2", FETCH_DAY, "apollo")
+    assert q.position.planned_quarter is None
+    assert q.position.booked_quarter == pytest.approx(285 / 7)
+
+
+def test_readings_that_stop_before_the_quarter_give_no_pace(world):
+    # The readings end Apr 19, before Q3: neither figure, not planned alone.
+    p = make(world, "2026-Q3").position
+    assert (p.booked_quarter, p.planned_quarter) == (None, None)
+
+
+# Issues created in Q2; every other issue gets created()'s default, Jan 2.
+APRIL = {103: "2026-04-02", 105: "2026-04-07", 106: "2026-04-08", 107: "2026-04-14"}
+
+
+def created(world, days, default="2026-01-02"):
+    """Give every issue in the world's dump a `created_at`: `days` maps an iid
+    to its day, the rest get `default`."""
+    dump = world.parent / "dump.json"
+    meta = json.loads(dump.read_text())
+    for record in meta["history"]:
+        record["created_at"] = f"{days.get(record['iid'], default)}T09:00:00.000Z"
+    dump.write_text(json.dumps(meta))
+
+
+def test_opened_issues_by_iso_week(quarter_world):
+    """#103 on Apr 2 (W14), #105 and #106 on Apr 7 and 8 (W15), #107 on Apr 14
+    (W16); closes are Bob's #13 (W14) and Alice's #8 (W15)."""
+    created(quarter_world, APRIL)
+    q = make(quarter_world, "2026-Q2")
+    assert [w.opened for w in q.weeks] == [1, 2, 1]
+    assert (q.total.opened, q.total.closed) == (4, 2)
+    assert q.net_scope == 2
+
+
+def test_open_work_can_shrink(quarter_world):
+    created(quarter_world, {103: "2026-04-02"})
+    q = make(quarter_world, "2026-Q2")
+    assert [w.opened for w in q.weeks] == [1, 0, 0]
+    assert q.net_scope == -1
+
+
+def test_a_dump_without_creation_days_counts_no_opened(quarter_world):
+    q = make(quarter_world, "2026-Q2")  # the world's dump has no created_at
+    assert [w.opened for w in q.weeks] == [None] * 3
+    assert q.total.opened is None and q.net_scope is None
+
+
+def test_a_dump_missing_some_creation_days_counts_no_opened(quarter_world):
+    """A partial count would undercount what opened: all or nothing."""
+    created(quarter_world, APRIL)
+    dump = quarter_world.parent / "dump.json"
+    meta = json.loads(dump.read_text())
+    del meta["history"][0]["created_at"]
+    dump.write_text(json.dumps(meta))
+    q = make(quarter_world, "2026-Q2")
+    assert [w.opened for w in q.weeks] == [None] * 3
+    assert q.net_scope is None
+
+
+def test_a_week_outside_the_dump_has_no_opened_count(world):
+    """Weeks starting before Jan 20 are outside the dump, as for closes. Every
+    issue was created Jan 2, so the counted weeks open nothing and close 9."""
+    created(world, {})
+    q = make(world, "2026-Q1")
+    assert [w.opened for w in q.weeks[:4]] == [None] * 4
+    assert q.total.opened == 0
+    assert q.net_scope == -9
+
+
+def test_the_previous_quarter_counts_opened_too(world):
+    """20 issues in the dump (#1-#13 closed, #101-#107 open); 4 created in
+    April, so 16 opened in Q1."""
+    created(world, APRIL)
+    since(world, "2026-01-01")
+    prev = make(world, "2026-Q2").previous
+    assert (prev.opened, prev.closed) == (16, 11)
+
+
+def test_the_history_figures_for_the_quarter_so_far(quarter_world):
+    """The latest reading is Apr 19, so Q2 through Apr 19: the pace and net
+    scope the report shows."""
+    created(quarter_world, APRIL)
+    config = load_config(quarter_world)
+    board, money = load_board(config.board_dump), load_money(config.budgie_project)
+    got = quarter_to_date(board, money, FETCH_DAY)
+    assert got["pace"] == pytest.approx(285 / 7 / (7.968 * 95 / 7))
+    assert got["net_scope"] == 2
+
+
+def test_outside_the_budgie_year_there_are_no_history_figures(quarter_world):
+    config = load_config(quarter_world)
+    board = load_board(config.board_dump)
+    money = replace(load_money(config.budgie_project), readings={})
+    got = quarter_to_date(board, money, date(2027, 2, 1))
+    assert got == {"pace": None, "net_scope": None}
+
+
+def test_without_a_dump_only_the_pace_is_known(quarter_world):
+    money = load_money(load_config(quarter_world).budgie_project)
+    got = quarter_to_date(None, money, FETCH_DAY)
+    assert got["pace"] == pytest.approx(285 / 7 / (7.968 * 95 / 7))
+    assert got["net_scope"] is None
+
+
+def plan_readings(world, through_week):
+    """Rewrite weekly.csv so Alice and Bob book exactly what plan.csv plans,
+    read every Sunday from week 1 through `through_week` (Budgie's own plan
+    hours, so the test does no calendar arithmetic of its own)."""
+    snap = load_snapshot(world.parent / "fy26")
+    lines = ["name,week,hours_to_date"]
+    for name in ("Alice", "Bob"):
+        for n in range(1, through_week + 1):
+            hours = snap.plan.allocated_hours(name, snap.span, through=week(n))
+            lines.append(f"{name},{n},{hours}")
+    (world.parent / "fy26" / "weekly.csv").write_text("\n".join(lines) + "\n")
+
+
+def test_a_team_booking_to_plan_has_a_pace_of_one(quarter_world):
+    """Q2 starts on a Wednesday. Readings to Sunday Apr 5 interpolate booked
+    hours by calendar day while the plan counts working days, so reading the
+    plan at the same Sundays is what keeps an on-plan team at exactly 1."""
+    plan_readings(quarter_world, 14)
+    config = load_config(quarter_world)
+    board, money = load_board(config.board_dump), load_money(config.budgie_project)
+    assert money.as_of == week(14)
+    assert quarter_to_date(board, money, FETCH_DAY)["pace"] == pytest.approx(1.0)
+
+
+def test_a_plan_without_allocations_is_still_planned(quarter_world):
+    """Budgie plans from plan.csv alone when there is no allocations.csv."""
+    (quarter_world.parent / "fy26" / "allocations.csv").unlink()
+    p = make(quarter_world, "2026-Q2").position
+    assert p.planned_quarter == pytest.approx(7.968 * 95 / 7)

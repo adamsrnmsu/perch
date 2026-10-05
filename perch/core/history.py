@@ -24,8 +24,12 @@ def rows_for(
     rollup: Rollup,
     accuracy: list[PersonAccuracy] = (),
     left: float | None = None,
+    quarter: dict | None = None,
 ) -> list[dict]:
-    """This run's rows; `left` is the team's planned hours left (for `perch cut`)."""
+    """This run's rows; `left` is the team's planned hours left (for `perch cut`),
+    `quarter` the quarter so far's `pace` and `net_scope`
+    (`quarterly.quarter_to_date`)."""
+    quarter = quarter or {}
     out: list[dict] = [
         {
             "kind": "person",
@@ -67,6 +71,8 @@ def rows_for(
             "budget": rollup.budget,
             "left": left,
             "signal": rollup.signal.label if rollup.signal else None,
+            "pace": quarter.get("pace"),
+            "net_scope": quarter.get("net_scope"),
         }
     )
     return out

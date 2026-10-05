@@ -108,7 +108,8 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `core/accuracy.py` -- by label is MODELLED, by person is measured and refuses
   below 50% coverage. Keep those two words honest in every output.
 - `core/history.py` -- week-keyed history.jsonl; re-running replaces the week.
-  The team row carries `budget`, `left` and `signal` for `perch cut`.
+  The team row carries `budget`, `left` and `signal` for `perch cut`, and
+  `pace` and `net_scope` (the quarter so far).
 - `core/cut.py` -- `perch cut`: before → after for a what-if (`money.what_if`,
   Budgie's `Snapshot.what_if` underneath) or since the last recorded week.
   Shows the gap and each milestone's open work; never orders issues.
@@ -126,7 +127,13 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   `evaluate`; booked hours interpolate readings like Budgie's `monthly`.
   Team level only: names appear only in staffing changes. Quarters are
   Budgie's `YearSpan.quarters` (fiscal when the Budgie project sets
-  `year_start`), named `2026-Q3` or `FY27-Q1`.
+  `year_start`), named `2026-Q3` or `FY27-Q1`. Pace is booked over planned
+  hours (`Money.team_planned` reads the plan on the reading days, as booked
+  hours are read, or a mid-week window inflates it); scope is issues opened
+  (`created_on`) against closed per ISO week, None for every week when any
+  issue lacks a creation day. Both in neutral words: the draft goes to
+  funders. `quarter_to_date` gives `perch board` the same two figures for
+  history.jsonl without the forecast.
 - `core/report_mail.py` -- a `Quarter` as markdown and as an `.eml` draft
   (multipart/alternative, `X-Unsent: 1`, table HTML with inline styles only).
 - `core/command.py` -- the TUI command line's grammar: `parse(text, projects,
