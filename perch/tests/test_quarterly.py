@@ -6,6 +6,7 @@ team books 15/7 h a day from Mar 22 to Apr 19, and $1,250/7 a day.
 """
 
 import json
+from dataclasses import replace
 from datetime import date
 
 import pytest
@@ -380,3 +381,27 @@ def test_a_fiscal_quarter_report_is_named_and_dated_by_the_span():
         date(2026, 10, 1),
     )
     assert "FY27-Q1 runs Oct 1 – Dec 31" in render_md(q)
+
+
+def test_pace_is_hours_booked_against_hours_planned(quarter_world):
+    """Apr 1-19 holds 13 working days of 7.968 h. Alice and Bob are both
+    planned at 0.5 (Bob's cut is May 1), so 2 x 0.5 x 13 x 7.968 = 103.584 h
+    planned; booked is the 19 days at 15/7 h."""
+    p = make(quarter_world, "2026-Q2").position
+    assert p.planned_quarter == pytest.approx(13 * 7.968)
+    assert p.booked_quarter == pytest.approx(285 / 7)
+
+
+def test_without_allocations_nothing_is_planned(quarter_world):
+    config = load_config(quarter_world)
+    board = load_board(config.board_dump)
+    money = replace(load_money(config.budgie_project), pace={})
+    q = build(board, money, {}, None, config.people, "2026-Q2", FETCH_DAY, "apollo")
+    assert q.position.planned_quarter is None
+    assert q.position.booked_quarter == pytest.approx(285 / 7)
+
+
+def test_readings_that_stop_before_the_quarter_give_no_pace(world):
+    # The readings end Apr 19, before Q3: neither figure, not planned alone.
+    p = make(world, "2026-Q3").position
+    assert (p.booked_quarter, p.planned_quarter) == (None, None)

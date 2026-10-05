@@ -67,6 +67,10 @@ class Position:
     p90: float
     signal: SignalResult | None
     non_labor: float  # the year's cost lines, in the forecast, not in spent
+    # Hours, start of the quarter through read_to; None without readings in it.
+    booked_quarter: float | None = None
+    # Budgie's pace lines over the same days; None also without allocations.
+    planned_quarter: float | None = None
 
 
 @dataclass(frozen=True)
@@ -177,6 +181,15 @@ def _team(money: Money, start: date, end: date, cost: bool) -> float:
     )
 
 
+def _plan(money: Money, start: date, read_to: date) -> float | None:
+    """Hours Budgie's pace lines plan from `start` through `read_to`, summed
+    over the allocated people; None when nobody is allocated."""
+    if not money.pace:
+        return None
+    before = start - timedelta(days=1)
+    return sum(money.planned(name, before, read_to) for name in money.pace)
+
+
 def _position(
     money: Money, start: date, end: date, through: date, read_to: date | None
 ) -> Position:
@@ -196,10 +209,9 @@ def _position(
     )
     budget = budget_on(end)
     year_start = money.span.first
+    read = read_to is not None and read_to >= start
     return Position(
-        spent_quarter=_team(money, start, read_to, cost=True)
-        if read_to and read_to >= start
-        else None,
+        spent_quarter=_team(money, start, read_to, cost=True) if read else None,
         spent_year=_team(money, year_start, read_to, cost=True) if read_to else None,
         budget_start=budget_on(start),
         budget_end=budget,
@@ -210,6 +222,8 @@ def _position(
         p90=sim.percentile(90),
         signal=None if budget is None else evaluate(sim, budget),
         non_labor=money.non_labor,
+        booked_quarter=_team(money, start, read_to, cost=False) if read else None,
+        planned_quarter=_plan(money, start, read_to) if read else None,
     )
 
 
