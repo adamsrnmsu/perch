@@ -194,6 +194,7 @@ def test_review_without_a_pulled_board_says_how_to_pull_it(tmp_path):
         ("estimate", ("estimate", "SPEC", "--history", "DUMP")),
         ("stats", ("stats", "--from", "DUMP")),
         ("report", ("report", "--since", "SPEC")),
+        ("status", ("status",)),
         ("push", ("push", "SPEC")),
         ("pull", ("pull", "grp/apollo", "--base")),
     ],
@@ -250,7 +251,15 @@ def test_gb_offline_subs_keep_legit_args(tmp_path):
 
 
 def test_offline_subs_are_the_ones_walk_may_run():
-    assert steps.GB_OFFLINE == ("show", "report", "stats", "graph", "estimate", "plan")
+    assert steps.GB_OFFLINE == (
+        "show",
+        "report",
+        "stats",
+        "graph",
+        "estimate",
+        "plan",
+        "status",
+    )
     assert set(steps.GB_SUBS) == {*steps.GB_OFFLINE, "push", "pull"}
 
 
