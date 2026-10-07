@@ -144,7 +144,7 @@ def pull_fix(project: str, spec: Path) -> str:
 
 
 # Read only pulled files: what /walk may run, with no GitLab in reach.
-GB_OFFLINE = ("show", "report", "stats", "graph", "estimate", "plan")
+GB_OFFLINE = ("show", "report", "stats", "graph", "estimate", "plan", "status")
 # push and pull need GitLab: the lead runs them on a connected machine.
 GB_SUBS = (*GB_OFFLINE, "push", "pull")
 # Flags that move an offline sub's input: --from "" would read GitLab.
@@ -156,9 +156,10 @@ def gb(
 ) -> Step:
     """gitboard for one project, run from its checkout with the target filled in.
 
-    The offline six read the pulled spec, its .base, the board dump (the same
-    data the money came from) and the snapshot log. `sync` and `migrate` are
-    not here on purpose.
+    The offline seven read the pulled spec, its .base, the board dump (the same
+    data the money came from) and the snapshot log. `status` takes no target:
+    it is every pulled board in the checkout, not only this project's. `sync`
+    and `migrate` are not here on purpose.
     """
     if sub not in GB_SUBS:
         raise ValueError(f"{sub!r} is not one of {', '.join(GB_SUBS)}")
@@ -180,6 +181,7 @@ def gb(
         "estimate": (spec, "--history", dump),
         "stats": ("--from", dump),
         "report": ("--since", spec),
+        "status": (),
         "push": (spec,),
         "pull": (config.gitlab_project, "--base"),
     }[sub]

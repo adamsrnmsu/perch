@@ -1,7 +1,7 @@
 ---
 description: Walk one project's Monday picture (money, board, watch) and stage the follow-ups.
 argument-hint: <project>
-allowed-tools: Bash(perch brief:*), Bash(perch cut:*), Bash(perch gb show:*), Bash(perch gb report:*), Bash(perch gb stats:*), Bash(perch gb graph:*), Bash(perch gb estimate:*), Bash(perch gb plan:*), Read, Edit(/@GITBOARD_DIR@/boards/*.yaml)
+allowed-tools: Bash(perch brief:*), Bash(perch cut:*), Bash(perch gb show:*), Bash(perch gb report:*), Bash(perch gb stats:*), Bash(perch gb graph:*), Bash(perch gb estimate:*), Bash(perch gb plan:*), Bash(perch gb status:*), Read, Edit(/@GITBOARD_DIR@/boards/*.yaml)
 ---
 
 You are walking the lead through project `$ARGUMENTS`: money, then board, then
