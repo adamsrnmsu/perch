@@ -15,7 +15,7 @@ from rich.table import Table
 from rich.text import Text
 
 from perch.core import blocks as bk
-from perch.core.steps import GB_SUBS, MONDAY_STEPS
+from perch.core.steps import BG_SUBS, GB_SUBS, MONDAY_STEPS
 
 console = Console()
 
@@ -187,6 +187,7 @@ _SECTIONS = {
         "review",
         "brief",
         "gb",
+        "bg",
         "walk",
         "watch",
         "quarterly",
@@ -683,6 +684,21 @@ def gb(sub, project, args):
     from perch.core import steps
 
     _one(project, lambda home, name, config: steps.gb(home, name, config, sub, args))
+
+
+# No help option of our own: `perch bg SUB --help` is Budgie's help.
+@cli.command(context_settings={"ignore_unknown_options": True, "help_option_names": []})
+@click.argument("sub", type=click.Choice(BG_SUBS))
+@_project_option
+@click.argument("args", nargs=-1, type=click.UNPROCESSED)
+def bg(sub, project, args):
+    """Budgie's monthly, hours, plan, scenario, assumptions, calibrate, doctor.
+
+    Run inside the project's budget dir; SUB --help is Budgie's.
+    """
+    from perch.core import steps
+
+    _one(project, lambda home, name, config: steps.bg(_bin_dir(), config, sub, args))
 
 
 @cli.command()

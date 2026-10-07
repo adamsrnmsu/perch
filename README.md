@@ -66,6 +66,7 @@ perch watch -p apollo          # private: anyone out of line with their own last
 perch review -p apollo         # Claude's /board on the pulled board, told the budget picture
 perch brief -p apollo          # everything /walk reads: freshness, team, people, forecast, watch, follow-ups
 perch gb plan -p apollo        # gitboard for the project, from its checkout (show, plan, ...; push/pull need GitLab)
+perch bg monthly -p apollo     # Budgie's monthly, hours, plan, scenario, assumptions, calibrate, doctor (args pass through)
 perch walk -p apollo           # Claude walks you through money, board and watch (/walk)
 perch detail -p apollo         # burn, plan and forecast by month (labor only)
 perch page -p apollo           # all of it as one HTML file: projects/apollo/page.html

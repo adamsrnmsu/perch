@@ -22,7 +22,7 @@ is one GitLab project + one Budgie project + one charge code, picked with
 perch --help  # running the apps: init [--year Y --year-start MM-01],
               # projects, doctor; status, hours, fetch,
               # board, weekly, digest, emails, monday [--all | --from STEP];
-              # accuracy, budget, forecast, cut, review, brief, gb, walk,
+              # accuracy, budget, forecast, cut, review, brief, gb, bg, walk,
               # watch, quarterly, detail, page, events [--days N], tape [--days N],
               # alerts (the last three: -p NAME or --all)
               # [--all], tui, suite
@@ -60,7 +60,9 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   carry-on-past-a-failure loop. `review` opens `claude "/board ..."` in the
   gitboard checkout with `trend.team_lines` and `people_lines` (latest
   week, name order, hours only: no rate, cost or accuracy) appended. Never
-  the watch. `gb` runs gitboard with the project's target filled in;
+  the watch. `bg SUB` runs Budgie's monthly, hours, plan, scenario,
+  assumptions, calibrate or doctor inside the project (args pass through,
+  `--project` refused; TUI: `BG MONTHLY`). `gb` runs gitboard with the project's target filled in;
   `GB_OFFLINE` (read only pulled files) is all `/walk` may run, `push` and
   `pull` need GitLab. `walk` opens `claude "/walk NAME"` in the workspace.
 - `core/brief.py` -- `perch brief`: what `/walk` reads, team level only

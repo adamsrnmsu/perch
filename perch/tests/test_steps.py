@@ -283,3 +283,23 @@ def test_gb_refuses_an_unknown_sub_and_a_missing_gitlab_project(tmp_path):
     _, bare = apollo(tmp_path / "bare", gitlab=False)
     with pytest.raises(WorkspaceError, match="gitlab_project"):
         steps.gb(home, "apollo", bare, "show")
+
+
+def test_bg_runs_budgie_in_the_project_with_args_passed_through(tmp_path):
+    _, config = apollo(tmp_path)
+    step = steps.bg(BIN, config, "monthly", ("--year", "2026"))
+    assert step.argv == ("/venv/bin/budgie", "monthly", "--year", "2026")
+    assert (step.name, step.cwd) == ("bg monthly", config.budgie_project)
+
+
+@pytest.mark.parametrize("args", [("--project", "x"), ("--project=x",)])
+def test_bg_refuses_args_that_pick_another_project(tmp_path, args):
+    _, config = apollo(tmp_path)
+    with pytest.raises(ValueError, match="--project"):
+        steps.bg(BIN, config, "plan", args)
+
+
+def test_bg_refuses_an_unknown_sub(tmp_path):
+    _, config = apollo(tmp_path)
+    with pytest.raises(ValueError, match="init"):
+        steps.bg(BIN, config, "init")

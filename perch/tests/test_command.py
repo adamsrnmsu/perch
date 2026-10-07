@@ -107,3 +107,15 @@ def test_detail_events_alerts_grammar():
             run(bad)
     with pytest.raises(ValueError, match="ALL works with"):
         run("ALL DET")
+
+
+def test_bg_takes_a_budgie_sub_and_passes_the_rest():
+    assert run("BG monthly --year 2026").args == (
+        "bg", "-p", "apollo", "monthly", "--year", "2026",
+    )  # fmt: skip
+    assert run("apollo bg PLAN").args == ("bg", "-p", "apollo", "plan")
+    for bad in ("BG", "BG init"):
+        with pytest.raises(ValueError, match="bg takes a sub"):
+            run(bad)
+    with pytest.raises(ValueError, match="ALL works"):
+        run("ALL BG monthly")

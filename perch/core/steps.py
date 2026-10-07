@@ -267,6 +267,19 @@ def budget(bin_dir: Path, config: Config) -> Step:
     return _budgie(bin_dir, config, "budget", "status")
 
 
+# Budgie's read-only tables; its init/emails/forecast/status have their own steps.
+BG_SUBS = ("monthly", "hours", "plan", "scenario", "assumptions", "calibrate", "doctor")
+
+
+def bg(bin_dir: Path, config: Config, sub: str, args: tuple[str, ...] = ()) -> Step:
+    """Budgie `SUB` for one project: it runs inside it, so --project is perch's."""
+    if sub not in BG_SUBS:
+        raise ValueError(f"{sub!r} is not one of {', '.join(BG_SUBS)}")
+    if any(a.split("=", 1)[0] == "--project" for a in args):
+        raise ValueError(f"bg {sub}: perch fills in --project")
+    return _budgie(bin_dir, config, f"bg {sub}", sub, *args)
+
+
 def hours(editor: str, config: Config) -> Step:
     """$EDITOR may carry flags (`code -w`), so it is split like a shell would."""
     path = config.budgie_project / "weekly.csv"
