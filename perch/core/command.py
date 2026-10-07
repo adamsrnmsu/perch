@@ -75,6 +75,12 @@ def _cut(tokens: list[str]) -> list[str]:
 
 
 def _how(command: str, tokens: list[str]) -> list[str]:
+    if command == "bg":  # BG SUB [ARGS...]: Budgie's own table, args passed through
+        from perch.core.steps import BG_SUBS
+
+        if not tokens or tokens[0].lower() not in BG_SUBS:
+            raise ValueError(f"bg takes a sub: {', '.join(BG_SUBS)}")
+        return [tokens[0].lower(), *tokens[1:]]
     if command == "cut":
         return _cut(tokens)
     if command == "monday":
@@ -121,7 +127,7 @@ def parse(text: str, projects: Sequence[str], current: str | None) -> Command:
         raise ValueError(f"no command: try {', '.join(MNEMONICS)}")
     word = tokens.pop(0)
     command = MNEMONICS.get(word.upper())
-    if command is None and word.lower() in MNEMONICS.values():
+    if command is None and (word.lower() in MNEMONICS.values() or word.lower() == "bg"):
         command = word.lower()
     if command is None:
         raise ValueError(f"unknown command {word!r}: try {', '.join(MNEMONICS)}")

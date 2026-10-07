@@ -304,3 +304,19 @@ def test_gb_help_after_the_sub_goes_to_gitboard(tmp_path, monkeypatch):
     result = run("gb", "show", "-p", "apollo", "--help")
     assert result.exit_code == 0, result.output
     assert ran[0].argv[-1] == "--help"
+
+
+def test_bg_runs_one_budgie_step_with_passthrough_args(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(home.root)
+    ran = recorder(monkeypatch)
+    result = run("bg", "monthly", "-p", "apollo", "--year", "2026")
+    assert result.exit_code == 0, result.output
+    assert [s.name for s in ran] == ["bg monthly"]
+    assert ran[0].argv[-3:] == ("monthly", "--year", "2026")
+
+
+def test_bg_refuses_init(tmp_path, monkeypatch):
+    home = build_home(tmp_path, "apollo")
+    monkeypatch.chdir(home.root)
+    assert run("bg", "init", "-p", "apollo").exit_code == 2
