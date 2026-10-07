@@ -68,6 +68,7 @@ perch brief -p apollo          # everything /walk reads: freshness, team, people
 perch gb plan -p apollo        # gitboard for the project, from its checkout (show, plan, ...; push/pull need GitLab)
 perch walk -p apollo           # Claude walks you through money, board and watch (/walk)
 perch detail -p apollo         # burn, plan and forecast by month (labor only)
+perch page -p apollo           # all of it as one HTML file: projects/apollo/page.html
 perch events --all             # next 30 days: budget, staffing, milestones, quarter ends, holidays
 perch tape --all               # what changed lately, newest first
 perch alerts --all             # your alert rules and whether each is true now

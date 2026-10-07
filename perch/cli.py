@@ -191,6 +191,7 @@ _SECTIONS = {
         "watch",
         "quarterly",
         "detail",
+        "page",
         "events",
         "tape",
         "alerts",
@@ -224,7 +225,6 @@ def board(config_path, project, seed, iterations, no_history):
     """Step 2: cost to clear the open board, against the hours and budget left."""
     from perch.core.accuracy import by_person
     from perch.core.history import record, rows_for
-    from perch.core.join import notes, person_rows, rollup
     from perch.core.quarterly import quarter_to_date
 
     try:
@@ -233,6 +233,31 @@ def board(config_path, project, seed, iterations, no_history):
         )
     except (OSError, TypeError, ValueError) as exc:
         raise click.ClickException(str(exc)) from exc
+
+    out, rows, summary = _board_blocks(
+        config, the_board, money, estimates, rates, iterations, seed
+    )
+    _show(out)
+
+    if not no_history:
+        accuracy = by_person(estimates, the_board, config.people, money)
+        record(
+            config.history,
+            the_board.fetched_on,
+            rows_for(
+                rows,
+                rates,
+                summary,
+                accuracy if estimates else (),
+                left=sum(money.left.values()),
+                quarter=quarter_to_date(the_board, money, the_board.fetched_on),
+            ),
+        )
+
+
+def _board_blocks(config, the_board, money, estimates, rates, iterations, seed):
+    """`perch board`'s report, and the rows and rollup history records."""
+    from perch.core.join import notes, person_rows, rollup
 
     rows = person_rows(the_board, estimates, rates, config.people, money)
     summary = rollup(rows, money, iterations=iterations, seed=seed)
@@ -293,22 +318,7 @@ def board(config_path, project, seed, iterations, no_history):
         bk.text(f"! {note}", "warn")
         for note in notes(the_board, rows, config.people, money)
     ]
-    _show(out)
-
-    if not no_history:
-        accuracy = by_person(estimates, the_board, config.people, money)
-        record(
-            config.history,
-            the_board.fetched_on,
-            rows_for(
-                rows,
-                rates,
-                summary,
-                accuracy if estimates else (),
-                left=sum(money.left.values()),
-                quarter=quarter_to_date(the_board, money, the_board.fetched_on),
-            ),
-        )
+    return out, rows, summary
 
 
 def _rates_blocks(rates) -> list[dict]:
@@ -345,8 +355,6 @@ def _rates_blocks(rates) -> list[dict]:
 @_project_option
 def accuracy(config_path, project):
     """How estimates compared with what the work took."""
-    from perch.core.accuracy import by_label, by_person
-
     try:
         config, the_board, money, estimates, rates = _load(
             _config_path(config_path, project)
@@ -358,41 +366,55 @@ def accuracy(config_path, project):
             "No `estimates:` file in perch.yaml, so there is nothing to compare."
         )
 
-    labels = Table(title="By label — estimated vs MODELLED hours")
-    for head in ("Label", "Issues", "Open", "Estimated", "Modelled", "Ratio", "$"):
-        labels.add_column(head, justify="left" if head == "Label" else "right")
-    for a in by_label(estimates, the_board, rates, config.people, money):
-        ratio = "—" if a.ratio is None else f"{a.ratio:.2f}x"
-        labels.add_row(
+    _show(_accuracy_blocks(config, the_board, money, estimates, rates))
+
+
+def _accuracy_blocks(config, the_board, money, estimates, rates) -> list[dict]:
+    from perch.core.accuracy import by_label, by_person
+
+    labels = [
+        [
             a.label,
             str(a.issues),
             str(a.open),
             _hours(a.estimated),
             _hours(a.modelled),
-            ratio,
+            "—" if a.ratio is None else f"{a.ratio:.2f}x",
             f"{a.dollars:+,.0f}",
-        )
-    console.print(labels)
-
-    persons = Table(title="By person — booked vs estimated hours (measured)")
-    for head in ("Name", "Closed", "With estimate", "Booked", "Estimated", "Ratio"):
-        persons.add_column(head, justify="left" if head == "Name" else "right")
-    for p in by_person(estimates, the_board, config.people, money):
-        ratio = f"{p.ratio:.2f}x" if p.ratio is not None else "too few estimates"
-        persons.add_row(
+        ]
+        for a in by_label(estimates, the_board, rates, config.people, money)
+    ]
+    persons = [
+        [
             p.name,
             str(p.closed),
             f"{p.covered} ({p.coverage:.0%})",
             _hours(p.booked),
             _hours(p.estimated),
-            ratio,
-        )
-    console.print(persons)
-    console.print(
-        "[dim]Ratio is booked hours, scaled to the share of issues that had an "
-        "estimate, over those estimates. Below 50% coverage no ratio is shown. "
-        "Compare a person with their own earlier weeks, never with each other.[/dim]"
-    )
+            f"{p.ratio:.2f}x" if p.ratio is not None else "too few estimates",
+        ]
+        for p in by_person(estimates, the_board, config.people, money)
+    ]
+    return [
+        bk.table(
+            ["Label", "Issues", "Open", "Estimated", "Modelled", "Ratio", "$"],
+            labels,
+            title="By label — estimated vs MODELLED hours",
+            align=["l"] + ["r"] * 6,
+        ),
+        bk.table(
+            ["Name", "Closed", "With estimate", "Booked", "Estimated", "Ratio"],
+            persons,
+            title="By person — booked vs estimated hours (measured)",
+            align=["l"] + ["r"] * 5,
+        ),
+        bk.text(
+            "Ratio is booked hours, scaled to the share of issues that had an "
+            "estimate, over those estimates. Below 50% coverage no ratio is shown. "
+            "Compare a person with their own earlier weeks, never with each other.",
+            "dim",
+        ),
+    ]
 
 
 @cli.command()
@@ -1290,6 +1312,46 @@ def detail(project):
     except ValueError as exc:
         raise click.ClickException(str(exc)) from exc
     _show(detail_mod.blocks(detail_mod.build(name, sources.load(home, name))))
+
+
+@cli.command()
+@_project_option
+@click.option("--out", "out_path", default=None, help="Write here, not page.html.")
+def page(project, out_path):
+    """One HTML file: board, accuracy, the weeks recorded and the budget. Read only."""
+    from perch.core import detail as detail_mod
+    from perch.core import sources, trend
+
+    home = _home()
+    try:
+        name = home.select(project, Path.cwd())
+    except ValueError as exc:
+        raise click.ClickException(str(exc)) from exc
+    src = sources.load(home, name)
+    made = [
+        bk.heading(f"perch · {name}", 1),
+        bk.text(f"Made {date.today()} from local files.", "dim"),  # noqa: DTZ011 -- the lead's local date
+    ]
+    if src.board is not None:
+        try:
+            config, the_board, money, estimates, rates = _load(home.config_path(name))
+        except (OSError, TypeError, ValueError) as exc:
+            raise click.ClickException(str(exc)) from exc
+        made += [
+            bk.heading("The open board"),
+            *_board_blocks(config, the_board, money, estimates, rates, None, None)[0],
+        ]
+        if estimates:
+            made += [
+                bk.heading("Accuracy"),
+                *_accuracy_blocks(config, the_board, money, estimates, rates),
+            ]
+    if any(r["kind"] == "team" for r in src.rows):
+        made += [bk.heading("History"), trend.table(src.rows)]
+    made += detail_mod.blocks(detail_mod.build(name, src))
+    path = Path(out_path) if out_path else home.projects_dir / name / "page.html"
+    path.write_text(bk.to_html(made, f"perch · {name}"))
+    click.echo(f"Wrote {path}")
 
 
 @cli.command()

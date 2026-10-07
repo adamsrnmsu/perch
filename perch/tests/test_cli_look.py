@@ -95,3 +95,37 @@ def test_events_prints_a_span_note_once(tmp_path):
     home = build_home(tmp_path, "apollo")
     result = run(home, "events", "-p", "apollo", "--days", "366")
     assert result.output.count("roll the Budgie year") == 1
+
+
+def test_page_writes_one_html_file_and_records_nothing(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    folder = home.projects_dir / "apollo"
+    result = run(home, "page", "-p", "apollo")
+    assert result.exit_code == 0, result.output
+    page = (folder / "page.html").read_text()
+    for expected in (
+        "The open board",
+        "$100,000",
+        "MODELLED",
+        "2.08x",
+        "Detail · apollo",
+    ):
+        assert expected in page
+    assert "<h2>History</h2>" not in page  # no week recorded yet
+    assert not (folder / "history.jsonl").exists()
+
+    assert run(home, "board", "-p", "apollo").exit_code == 0
+    out = tmp_path / "lead.html"
+    assert run(home, "page", "-p", "apollo", "--out", str(out)).exit_code == 0
+    assert "<td>2026-W17</td><td>GOOD</td>" in out.read_text()
+
+
+def test_page_without_a_board_dump_shows_the_budget_only(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    folder = home.projects_dir / "apollo"
+    (folder / "dump.json").unlink()
+    result = run(home, "page", "-p", "apollo")
+    assert result.exit_code == 0, result.output
+    page = (folder / "page.html").read_text()
+    assert "Detail · apollo" in page and "no board dump yet" in page
+    assert "The open board" not in page and "Accuracy" not in page

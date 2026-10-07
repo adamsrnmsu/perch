@@ -9,6 +9,7 @@ in a terminal, cli.py's).
 
 from __future__ import annotations
 
+import html
 import json
 import math
 import os
@@ -205,3 +206,92 @@ def to_md(blocks: list[dict]) -> str:
         ) + _md(b)
         prev = b["block"]
     return out + "\n"
+
+
+_CSS = """
+:root { --fg: #1d1d1f; --bg: #fff; --dim: #6e6e73; --line: #d2d2d7;
+  --good: #1a7f37; --warn: #9a6700; --bad: #cf222e; --bar: #0969da; }
+@media (prefers-color-scheme: dark) { :root { --fg: #e6e6e6; --bg: #161618;
+  --dim: #9a9aa0; --line: #3a3a3e; --good: #3fb950; --warn: #d29922;
+  --bad: #f85149; --bar: #58a6ff; } }
+body { font: 15px/1.5 system-ui, sans-serif; color: var(--fg);
+  background: var(--bg); max-width: 60rem; margin: 2rem auto; padding: 0 16px; }
+table { border-collapse: collapse; margin: 1rem 0; display: block; overflow-x: auto; }
+th, td { padding: .25rem .75rem; border-bottom: 1px solid var(--line); }
+th { text-align: left; } .r { text-align: right; font-variant-numeric: tabular-nums; }
+caption { text-align: left; font-weight: 600; padding: .25rem 0; white-space: nowrap; }
+.figures { display: flex; flex-wrap: wrap; gap: .75rem; margin: 1rem 0; }
+.figure { border: 1px solid var(--line); border-radius: 6px; padding: .5rem .75rem; }
+.figure b { display: block; font-size: 1.2rem; }
+.bars div { display: flex; gap: .5rem; align-items: center; }
+.bars span:first-child { min-width: 10rem; }
+.bars i { display: inline-block; height: .8rem; background: var(--bar); }
+.good { color: var(--good); } .warn { color: var(--warn); }
+.bad { color: var(--bad); } .dim, small { color: var(--dim); }
+"""
+
+
+def _html(b: dict) -> str:
+    """One block as HTML. Every string is escaped: block text comes from files."""
+    e = html.escape
+    kind = b["block"]
+    tone = f' class="{b["tone"]}"' if b.get("tone") else ""
+    if kind == "heading":
+        return f"<h{b['level']}>{e(b['text'])}</h{b['level']}>"
+    if kind == "text":
+        return f"<p{tone}>{e(b['text'])}</p>"
+    if kind == "list":
+        return "<ul>" + "".join(f"<li>{e(i)}</li>" for i in b["items"]) + "</ul>"
+    if kind == "figures":
+        tiles = "".join(
+            f'<div class="figure {f.get("tone", "")}">{e(f["label"])}'
+            f"<b>{e(f['value'])}</b>"
+            + (f"<small>{e(f['note'])}</small>" if "note" in f else "")
+            + "</div>"
+            for f in b["items"]
+        )
+        return f'<div class="figures">{tiles}</div>'
+    if kind == "table":
+        align = b.get("align") or ["l"] * len(b["columns"])
+        cls = ["" if a != "r" else ' class="r"' for a in align]
+
+        def row(cells, tag):
+            return (
+                "<tr>"
+                + "".join(
+                    f"<{tag}{c}>{e(v)}</{tag}>" for v, c in zip(cells, cls, strict=True)
+                )
+                + "</tr>"
+            )
+
+        caption = f"<caption>{e(b['title'])}</caption>" if b.get("title") else ""
+        return (
+            f"<table>{caption}<thead>{row(b['columns'], 'th')}</thead><tbody>"
+            + "".join(row(r, "td") for r in b["rows"])
+            + "</tbody></table>"
+        )
+    top = max((n for _, n in b["items"]), default=0) or 1  # bars
+    title = f"<h3>{e(b['title'])}</h3>" if b.get("title") else ""
+    unit = f" {e(b['unit'])}" if b.get("unit") else ""
+    return (
+        f'{title}<div class="bars">'
+        + "".join(
+            f"<div><span>{e(label)}</span>"
+            f'<i style="width:{max(n, 0) / top * 20:.2f}rem"></i>'
+            f"<span>{n:g}{unit}</span></div>"
+            for label, n in b["items"]
+        )
+        + "</div>"
+    )
+
+
+def to_html(blocks: list[dict], title: str) -> str:
+    """A self-contained page for a block list: inline CSS, no script, nothing
+    fetched, so the file opens anywhere."""
+    body = "\n".join(_html(b) for b in blocks)
+    return (
+        '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        f"<title>{html.escape(title)}</title><style>{_CSS}</style></head>"
+        f"<body>\n{body}\n</body></html>\n"
+    )
