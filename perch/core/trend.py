@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from itertools import pairwise
 
+from perch.core import blocks as bk
 from perch.core.history import figures
 
 WINDOW = 8  # weeks, as `perch weekly` counts them
@@ -131,3 +132,24 @@ def team_lines(rows: list[dict]) -> list[str]:
         + ("" if paces[week] is None else f"  pace {_share(paces[week])}")
         for week, value in series(rows, "headroom").items()
     ]
+
+
+def table(rows: list[dict], window: int = WINDOW) -> dict:
+    """The team row of the last `window` recorded weeks as a table block."""
+    team = sorted((r for r in rows if r["kind"] == "team"), key=lambda r: r["week"])
+    return bk.table(
+        ["Week", "Signal", "Budget", "Spent", "Headroom", "Pace"],
+        [
+            [
+                r["week"],
+                (r.get("signal") or "—").upper(),
+                _money(r.get("budget")),
+                _money(r.get("spent_cost")),
+                _money(r.get("headroom")),
+                _share(r.get("pace")),
+            ]
+            for r in team[-window:]
+        ],
+        title=f"The team by week, last {window} recorded",
+        align=["l", "l", "r", "r", "r", "r"],
+    )

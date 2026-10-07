@@ -137,3 +137,22 @@ def test_markup_in_strings_prints_literally_in_the_terminal(monkeypatch):
         "[/b]",
     ):
         assert lit in out
+
+
+def test_to_html_escapes_every_string_and_keeps_alignment_and_tone():
+    page = b.to_html(
+        [
+            *GOOD,
+            b.text("<script>alert(1)</script>", tone="bad"),
+            b.table(["<th>"], [["a & b"]], title="<cap>"),
+        ],
+        "x <y>",
+    )
+    assert "<script>" not in page
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
+    assert '<p class="bad">' in page
+    assert "<title>x &lt;y&gt;</title>" in page
+    assert "<caption>&lt;cap&gt;</caption>" in page and "a &amp; b" in page
+    assert '<td class="r">4.0</td>' in page  # align "r" survives
+    assert "width:20.00rem" in page and "width:15.00rem" in page  # 2 and 1.5 of 2
+    assert "<link" not in page and " src=" not in page  # nothing fetched

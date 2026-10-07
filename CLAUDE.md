@@ -23,7 +23,7 @@ perch --help  # running the apps: init [--year Y --year-start MM-01],
               # projects, doctor; status, hours, fetch,
               # board, weekly, digest, emails, monday [--all | --from STEP];
               # accuracy, budget, forecast, cut, review, brief, gb, walk,
-              # watch, quarterly, detail, events [--days N], tape [--days N],
+              # watch, quarterly, detail, page, events [--days N], tape [--days N],
               # alerts (the last three: -p NAME or --all)
               # [--all], tui, suite
 perch tui     # starts perch suite (hidden tmux, P/B/G hop instantly) when
@@ -76,10 +76,10 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `core/blocks.py` -- the PI_BLOCKS contract
   (`docs/superpowers/specs/2026-10-02-tui-blocks-design.md`): with `PI_BLOCKS=1`
   a command prints one JSON line per block instead of text. One builder per
-  report, rendered three ways: rich in the terminal (`cli._print_block`),
-  widgets in the TUI, markdown (`to_md`) and the JSON lines. `parse` rejects
-  anything off-contract (the TUI shows that line as text). Strings are never
-  rich markup.
+  report, rendered four ways: rich in the terminal (`cli._print_block`),
+  widgets in the TUI, markdown (`to_md`), HTML (`to_html`) and the JSON lines.
+  `parse` rejects anything off-contract (the TUI shows that line as text).
+  Strings are never rich markup.
 - `core/doctor.py` -- `Check(ok, what, fix)` values for `perch doctor`.
 - `core/status.py` -- `perch status` and the TUI's step cells: done, stale,
   todo, failed or error per Monday step this ISO week, read only from the files
@@ -149,6 +149,10 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 - `core/detail.py` -- the detail pane's data: headroom history, `Money.burn`
   (Budgie's `burn_series`: labor only, spend interpolated between readings, plan
   through `planned_through`) and per-input freshness. No new arithmetic.
+- `perch page` (cli.py) -- one self-contained HTML file: board and accuracy
+  (when there is a dump), the team by week (`trend.table`) and the detail
+  blocks, rendered by `blocks.to_html` (every string escaped, inline CSS, no
+  script). Writes no history; never the watch.
 - `core/events.py` -- `perch events`: next 30 days, one table (budget, staffing,
   milestone, quarter end, year end, holiday). Overdue milestones stay in;
   `ALL` collapses identical rows into `all (N)`; Mon-Fri holidays only.
@@ -165,7 +169,8 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   Read only, team level, nothing sent.
 - `core/trend.py` -- read-only arithmetic over the team rows of history.jsonl:
   `spark`, `series`, `change` (last two recorded weeks: signal flip, deltas),
-  `describe` and `team_lines`. No person row, no simulation.
+  `describe`, `team_lines` and `table` (the team by week, for `perch page`).
+  No person row, no simulation.
 - `tui.py` -- `perch tui` (Textual): the projects table from what is on disk
   (the last recorded team row, `status` step cells, the watch's flag count only)
   and keys that run `perch <command> -p NAME` through `_spawn`, which tests fake.
