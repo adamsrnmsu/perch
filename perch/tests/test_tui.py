@@ -244,15 +244,17 @@ def test_a_key_while_a_command_runs_says_busy(tmp_path, monkeypatch):
         release.set()
 
 
-def test_perch_tui_outside_a_workspace_says_how_to_start(tmp_path, monkeypatch):
+def test_perch_tui_outside_a_checkout_says_make_install(tmp_path, monkeypatch):
     from click.testing import CliRunner
 
+    import perch
     from perch.cli import cli
 
+    monkeypatch.setattr(perch, "__file__", str(tmp_path / "site" / "perch" / "__init__.py"))
     monkeypatch.chdir(tmp_path)
     result = CliRunner().invoke(cli, ["tui", "--no-suite"])
     assert result.exit_code == 1
-    assert "perch-home.yaml" in result.output
+    assert "run make install in your perch clone" in result.output
 
 
 def test_a_corrupt_history_is_an_error_row(tmp_path):
@@ -401,16 +403,31 @@ def test_suite_map_points_each_app_at_the_selected_project(tmp_path):
         "argv": [str(BIN / "budgie"), "tui"],
         "project": "apollo",
     }
+    gb = home.gitboard_dir
+    board = home.board_dir("apollo")
     assert m["gitboard"] == {
-        "cwd": str(home.gitboard_dir),
-        "argv": ["gitboard", "tui", "grp/apollo"],
+        "cwd": str(gb),
+        "argv": [
+            "env",
+            f"PYTHONPATH={gb / 'src'}",
+            str(gb / ".venv/bin/python"),
+            "-m",
+            "gitboard.cli",
+            "tui",
+            "grp/apollo",
+            "--db",
+            str(board / "snapshots.jsonl"),
+            "--boards-dir",
+            str(board),
+        ],
         "project": "apollo",
     }
 
 
 def test_suite_map_without_a_gitlab_project_lets_gitboard_choose(tmp_path):
     home = build_home(tmp_path, "apollo", gitlab=False)
-    assert tui.suite_map(home, "apollo")["gitboard"]["argv"] == ["gitboard", "tui"]
+    argv = tui.suite_map(home, "apollo")["gitboard"]["argv"]
+    assert argv[argv.index("tui") + 1] == "--db"
 
 
 def test_b_and_g_set_pi_suite_and_exit_with_the_target(tmp_path, monkeypatch):
@@ -1091,7 +1108,7 @@ def test_review_without_a_pulled_board_toasts_and_keeps_the_screen(
         await pilot.press("enter")
         await settle(app, pilot)
         assert suspended == []
-        assert any("gitboard pull grp/apollo" in n for n in _notices(app))
+        assert any("perch gb pull -p apollo" in n for n in _notices(app))
 
     run(tui.PerchTUI(home), script)
 
@@ -2031,12 +2048,11 @@ def _alert_home(tmp_path, names=("apollo",), rules="  - when: headroom < 50k\n")
     from datetime import timedelta
 
     from perch.core.history import week_key
-    from perch.core.workspace import load_home
+    from perch.core.workspace import checkout_home
 
     home = build_home(tmp_path, *names)
-    path = home.root / "perch-home.yaml"
-    path.write_text(path.read_text() + "alerts:\n" + rules)
-    home = load_home(path)
+    (home.root / "config.yaml").write_text("alerts:\n" + rules)
+    home = checkout_home(home.root)
     today = date.today()  # noqa: DTZ011
     for name in names:
         rows = [

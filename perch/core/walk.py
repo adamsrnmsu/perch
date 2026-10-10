@@ -1,113 +1,57 @@
-"""The /walk slash command: perch ships it, the workspace holds it.
+"""The slash commands perch ships: /walk, /listen and a /board that fits the checkout.
 
-`install` writes .claude/commands/walk.md (never over the lead's copy) and adds
-the gitboard checkout to .claude/settings.json's additionalDirectories, so a
-bare `claude` in the workspace can edit the board file.
+`install` writes .claude/commands/NAME.md into the perch checkout (never over
+the lead's copy). Claude started in the checkout finds them there, and `apps/`
+is already inside its working directory, so .claude/settings.json is never
+touched.
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from perch.core.doctor import Check
 from perch.core.workspace import Home
 
-COMMAND = Path(__file__).resolve().parent.parent / "commands" / "walk.md"
-TOKEN = "@GITBOARD_DIR@"
+COMMANDS = Path(__file__).resolve().parent.parent / "commands"
+TOKEN = "@PERCH_DIR@"
+# the command files perch itself ships; a name with no file yet is skipped
+OWN = ("walk", "listen")
+FIX = {"walk": "perch walk", "listen": "perch listen"}
 
 
-def render(home: Home) -> str:
-    return COMMAND.read_text().replace(TOKEN, str(home.gitboard_dir))
+def render(home: Home, name: str = "walk") -> str:
+    return (COMMANDS / f"{name}.md").read_text().replace(TOKEN, str(home.root))
 
 
-def command_path(home: Home) -> Path:
-    return home.root / ".claude" / "commands" / "walk.md"
+def command_path(home: Home, name: str = "walk") -> Path:
+    return home.root / ".claude" / "commands" / f"{name}.md"
 
 
-def _settings_path(home: Home) -> Path:
-    return home.root / ".claude" / "settings.json"
-
-
-def _settings(home: Home) -> dict | None:
-    """The workspace's settings, {} when absent, None when perch must not touch them."""
-    path = _settings_path(home)
-    if not path.exists():
-        return {}
-    try:
-        data = json.loads(path.read_text())
-    except ValueError:
-        return None
-    if not isinstance(data, dict):
-        return None
-    perms = data.get("permissions", {})
-    if not isinstance(perms, dict) or not isinstance(
-        perms.get("additionalDirectories", []), list
-    ):
-        return None
-    return data
-
-
-def install(home: Home) -> list[str]:
-    """Write what is missing; one line per thing done or left for the lead."""
-    lines = []
-    path = command_path(home)
+def install(home: Home, name: str = "walk") -> list[str]:
+    """Write the command if missing; one line saying wrote or kept."""
+    path = command_path(home, name)
     if path.exists():
-        lines.append(f"kept {path}")
-    else:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render(home))
-        lines.append(f"wrote {path}")
-    gitboard = str(home.gitboard_dir)
-    settings = _settings(home)
-    if settings is None:
-        lines.append(
-            f"left {_settings_path(home)} alone (not a settings object perch can "
-            f"edit); add {gitboard} to permissions.additionalDirectories by hand"
+        return [f"kept {path}"]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render(home, name))
+    return [f"wrote {path}"]
+
+
+def _check(home: Home, name: str) -> Check:
+    path = command_path(home, name)
+    if not path.exists():
+        return Check(
+            False, f"{name}: no .claude/commands/{name}.md", FIX.get(name, "")
         )
-        return lines
-    extra = settings.setdefault("permissions", {}).setdefault(
-        "additionalDirectories", []
-    )
-    if gitboard not in extra:
-        extra.append(gitboard)
-        _settings_path(home).parent.mkdir(parents=True, exist_ok=True)
-        _settings_path(home).write_text(json.dumps(settings, indent=2) + "\n")
-        lines.append(f"added {gitboard} to {_settings_path(home)}")
-    return lines
+    if path.read_text() != render(home, name):
+        return Check(
+            False,
+            f"{name}: .claude/commands/{name}.md differs from perch's copy",
+            f"delete {path}; the next {FIX.get(name, 'run')} reinstalls it",
+        )
+    return Check(True, f"{name}: .claude/commands/{name}.md")
 
 
 def checks(home: Home) -> list[Check]:
-    path = command_path(home)
-    if not path.exists():
-        command = Check(False, "walk: no .claude/commands/walk.md", "perch walk")
-    elif path.read_text() != render(home):
-        command = Check(
-            False,
-            "walk: .claude/commands/walk.md differs from perch's copy",
-            f"delete {path}; the next perch walk reinstalls it",
-        )
-    else:
-        command = Check(True, "walk: .claude/commands/walk.md")
-    settings = _settings(home)
-    if settings is None:
-        return [
-            command,
-            Check(
-                False,
-                "walk: .claude/settings.json is not a settings object perch can edit",
-                f"fix it, or add {home.gitboard_dir} to "
-                "permissions.additionalDirectories by hand (perch walk leaves it alone)",
-            ),
-        ]
-    listed = str(home.gitboard_dir) in settings.get("permissions", {}).get(
-        "additionalDirectories", []
-    )
-    board = Check(
-        listed,
-        "walk: gitboard checkout in .claude/settings.json"
-        if listed
-        else "walk: gitboard checkout not in .claude/settings.json",
-        f"perch walk, or add {home.gitboard_dir} to permissions.additionalDirectories",
-    )
-    return [command, board]
+    return [_check(home, n) for n in OWN if (COMMANDS / f"{n}.md").is_file()]

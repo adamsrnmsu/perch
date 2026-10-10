@@ -19,10 +19,10 @@ docs/_build/
 history.jsonl
 dumps/
 weekly/
-budget/
 perch.yaml
 projects/
-perch-home.yaml
+/config.yaml
+.claude/commands/
 .claude/worktrees/
 uv.lock
 

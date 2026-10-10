@@ -40,7 +40,7 @@ def setup(tmp_path):
         home,
         project,
         project / "fy26" / "emails",
-        tmp_path / "gb" / "reports" / "apollo",
+        project / "reports",
     )
 
 

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from perch.core.config import load_config
-from perch.core.workspace import HOME_NAME, Home
+from perch.core.workspace import CONFIG_FILE, Home
 
 # (argv, cwd, extra env) -> did it exit 0
 Runs = Callable[[Sequence[str], Path, Mapping[str, str]], bool]
@@ -46,8 +46,8 @@ def tool_checks(bin_dir: Path, home: Home, runs: Runs) -> list[Check]:
         checks.append(
             Check(
                 False,
-                f"gitboard_dir {home.gitboard_dir} does not exist",
-                f"fix gitboard_dir in {home.root / HOME_NAME}",
+                f"gitboard {home.gitboard_dir} does not exist",
+                "apps/remote-gitboard is missing: run make install in the perch checkout",
             )
         )
     else:
@@ -115,7 +115,7 @@ def alert_checks(home: Home) -> list[Check]:
     try:
         rules = home.alerts()
     except ValueError as exc:
-        return [Check(False, str(exc), f"edit {home.root / HOME_NAME}")]
+        return [Check(False, str(exc), f"edit {home.root / CONFIG_FILE}")]
     return [Check(True, f"alerts: {len(rules)} rule{'s' * (len(rules) != 1)}")]
 
 

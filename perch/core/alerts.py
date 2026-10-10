@@ -1,6 +1,6 @@
 """Alert rules: the lead's own thresholds over the recorded team rows.
 
-`alerts:` in perch-home.yaml, each `when: FIGURE OP NUMBER` and an optional
+`alerts:` in config.yaml, each `when: FIGURE OP NUMBER` and an optional
 `project`. Pure over history rows: team level, read only, nothing sent, no
 ranking. A missing figure is "no data" (`true=None`), never false.
 """
@@ -73,7 +73,7 @@ def _number(text: str) -> tuple[float, bool] | None:
 
 
 def parse(
-    data: object, projects: Sequence[str], source: str = "perch-home.yaml"
+    data: object, projects: Sequence[str], source: str = "config.yaml"
 ) -> tuple[Rule, ...]:
     """The rules of an `alerts:` value; every error names the key."""
     if data is None:
@@ -191,7 +191,7 @@ def lines(states: Sequence[State]) -> list[str]:
 
 def blocks(states: Sequence[State]) -> list[dict]:
     if not states:
-        return [_blocks.text("no alert rules in perch-home.yaml", tone="dim")]
+        return [_blocks.text("no alert rules in config.yaml", tone="dim")]
     rows = [
         [
             s.project,

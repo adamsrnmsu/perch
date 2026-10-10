@@ -122,9 +122,9 @@ def _bin_dir() -> Path:
 
 
 def _find_home():
-    from perch.core.workspace import find_home
+    from perch.core.workspace import checkout_home
 
-    return find_home(Path.cwd(), os.environ)
+    return checkout_home()
 
 
 def _home():
@@ -139,8 +139,8 @@ def _home():
 def _config_path(config_path: str | None, project: str | None) -> Path:
     """--config, then -p, then ./perch.yaml, then the workspace's project.
 
-    A perch.yaml in this directory beats $PERCH_HOME: it is the one you are
-    standing next to. In the workspace, the project folder you are in counts.
+    A perch.yaml in this directory wins: it is the one you are standing next
+    to. In the checkout, the project folder you are in counts.
     """
     from perch.core.config import CONFIG_NAME
 
@@ -491,19 +491,6 @@ def projects():
 @cli.command()
 @click.argument("name")
 @click.option(
-    "--home",
-    "home_dir",
-    default=None,
-    type=click.Path(file_okay=False, path_type=Path),
-    help="Make this directory the workspace (writes perch-home.yaml).",
-)
-@click.option(
-    "--gitboard-dir",
-    default=None,
-    type=click.Path(file_okay=False, path_type=Path),
-    help="The remote-gitboard checkout; needed with --home the first time.",
-)
-@click.option(
     "--year", default=None, help="Budgie's budget year, e.g. 2027 (new project only)."
 )
 @click.option(
@@ -512,27 +499,17 @@ def projects():
     help="First month of the year as MM-01; federal fiscal is 10-01 "
     "(Budgie checks it).",
 )
-def init(name, home_dir, gitboard_dir, year, year_start):
-    """Scaffold projects/NAME/perch.yaml and the Budgie project budget/NAME.
+def init(name, year, year_start):
+    """Scaffold projects/NAME/perch.yaml and its Budgie project projects/NAME/budget.
 
     --year and --year-start go to `budgie init`, so a fiscal-year project
     needs no hand edit of budgie.yaml."""
     from perch.core.steps import StepFailed, budgie_init
-    from perch.core.workspace import HOME_NAME, check_name, create_home, load_home
+    from perch.core.workspace import check_name
 
     try:
         check_name(name)
-        if home_dir is None:
-            home = _find_home()
-        elif (home_dir / HOME_NAME).is_file():
-            home = load_home(home_dir / HOME_NAME)
-        elif gitboard_dir is None:
-            raise click.ClickException(
-                f"{home_dir} has no {HOME_NAME} yet; pass --gitboard-dir "
-                "<remote-gitboard checkout> too"
-            )
-        else:
-            home = create_home(home_dir, gitboard_dir.expanduser().resolve())
+        home = _find_home()
         if home.config_path(name).exists():
             raise click.ClickException(
                 f"{home.config_path(name)} exists; edit it instead."
@@ -540,12 +517,6 @@ def init(name, home_dir, gitboard_dir, year, year_start):
         if not (home.budget_dir(name) / "budgie.yaml").is_file():
             _run(budgie_init(_bin_dir(), home, name, year, year_start))
         path = home.scaffold(name)
-        from perch.core import walk
-
-        try:
-            installed = walk.install(home)
-        except OSError as exc:
-            installed = [f"could not install /walk: {exc}; perch walk retries"]
     except StepFailed as exc:
         raise click.ClickException(f"{name}: {exc}") from exc
     except (OSError, ValueError) as exc:
@@ -560,8 +531,6 @@ def init(name, home_dir, gitboard_dir, year, year_start):
         markup=False,
     )
     console.print(f"  {budget}/  the Budgie inputs: budgie guide", markup=False)
-    for line in installed:
-        console.print(line, markup=False, highlight=False)
     console.print(f"Then: perch doctor -p {name}", markup=False)
 
 
@@ -1414,7 +1383,7 @@ def tape(project, all_projects, days):
 @_project_option
 @click.option("--all", "all_projects", is_flag=True, help="Every project (default).")
 def alerts(project, all_projects):
-    """Every alert rule from perch-home.yaml and whether it is true now. Read only."""
+    """Every alert rule from config.yaml and whether it is true now. Read only."""
     from perch.core import alerts as alerts_mod
     from perch.core import sources
 

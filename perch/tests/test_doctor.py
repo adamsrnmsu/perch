@@ -64,27 +64,27 @@ def test_age_shows_local_time_not_utc(tmp_path):
 
 def test_tool_checks_name_the_tool_that_does_not_run(tmp_path):
     home = build_home(tmp_path)
-    home.gitboard_dir.mkdir()
     checks = tool_checks(tmp_path, home, lambda argv, cwd, env: "budgie" not in argv[0])
     assert [c.what for c in checks if not c.ok] == ["budgie does not run"]
 
 
-def test_a_missing_gitboard_dir_points_at_perch_home(tmp_path):
+def test_a_missing_gitboard_says_make_install(tmp_path):
     home = build_home(tmp_path)
+    home.gitboard_dir.rmdir()
     failed = [c for c in tool_checks(tmp_path, home, lambda *a: True) if not c.ok]
-    assert len(failed) == 1 and "perch-home.yaml" in failed[0].fix
+    assert len(failed) == 1 and "run make install in the perch checkout" in failed[0].fix
 
 
 def test_alert_checks(tmp_path):
     from perch.core.doctor import alert_checks
-    from perch.core.workspace import load_home
+    from perch.core.workspace import checkout_home
 
     home = build_home(tmp_path, "apollo")
     assert all(c.ok for c in alert_checks(home))
-    path = home.root / "perch-home.yaml"
-    path.write_text(path.read_text() + "alerts:\n  - when: headroom < 50k\n")
-    (ok,) = alert_checks(load_home(path))
+    path = home.root / "config.yaml"
+    path.write_text("alerts:\n  - when: headroom < 50k\n")
+    (ok,) = alert_checks(checkout_home(home.root))
     assert ok.ok and "1 rule" in ok.what
     path.write_text(path.read_text() + "  - when: pace < 80\n")
-    (bad,) = alert_checks(load_home(path))
-    assert not bad.ok and "alerts[1].when" in bad.what and "perch-home.yaml" in bad.fix
+    (bad,) = alert_checks(checkout_home(home.root))
+    assert not bad.ok and "alerts[1].when" in bad.what and "config.yaml" in bad.fix

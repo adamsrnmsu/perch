@@ -103,7 +103,7 @@ def _follow_ups(home: Home, name: str, config: Config):
         yield str(exc)
         return
     if not path.is_file():
-        yield f"no boards/{path.name}; run perch gb pull -p {name} {_ONLINE}"
+        yield f"no board/{path.name}; run perch gb pull -p {name} {_ONLINE}"
         return
     spec = yaml.safe_load(path.read_text()) or {}
     if not isinstance(spec, dict):

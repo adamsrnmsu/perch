@@ -100,6 +100,9 @@ class Home:
     def reports_dir(self, name: str) -> Path:
         return self.projects_dir / name / "reports"
 
+    def board_dir(self, name: str) -> Path:
+        return self.projects_dir / name / "board"
+
     def budget_dir(self, name: str) -> Path:
         return self.projects_dir / name / "budget"
 

@@ -15,7 +15,7 @@ def apollo(tmp_path, gitlab=True):
 
 
 def board_yaml(home, issues, columns=("Doing", "Verify")):
-    path = home.gitboard_dir / "boards" / "apollo.yaml"
+    path = home.board_dir("apollo") / "apollo.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     spec = {"columns": [{"name": c} for c in columns], "issues": issues}
     path.write_text(yaml.safe_dump(spec))
@@ -50,7 +50,7 @@ def test_first_week_says_what_is_missing_and_still_prints_the_rest(tmp_path):
     assert section(lines, "People") == ["no person rows yet"]
     assert section(lines, "Watch") == ["none for 2026-W17; run perch monday -p apollo"]
     assert section(lines, "Follow-ups") == [
-        "no boards/apollo.yaml; run perch gb pull -p apollo where GitLab is reachable"
+        "no board/apollo.yaml; run perch gb pull -p apollo where GitLab is reachable"
     ]
     assert "## Forecast" in lines
 
@@ -137,14 +137,14 @@ def test_freshness_names_dump_pull_and_week(tmp_path):
 def test_freshness_prints_the_board_file_path(tmp_path):
     home, config = apollo(tmp_path)
     lines = section(brief.build(home, "apollo", config, TODAY), "Freshness")
-    spec = home.gitboard_dir / "boards" / "apollo.yaml"
+    spec = home.board_dir("apollo") / "apollo.yaml"
     assert f"board file: {spec}" in lines
 
 
 def test_freshness_names_the_pull_time_when_pulled(tmp_path):
     home, config = apollo(tmp_path)
     board_yaml(home, [])
-    (home.gitboard_dir / "boards" / "apollo.yaml.base").write_text("")
+    (home.board_dir("apollo") / "apollo.yaml.base").write_text("")
     lines = section(brief.build(home, "apollo", config, TODAY), "Freshness")
     assert lines[1].startswith("board YAML pulled 2")
 
@@ -197,7 +197,7 @@ def test_a_dump_that_is_not_a_mapping_still_prints_freshness(tmp_path):
 def test_spec_path_is_the_gitlab_projects_last_segment(tmp_path):
     home, config = apollo(tmp_path)
     assert steps.spec_path(home, "apollo", config) == (
-        home.gitboard_dir / "boards" / "apollo.yaml"
+        home.board_dir("apollo") / "apollo.yaml"
     )
 
 
