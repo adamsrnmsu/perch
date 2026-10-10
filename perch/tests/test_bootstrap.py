@@ -1,7 +1,7 @@
 """scripts/bootstrap.sh: clones the two apps into apps/, and only once.
 
-Runs the real script against throwaway local repos (file:// URLs) in a copy of
-it, with the install step off, so nothing outside tmp_path is touched.
+Runs the real script in a copy, with the two fixed HTTPS URLs redirected to
+throwaway local repos (git insteadOf), so nothing outside tmp_path is touched.
 """
 
 import os
@@ -35,9 +35,11 @@ def perch(tmp_path):
     env = {
         "PATH": os.environ["PATH"],
         "HOME": str(tmp_path),
-        "BUDGIE_URL": _repo(tmp_path / "budgie-src"),
-        "GB_URL": _repo(tmp_path / "gb-src"),
-        "BOOTSTRAP_NO_INSTALL": "1",
+        "GIT_CONFIG_COUNT": "2",
+        "GIT_CONFIG_KEY_0": f"url.{_repo(tmp_path / 'budgie-src')}.insteadOf",
+        "GIT_CONFIG_VALUE_0": "https://github.com/adamsrnmsu/budgie.git",
+        "GIT_CONFIG_KEY_1": f"url.{_repo(tmp_path / 'gb-src')}.insteadOf",
+        "GIT_CONFIG_VALUE_1": "https://github.com/adamsrnmsu/remote-gitboard.git",
     }
     return root, env
 
@@ -49,14 +51,12 @@ def _run(root, env, cwd):
     )
 
 
-def test_clones_both_apps_from_anywhere_and_names_gitboard_dir(perch, tmp_path):
+def test_clones_both_apps_from_anywhere(perch, tmp_path):
     root, env = perch
     out = _run(root, env, cwd=tmp_path)  # not perch's root
     assert out.returncode == 0, out.stderr
     assert (root / "apps" / "budgie" / ".git").is_dir()
     assert (root / "apps" / "remote-gitboard" / ".git").is_dir()
-    last = out.stdout.strip().splitlines()[-1]
-    assert last == f"gitboard_dir: {root.resolve()}/apps/remote-gitboard"
 
 
 def test_second_run_leaves_the_checkouts_alone(perch, tmp_path):
@@ -81,8 +81,14 @@ def test_an_app_dir_that_is_not_a_checkout_stops_it(perch):
 
 def test_a_failed_clone_names_the_app_and_leaves_nothing(perch, tmp_path):
     root, env = perch
-    env = {**env, "GB_URL": (tmp_path / "missing").as_uri()}
+    env = {**env, "GIT_CONFIG_KEY_1": f"url.{(tmp_path / 'missing').as_uri()}.insteadOf"}
     out = _run(root, env, cwd=root)
     assert out.returncode != 0
     assert "remote-gitboard" in out.stderr
     assert not (root / "apps" / "remote-gitboard").exists()
+
+
+def test_bootstrap_does_not_run_make():
+    text = SCRIPT.read_text()
+    assert "make " not in text
+    assert "BOOTSTRAP_NO_INSTALL" not in text

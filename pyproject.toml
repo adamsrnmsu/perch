@@ -3,12 +3,13 @@ name = "perch"
 version = "0.1.0"
 description = "What the open board means for the budget: the join between gitboard and Budgie"
 requires-python = ">=3.10"
+license = "MIT"
 # Budgie is not on PyPI, and whatever answers to that name there is not ours,
 # so it is pinned to its repo by URL: an explicit URL never resolves to a
-# stranger's package. `make venv` then installs apps/budgie editable on top for
-# local dev. The repo is private, so the install uses your SSH key.
+# stranger's package. `make install` then installs apps/budgie editable on top
+# for local dev.
 dependencies = [
-    "budgie @ git+ssh://git@github.com/adamsrnmsu/budgie.git",
+    "budgie @ git+https://github.com/adamsrnmsu/budgie.git",
     "click",
     "rich",
     "pyyaml",

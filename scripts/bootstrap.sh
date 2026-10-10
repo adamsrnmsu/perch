@@ -1,12 +1,10 @@
 #!/bin/sh
-# Put Budgie and gitboard in apps/, then install and link all three.
+# Put Budgie and gitboard in apps/ (clone only; the Makefile install does the rest).
 # Safe to re-run: an app already in apps/ is left exactly as it is.
-#   BUDGIE_URL=... GB_URL=...   clone from somewhere else
-#   BOOTSTRAP_NO_INSTALL=1      clone only (the tests use this)
 set -eu
 PERCH_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-BUDGIE_URL=${BUDGIE_URL:-git@github.com:adamsrnmsu/budgie.git}
-GB_URL=${GB_URL:-https://github.com/adamsrnmsu/remote-gitboard.git}
+BUDGIE_URL=https://github.com/adamsrnmsu/budgie.git
+GB_URL=https://github.com/adamsrnmsu/remote-gitboard.git
 
 fail() { echo "bootstrap: $*" >&2; exit 1; }
 
@@ -25,9 +23,3 @@ fetch() {  # fetch NAME URL
 mkdir -p "$PERCH_DIR/apps"
 fetch budgie "$BUDGIE_URL"
 fetch remote-gitboard "$GB_URL"
-if [ -z "${BOOTSTRAP_NO_INSTALL:-}" ]; then
-    make -C "$PERCH_DIR" install link || fail "make install link failed"
-fi
-echo
-echo "Put this line in your workspace's perch-home.yaml:"
-echo "gitboard_dir: $PERCH_DIR/apps/remote-gitboard"
