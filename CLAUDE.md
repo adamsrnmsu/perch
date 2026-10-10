@@ -11,8 +11,9 @@ people.
 perch is also the one entry point for every pi app, as a CLI: `perch monday`,
 `perch doctor`, `perch hours` and the rest shell out to the tool that owns each
 step (`perch/core/steps.py` holds each call as a `Step` value; the CLI runs
-them). perch never imports another app's code to do that. A workspace
-(`perch-home.yaml`) holds `projects/<name>/` and `budget/<name>/`; a project
+them). perch never imports another app's code to do that. The perch
+checkout is home (`config.yaml` is optional) and holds `projects/<name>/` with
+`board/`, `budget/` and `reports/` inside each; a project
 is one GitLab project + one Budgie project + one charge code, picked with
 `-p`. The Makefile is development only.
 
@@ -53,23 +54,27 @@ Same rule as Budgie: everything under `perch/core/` is UI-free (no click, no
 rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 
 - `core/config.py` -- perch.yaml to a frozen `Config`; every error names the key.
-- `core/workspace.py` -- perch-home.yaml (walk up, else $PERCH_HOME), the
-  projects under projects/, `-p` selection, and scaffolding a project.
+- `core/workspace.py` -- `checkout_home()`: home is the perch checkout
+  (`Path(perch.__file__).parents[1]`, which must hold `pyproject.toml` and
+  `apps/`), `config.yaml` (optional: `lead`, `alerts`), the projects under
+  projects/, `-p` selection, and scaffolding a project.
 - `core/steps.py` -- every Budgie/gitboard/perch/claude call as a `Step(argv, cwd,
   env)`; nothing here executes. `run_projects` is `monday --all`'s
-  carry-on-past-a-failure loop. `review` opens `claude "/board ..."` in the
-  gitboard checkout with `trend.team_lines` and `people_lines` (latest
+  carry-on-past-a-failure loop. `review` opens `claude "/board GROUP/PROJ
+  SPEC"` in the perch checkout with `trend.team_lines` and `people_lines` (latest
   week, name order, hours only: no rate, cost or accuracy) appended. Never
   the watch. `bg SUB` runs Budgie's monthly, hours, plan, scenario,
   assumptions, calibrate or doctor inside the project (args pass through,
-  `--project` refused; TUI: `BG MONTHLY`). `gb` runs gitboard with the project's target filled in;
+  `--project` refused; TUI: `BG MONTHLY`). `gb` runs gitboard from its checkout with the project's target and its
+  `--out/--db/--log/--spec/--boards-dir` paths (under `projects/NAME/board`) filled in;
   `GB_OFFLINE` (read only pulled files) is all `/walk` may run, `push` and
-  `pull` need GitLab. `walk` opens `claude "/walk NAME"` in the workspace.
+  `pull` need GitLab. `walk` opens `claude "/walk NAME"` in the checkout.
 - `core/brief.py` -- `perch brief`: what `/walk` reads, team level only
   (Budgie's forecast in-process, never its per-person table), local files only.
-- `core/walk.py` -- installs `perch/commands/walk.md` into the workspace
-  (never over the lead's copy) and the gitboard checkout into
-  `.claude/settings.json`'s `additionalDirectories`; doctor's walk checks.
+- `core/walk.py` -- `install(home, name)` writes `perch/commands/NAME.md` (and
+  gitboard's `/board`, rewritten to `perch gb` and the project board path) into
+  the checkout's `.claude/commands/` (never over the lead's copy; never touches
+  `.claude/settings.json`); doctor's command checks.
 - `core/suite.py` -- `perch suite`'s tmux argv, built and never run here: a
   private server (`-L pi`, no config file, options sent as commands), one
   window per app, each window's `@entry` = the `{"cwd", "argv"}` it runs. The
@@ -82,7 +87,9 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   widgets in the TUI, markdown (`to_md`), HTML (`to_html`) and the JSON lines.
   `parse` rejects anything off-contract (the TUI shows that line as text).
   Strings are never rich markup.
-- `core/doctor.py` -- `Check(ok, what, fix)` values for `perch doctor`.
+- `core/doctor.py` -- `Check(ok, what, fix)` values for `perch doctor`. `old_layout_checks`
+  walks up from the cwd for an old `perch-home.yaml` and prints the `mv`/`cp`
+  commands (detection only; the one remaining walk-up).
 - `core/status.py` -- `perch status` and the TUI's step cells: done, stale,
   todo, failed or error per Monday step this ISO week, read only from the files
   each step writes (no simulation, no rate fit). hours counts last week's
@@ -164,7 +171,7 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   exception text; never the watch.
 - `core/asof.py` -- as-of browsing: the recorded weeks (union over projects),
   `resolve`/`step`/`until`/`team_as_of`/`week_end`. Never the nearest week.
-- `core/alerts.py` -- `alerts:` in perch-home.yaml: `when: FIGURE OP NUMBER`
+- `core/alerts.py` -- `alerts:` in config.yaml: `when: FIGURE OP NUMBER`
   plus optional `project`, validated by `Home.alerts()`. Fires once per
   (project, rule, week) when true now, not the week before, with 2+ recorded
   weeks in this or last ISO week. `pace`/`prob_over` need `%` or a value <= 1.
