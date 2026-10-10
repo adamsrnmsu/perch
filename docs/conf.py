@@ -19,11 +19,15 @@ exclude_patterns = ["_build", "superpowers"]  # specs and plans, not user docs
 suppress_warnings = ["misc.highlighting_failure"]  # README's ```csv: no lexer, plain text is fine
 
 html_theme = "shibuya"
+html_title = "perch"
+html_favicon = "_static/favicon.png"
 html_static_path = ["_static"]
 html_css_files = ["landing.css"]
 html_theme_options = {
     "github_url": "https://github.com/adamsrnmsu/perch",
-    "accent_color": "blue",
+    "accent_color": "orange",
+    "light_logo": "_static/logo-light.png",
+    "dark_logo": "_static/logo-dark.png",
     "color_mode": "auto",
     "nav_links": [
         {"title": "Install", "url": "install"},

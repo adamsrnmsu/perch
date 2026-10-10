@@ -7,6 +7,8 @@ layout: landing
 ```{raw} html
 <div class="pl">
 <section class="pl-hero">
+<img class="pl-logo pl-logo-light" src="_static/logo-light.png" alt="perch">
+<img class="pl-logo pl-logo-dark" src="_static/logo-dark.png" alt="">
 <span class="pl-badge">for one lead &middot; nothing is ever sent</span>
 <h1>The work, joined to the money.</h1>
 <p>perch joins gitboard's board to Budgie's budget and answers one question: what does the open board cost, against the hours and the budget that are left?</p>
