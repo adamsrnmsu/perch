@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+import yaml
 
 from perch.core.config import load_config
 from perch.core.workspace import CONFIG_FILE, Home
@@ -130,3 +133,75 @@ def freshness(home: Home, name: str) -> list[tuple[str, str]]:
         ("weekly.csv", age(config.budgie_project / "weekly.csv")),
         ("history.jsonl", age(config.history)),
     ]
+
+
+OLD_HOME_FILE = "perch-home.yaml"
+
+
+def _yaml_map(path: Path) -> dict:
+    try:
+        data = yaml.safe_load(path.read_text())
+    except (OSError, yaml.YAMLError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _old_project(old: Path, gitboard: Path | None, name: str, home: Home) -> list[str]:
+    """The lines that bring one project of an old workspace into the checkout."""
+    q = shlex.quote
+    folder = old / "projects" / name
+    conf = _yaml_map(folder / "perch.yaml")
+    new = home.projects_dir / name
+    lines = [f"mkdir -p {q(str(new / 'board'))}"]
+
+    def move(verb: str, src: Path, dest: Path, what: str) -> None:
+        if not src.exists():
+            return
+        if dest.exists():
+            lines.append(f"# {dest} already exists: {what} not moved, do it by hand")
+        else:
+            lines.append(f"{verb} {q(str(src))} {q(str(dest))}")
+
+    if (new / "perch.yaml").exists():
+        lines.append(f"# {new / 'perch.yaml'} already exists: {name} not moved, do it by hand")
+    else:
+        lines.append(f"mv {q(str(folder))}/* {q(str(new))}/")
+    budgie = conf.get("budgie_project")
+    budget = (folder / str(budgie)).resolve() if budgie else old / "budget" / name
+    move("mv", budget, home.budget_dir(name), "the Budgie project")
+    if gitboard is not None:
+        seg = str(conf.get("gitlab_project") or name).rsplit("/", 1)[-1]
+        for suffix in ("", ".base", ".base.old"):
+            move(
+                "mv",
+                gitboard / "boards" / f"{seg}.yaml{suffix}",
+                home.board_dir(name) / f"{name}.yaml{suffix}",
+                "the board file",
+            )
+        move("cp", gitboard / "snapshots.jsonl", home.board_dir(name) / "snapshots.jsonl", "snapshots")
+        move("cp", gitboard / "reports" / "stats.jsonl", home.board_dir(name) / "stats.jsonl", "stats.jsonl")
+    lines.append(
+        f"# then edit {new / 'perch.yaml'}: budgie_project: budget; "
+        "board_dump: board/dump.json; estimates: the file's new path"
+    )
+    return lines
+
+
+def old_layout_checks(start: Path, home: Home) -> list[Check]:
+    """A perch-home.yaml at or above ``start`` is the old workspace: print its moves.
+
+    Detection only, the one place a walk-up remains. Nothing is moved.
+    """
+    here = start.resolve()
+    old = next((d for d in (here, *here.parents) if (d / OLD_HOME_FILE).is_file()), None)
+    if old is None:
+        return []
+    what = f"old workspace at {old}"
+    if old == home.root:
+        return [Check(False, what, f"delete {old / OLD_HOME_FILE}: the checkout is home now")]
+    gb = _yaml_map(old / OLD_HOME_FILE).get("gitboard_dir")
+    gitboard = (old / Path(str(gb)).expanduser()).resolve() if gb else None
+    projects = old / "projects"
+    names = sorted(p.name for p in projects.iterdir() if p.is_dir()) if projects.is_dir() else []
+    lines = [line for name in names for line in _old_project(old, gitboard, name, home)]
+    return [Check(False, what, "\n".join(lines) or f"nothing under {projects} to move")]

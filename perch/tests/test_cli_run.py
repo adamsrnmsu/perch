@@ -319,3 +319,14 @@ def test_bg_refuses_init(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo")
     monkeypatch.chdir(home.root)
     assert run("bg", "init", "-p", "apollo").exit_code == 2
+
+
+def test_doctor_names_an_old_workspace_above_the_cwd(tmp_path, monkeypatch):
+    from perch.tests.test_doctor import old_workspace
+
+    home = build_home(tmp_path, "apollo")
+    quiet_tools(monkeypatch, home)
+    old = old_workspace(tmp_path)
+    monkeypatch.chdir(old / "projects")
+    result = run("doctor")
+    assert "old workspace at" in result.output and "mkdir -p" in result.output

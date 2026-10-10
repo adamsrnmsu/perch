@@ -88,3 +88,67 @@ def test_alert_checks(tmp_path):
     path.write_text(path.read_text() + "  - when: pace < 80\n")
     (bad,) = alert_checks(checkout_home(home.root))
     assert not bad.ok and "alerts[1].when" in bad.what and "config.yaml" in bad.fix
+
+
+def old_workspace(tmp_path):
+    """A pre-checkout workspace: perch-home.yaml, projects/apollo, budget/fy26, gitboard boards."""
+    old = tmp_path / "old"
+    (old / "projects/apollo").mkdir(parents=True)
+    (old / "perch-home.yaml").write_text("gitboard_dir: gb\n")
+    (old / "projects/apollo/perch.yaml").write_text(
+        "budgie_project: ../../budget/fy26\ngitlab_project: g/sub/apollo-api\n"
+    )
+    (old / "budget/fy26").mkdir(parents=True)
+    boards = old / "gb/boards"
+    boards.mkdir(parents=True)
+    for suffix in ("", ".base", ".base.old"):
+        (boards / f"apollo-api.yaml{suffix}").write_text("")
+    (old / "gb/snapshots.jsonl").write_text("")
+    (old / "gb/reports").mkdir()
+    (old / "gb/reports/stats.jsonl").write_text("")
+    return old
+
+
+def test_old_layout_prints_mv_commands(tmp_path):
+    from perch.core.doctor import old_layout_checks
+
+    home = build_home(tmp_path)
+    old = old_workspace(tmp_path)
+    (check,) = old_layout_checks(old / "projects", home)
+    new = home.projects_dir / "apollo"
+    assert not check.ok and f"old workspace at {old.resolve()}" in check.what
+    lines = check.fix.split("\n")
+    assert f"mkdir -p {new}/board" in lines
+    assert f"mv {old.resolve()}/projects/apollo/* {new}/" in lines
+    assert f"mv {old.resolve()}/budget/fy26 {new}/budget" in lines
+    assert (
+        f"mv {old.resolve()}/gb/boards/apollo-api.yaml.base.old "
+        f"{new}/board/apollo.yaml.base.old"
+    ) in lines
+    assert f"cp {old.resolve()}/gb/snapshots.jsonl {new}/board/snapshots.jsonl" in lines
+    assert f"cp {old.resolve()}/gb/reports/stats.jsonl {new}/board/stats.jsonl" in lines
+    assert "board_dump: board/dump.json" in check.fix
+
+
+def test_old_layout_existing_destination_is_named_not_moved(tmp_path):
+    from perch.core.doctor import old_layout_checks
+
+    home = build_home(tmp_path, "apollo")
+    old = old_workspace(tmp_path)
+    (home.board_dir("apollo")).mkdir(parents=True)
+    (home.board_dir("apollo") / "apollo.yaml").write_text("")
+    (check,) = old_layout_checks(old, home)
+    assert f"# {home.board_dir('apollo') / 'apollo.yaml'} already exists" in check.fix
+    assert not any(
+        line.startswith("mv") and line.endswith("board/apollo.yaml")
+        for line in check.fix.split("\n")
+    )
+    assert "perch.yaml already exists" in check.fix
+    assert f"mv {old.resolve()}/projects/apollo/*" not in check.fix
+
+
+def test_no_old_layout_no_check(tmp_path):
+    from perch.core.doctor import old_layout_checks
+
+    home = build_home(tmp_path)
+    assert old_layout_checks(tmp_path, home) == []
