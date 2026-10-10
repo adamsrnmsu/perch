@@ -30,8 +30,8 @@ perch --help  # running the apps: init [--year Y --year-start MM-01],
               # [--all], tui, suite
 perch tui     # starts perch suite (hidden tmux, P/B/G hop instantly) when
               # tmux is installed; inside the suite or --no-suite: the TUI alone
-make install # clone apps/, venvs in ~/Documents/tools, link; re-run to repair
-make test     # perch only: ~/Documents/tools/perch/bin/pytest
+make install  # clone apps/, venvs in ~/Documents/tools, link; re-run to repair
+make test     # perch only, in the install venv
 make test-all # Budgie, perch and gitboard suites
 make docs     # sphinx -W into docs/_build/html
 make lint     # ruff check .

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 from datetime import date
 from pathlib import Path
@@ -26,7 +27,7 @@ def _cues(text: str):
 def _segments(joined: str):
     parts = _TAG.split(joined)  # ['', name, text, name, text, ...]
     for name, seg in zip(parts[1::2], parts[2::2], strict=False):
-        yield name, _ANY.sub("", seg).strip()
+        yield name, html.unescape(_ANY.sub("", seg)).strip()
 
 
 def parse(vtt_text: str, lead: str) -> list[str]:
@@ -43,7 +44,7 @@ def parse(vtt_text: str, lead: str) -> list[str]:
         else:
             name, sep, rest = body[0].partition(":")
             if sep and name.strip().casefold() == want:
-                text = _ANY.sub("", " ".join([rest, *body[1:]])).strip()
+                text = html.unescape(_ANY.sub("", " ".join([rest, *body[1:]]))).strip()
                 if text:
                     out.append(text)
     return out
