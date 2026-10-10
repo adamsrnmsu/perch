@@ -1,7 +1,12 @@
 from datetime import date
+from pathlib import Path
 
+from click.testing import CliRunner
+
+from perch.cli import cli
 from perch.core.listen import parse, write
 from perch.tests.conftest import build_home
+from perch.tests.test_cli_run import recorder
 
 VTT = """WEBVTT
 
@@ -76,3 +81,76 @@ def test_transcript_is_written_dated_never_overwritten(tmp_path):
     b = write(home, "apollo", ["y"], date(2026, 10, 9))
     assert a.name == "2026-10-09.txt" and b.name == "2026-10-09-2.txt"
     assert a.read_text().strip() == "x" and a.parent.name == "listen"
+
+
+def setup_cli(tmp_path, monkeypatch, lead="Ryan Adams", text=VTT):
+    home = build_home(tmp_path, "apollo")
+    if lead:
+        (home.root / "config.yaml").write_text(f"lead: {lead}\n")
+    monkeypatch.chdir(home.root)
+    vtt = tmp_path / "MEETING.vtt"
+    vtt.write_text(text)
+    return home, vtt
+
+
+def listen(vtt, *extra):
+    return CliRunner().invoke(cli, ["listen", str(vtt), "-p", "apollo", *extra])
+
+
+def test_no_lead_stops_and_says_so(tmp_path, monkeypatch):
+    _, vtt = setup_cli(tmp_path, monkeypatch, lead=None)
+    ran = recorder(monkeypatch)
+    r = listen(vtt)
+    assert r.exit_code == 1 and 'no lead set: add "lead: NAME" to' in r.output
+    assert "config.yaml" in r.output and not ran
+
+
+def test_no_lines_stops_and_names_the_lead(tmp_path, monkeypatch):
+    _, vtt = setup_cli(tmp_path, monkeypatch, lead="Ryan")
+    ran = recorder(monkeypatch)
+    r = listen(vtt)
+    assert r.exit_code == 1 and not ran
+    assert 'no lines from "Ryan" in MEETING.vtt: check the speaker name' in r.output
+
+
+def test_unreadable_file_stops(tmp_path, monkeypatch):
+    setup_cli(tmp_path, monkeypatch)
+    ran = recorder(monkeypatch)
+    r = listen(tmp_path / "gone.vtt")
+    assert r.exit_code == 1 and "cannot read gone.vtt" in r.output and not ran
+
+
+def test_listen_opens_claude_with_slash_listen(tmp_path, monkeypatch):
+    home, vtt = setup_cli(tmp_path, monkeypatch)
+    ran = recorder(monkeypatch)
+    r = listen(vtt)
+    assert r.exit_code == 0, r.output
+    assert ran[0].argv == ("claude", "/listen apollo") and ran[0].cwd == home.root
+    (kept,) = (home.root / "projects/apollo/listen").glob("*.txt")
+    assert kept.read_text().splitlines()[0] == "Move login to Review."
+    assert (home.root / ".claude/commands/listen.md").is_file()
+    assert listen(vtt).exit_code == 0
+    assert len(list((home.root / "projects/apollo/listen").glob("*.txt"))) == 2
+
+
+def listen_md():
+    return (Path(__file__).parents[1] / "commands" / "listen.md").read_text()
+
+
+def test_listen_md_never_pushes_pulls_or_syncs():
+    allowed = next(x for x in listen_md().splitlines() if x.startswith("allowed-tools"))
+    for bad in ("push", "pull", "sync", "snapshot"):
+        assert f"perch gb {bad}" not in allowed
+
+
+def test_listen_md_contains_template_fields():
+    t = listen_md()
+    for f in (
+        "Goal:",
+        "Done when:",
+        "Context:",
+        "Out of scope:",
+        "Links:",
+        "Source: meeting",
+    ):
+        assert f in t

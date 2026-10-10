@@ -126,7 +126,8 @@ def test_monday_all_with_no_projects_says_init(tmp_path, monkeypatch):
 def quiet_tools(monkeypatch, home):
     from perch.core import walk
 
-    walk.install(home)  # an installed /walk is part of a healthy workspace
+    walk.install(home)  # installed commands are part of a healthy workspace
+    walk.install(home, "listen")
     monkeypatch.setattr("perch.cli._runs", lambda argv, cwd, env: True)
     monkeypatch.setattr("perch.cli._show_gitboard_config", lambda home: True)
 

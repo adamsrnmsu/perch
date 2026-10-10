@@ -84,11 +84,12 @@ def test_install_reports_wrote_then_kept(tmp_path):
 
 def test_checks_missing_differing_and_ok(tmp_path):
     home = build_home(tmp_path, "apollo")
-    assert [c.ok for c in walk.checks(home)] == [False]
+    assert [c.ok for c in walk.checks(home)] == [False, False]
     walk.install(home)
-    assert [c.ok for c in walk.checks(home)] == [True]
+    walk.install(home, "listen")
+    assert [c.ok for c in walk.checks(home)] == [True, True]
     walk.command_path(home).write_text("edited")
-    (command,) = walk.checks(home)
+    command = walk.checks(home)[0]
     assert not command.ok and "differs" in command.what
 
 
@@ -133,7 +134,10 @@ def test_board_install_rewrites_edit_pattern_and_runner(tmp_path):
 
 def test_checks_cover_board_only_when_gitboard_has_the_file(tmp_path):
     home = build_home(tmp_path, "apollo")
-    assert [c.what for c in walk.checks(home)] == ["walk: no .claude/commands/walk.md"]
+    assert [c.what for c in walk.checks(home)] == [
+        "walk: no .claude/commands/walk.md",
+        "listen: no .claude/commands/listen.md",
+    ]
     gitboard_board_md(home)
     walk.install(home, "board")
-    assert [c.ok for c in walk.checks(home)] == [False, True]
+    assert [c.ok for c in walk.checks(home)] == [False, False, True]
