@@ -618,13 +618,15 @@ def budget(project):
 def review(project):
     """Claude's /board on the pulled board: labels, priority, flags, with the budget."""
     from perch.core import history, steps
+    from perch.core import walk as command
 
-    _one(
-        project,
-        lambda home, name, config: steps.review(
-            home, name, config, history.load(config.history)
-        ),
-    )
+    def build(home, name, config):
+        step = steps.review(home, name, config, history.load(config.history))
+        for line in command.install(home, "board"):
+            _show([bk.text(line, "dim")])
+        return step
+
+    _one(project, build)
 
 
 @cli.command()

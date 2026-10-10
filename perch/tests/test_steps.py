@@ -169,6 +169,15 @@ def test_review_opens_board_in_the_checkout_with_the_spec_team_and_people(
     assert "Never rank" in context and step.cwd == home.root
 
 
+def test_review_prompt_carries_the_absolute_spec_path(tmp_path):
+    home, config = apollo(tmp_path)
+    spec = steps.spec_path(home, "apollo", config)
+    spec.parent.mkdir(parents=True)
+    spec.write_text("")
+    step = steps.review(home, "apollo", config, [])
+    assert step.argv[-1] == f"/board grp/apollo {spec}" and step.cwd == home.root
+
+
 def test_people_lines_is_empty_before_any_person_row():
     assert steps.people_lines([], {}) == []
 

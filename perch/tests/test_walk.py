@@ -99,3 +99,41 @@ def test_doctor_names_the_walk_fix(tmp_path, monkeypatch):
     monkeypatch.setattr("perch.cli._show_gitboard_config", lambda home: True)
     result = CliRunner().invoke(cli, ["doctor"])
     assert "walk: no .claude/commands/walk.md" in result.output
+
+
+RUNNER = "PYTHONPATH=src .venv/bin/python -m gitboard.cli"
+
+
+def gitboard_board_md(home):
+    tools = ", ".join(
+        f"Bash({RUNNER} {sub}:*)" for sub in ("show", "plan", "push", "ingest", "stats")
+    )
+    src = home.gitboard_dir / ".claude" / "commands" / "board.md"
+    src.parent.mkdir(parents=True)
+    src.write_text(
+        f"---\nallowed-tools: {tools}, Edit(boards/*.yaml)\n---\n\n"
+        f"`gitboard` is `{RUNNER}`.\n"
+    )
+    return src
+
+
+def test_board_install_rewrites_edit_pattern_and_runner(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    src = gitboard_board_md(home)
+    before = src.read_text()
+    assert walk.install(home, "board")[0].startswith("wrote")
+    text = walk.command_path(home, "board").read_text()
+    head, _ = frontmatter(text)
+    assert f"Edit(/{home.root}/projects/*/board/*.yaml)" in head["allowed-tools"]
+    assert "Bash(perch gb plan:*)" in head["allowed-tools"]
+    assert "Edit(boards/*.yaml)" not in text and "gitboard.cli" not in text
+    assert "push" not in head["allowed-tools"] and "ingest" not in head["allowed-tools"]
+    assert src.read_text() == before  # gitboard's own copy keeps its standalone form
+
+
+def test_checks_cover_board_only_when_gitboard_has_the_file(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    assert [c.what for c in walk.checks(home)] == ["walk: no .claude/commands/walk.md"]
+    gitboard_board_md(home)
+    walk.install(home, "board")
+    assert [c.ok for c in walk.checks(home)] == [False, True]
