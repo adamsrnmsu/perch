@@ -43,7 +43,10 @@ def test_other_speakers_are_dropped():
 
 
 def test_timing_ids_notes_and_header_are_skipped():
-    assert parse(VTT, "Ryan Adams") == ["Move login to Review.", "Close the cache ticket."]
+    assert parse(VTT, "Ryan Adams") == [
+        "Move login to Review.",
+        "Close the cache ticket.",
+    ]
 
 
 def test_multiline_cue_kept_whole():

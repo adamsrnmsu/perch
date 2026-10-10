@@ -161,8 +161,8 @@ def pull_fix(project: str, spec: Path) -> str:
 
 # Read only pulled files: what /walk may run, with no GitLab in reach.
 GB_OFFLINE = ("show", "report", "stats", "graph", "estimate", "plan", "status")
-# push and pull need GitLab: the lead runs them on a connected machine.
-GB_SUBS = (*GB_OFFLINE, "push", "pull")
+# push, pull and sync need GitLab: the lead runs them on a connected machine.
+GB_SUBS = (*GB_OFFLINE, "push", "pull", "sync")
 # Flags that move an offline sub's input: --from "" would read GitLab.
 GB_TARGET_FLAGS = (
     "--from",
@@ -185,8 +185,8 @@ def gb(
 
     The offline seven read the pulled spec, its .base, the board dump (the same
     data the money came from) and the snapshot log. `status` takes no target:
-    it is every pulled board in the checkout, not only this project's. `sync`
-    and `migrate` are not here on purpose.
+    it is every pulled board in the checkout, not only this project's. `migrate`
+    is not here on purpose.
     """
     if sub not in GB_SUBS:
         raise ValueError(f"{sub!r} is not one of {', '.join(GB_SUBS)}")
@@ -208,11 +208,22 @@ def gb(
         "graph": ("--from", spec),
         "plan": (spec, "--against", str(base)),
         "estimate": (spec, "--history", dump),
-        "stats": ("--from", dump, "--log", str(stats_log(home, project)), *_spec_flag(path)),
+        "stats": (
+            "--from",
+            dump,
+            "--log",
+            str(stats_log(home, project)),
+            *_spec_flag(path),
+        ),
         "report": ("--since", spec, *db),
         "status": (*db, *boards),
         "push": (spec, *db),
         "pull": (config.gitlab_project, "--out", spec, *db),
+        "sync": (
+            spec,
+            *db,
+            *(() if path.is_file() else ("--project", config.gitlab_project)),
+        ),
     }[sub]
     return gitboard(home, f"gb {sub}", sub, *target, *args)
 
@@ -250,6 +261,11 @@ def review(home: Home, project: str, config: Config, rows: list[dict]) -> Step:
 def walk(home: Home, project: str) -> Step:
     """Claude on /walk in the workspace, where .claude/commands/walk.md lives."""
     return Step("walk", ("claude", f"/walk {project}"), home.root)
+
+
+def listen(home: Home, project: str) -> Step:
+    """Claude on /listen in the checkout, where .claude/commands/listen.md lives."""
+    return Step("listen", ("claude", f"/listen {project}"), home.root)
 
 
 def board(bin_dir: Path, home: Home, project: str) -> Step:
@@ -334,7 +350,12 @@ def budgie_init(
         argv += ["--year", year]
     if year_start:
         argv += ["--year-start", year_start]
-    return Step("budgie init", tuple(argv), home.budget_dir(name), makes=(home.budget_dir(name),))
+    return Step(
+        "budgie init",
+        tuple(argv),
+        home.budget_dir(name),
+        makes=(home.budget_dir(name),),
+    )
 
 
 MONDAY_STEPS = ("fetch", "board", "weekly", "digest", "emails")

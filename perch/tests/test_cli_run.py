@@ -289,10 +289,10 @@ def test_walk_installs_the_command_then_runs_claude(tmp_path, monkeypatch):
     assert (home.root / ".claude" / "commands" / "walk.md").is_file()
 
 
-def test_gb_refuses_sync(tmp_path, monkeypatch):
+def test_gb_refuses_migrate(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo")
     monkeypatch.chdir(home.root)
-    result = run("gb", "sync", "-p", "apollo")
+    result = run("gb", "migrate", "-p", "apollo")
     assert result.exit_code == 2
 
 
