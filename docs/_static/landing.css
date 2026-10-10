@@ -1,0 +1,39 @@
+/* Landing page only. Colors come from shibuya's variables, so light and dark follow the theme. */
+.pl { max-width: 68rem; margin: 0 auto; }
+.pl-hero { text-align: center; padding: 3.5rem 0 2.5rem; }
+.pl-badge { display: inline-block; font-size: .8rem; padding: .2rem .75rem; border-radius: 999px;
+  border: 1px solid var(--sy-c-border); color: var(--sy-c-text-weak); }
+.pl-hero h1 { font-size: clamp(2.2rem, 6vw, 3.6rem); line-height: 1.08; letter-spacing: -.03em; margin: 1rem 0; border: 0;
+  background: linear-gradient(120deg, var(--sy-c-heading), var(--accent-9, var(--sy-c-link)));
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+.pl-hero p { font-size: 1.2rem; max-width: 40rem; margin: 0 auto 1.8rem; color: var(--sy-c-text-weak); }
+.pl-btns { display: flex; gap: .8rem; justify-content: center; flex-wrap: wrap; }
+.pl-btn { font-family: var(--sy-f-mono); font-size: .95rem; padding: .7rem 1.3rem; border-radius: .6rem;
+  border: 1px solid var(--sy-c-border); color: var(--sy-c-text); text-decoration: none; }
+.pl-btn.primary { background: var(--sy-c-link); border-color: var(--sy-c-link); color: var(--sy-c-background); }
+.pl-btn:hover { transform: translateY(-1px); }
+.pl h2 { text-align: center; border: 0; margin: 3.5rem 0 1.5rem; letter-spacing: -.02em; }
+.pl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1rem; }
+.pl-card { padding: 1.3rem; border: 1px solid var(--sy-c-border); border-radius: .9rem;
+  background: var(--sy-c-surface); transition: border-color .15s, transform .15s; }
+.pl-card:hover { border-color: var(--sy-c-link); transform: translateY(-2px); }
+.pl-card code { font-size: .8rem; }
+.pl-card h3 { margin: .3rem 0 .4rem; font-size: 1.05rem; }
+.pl-card p { margin: 0; color: var(--sy-c-text-weak); font-size: .95rem; }
+.pl-steps { counter-reset: s; display: grid; gap: .7rem; max-width: 42rem; margin: 0 auto; padding: 0; list-style: none; }
+.pl-steps li { counter-increment: s; display: flex; gap: 1rem; align-items: center; padding: .8rem 1rem;
+  border: 1px solid var(--sy-c-border); border-radius: .7rem; background: var(--sy-c-surface); }
+.pl-steps li::before { content: counter(s); flex: none; width: 1.7rem; height: 1.7rem; border-radius: 50%;
+  display: grid; place-items: center; font-size: .85rem; background: var(--sy-c-link); color: var(--sy-c-background); }
+.pl-steps code { background: none; padding: 0; font-size: .95rem; }
+.pl-flow { max-width: 56rem; margin: 0 auto; }
+.pl-flow svg { width: 100%; height: auto; display: block; }
+.pl-flow .box { fill: var(--sy-c-surface); stroke: var(--sy-c-border); stroke-width: 1.5; }
+.pl-flow .hot { stroke: var(--sy-c-link); }
+.pl-flow .t { fill: var(--sy-c-text); font: 600 15px var(--sy-f-sans, sans-serif); }
+.pl-flow .s { fill: var(--sy-c-text); opacity: .65; font: 11px var(--sy-f-mono, monospace); }
+.pl-flow .a { stroke: var(--sy-c-link); stroke-width: 2; fill: none; }
+.pl-flow .ah { fill: var(--sy-c-link); }
+.pl-foot { text-align: center; margin: 3rem 0 1rem; color: var(--sy-c-text-weak); }
+.pl-btn { text-decoration: none !important; border-bottom: 1px solid var(--sy-c-border); }
+.yue > section#perch > h1:first-child, section#perch > h1:first-child { display: none; }

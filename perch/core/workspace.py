@@ -1,4 +1,4 @@
-"""The perch workspace: the perch checkout is home, and the projects live in it.
+"""The perch workspace: the perch checkout is home, and the projects live in it::
 
     perch/                      the checkout
       config.yaml               optional, gitignored: lead: NAME and alerts:
