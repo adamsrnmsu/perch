@@ -154,3 +154,10 @@ def test_listen_md_contains_template_fields():
         "Source: meeting",
     ):
         assert f in t
+
+
+def test_html_entities_are_unescaped():
+    tagged = "WEBVTT\n\n00:00.000 --> 00:01.000\n<v Ryan Adams>R&amp;D is late</v>\n"
+    prefixed = "WEBVTT\n\n00:00.000 --> 00:01.000\nRyan Adams: a &lt;b&gt;\n"
+    assert parse(tagged, "Ryan Adams") == ["R&D is late"]
+    assert parse(prefixed, "Ryan Adams") == ["a <b>"]

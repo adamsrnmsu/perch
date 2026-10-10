@@ -286,7 +286,7 @@ def test_gb_plan_without_a_base_says_where_to_pull(tmp_path):
         steps.gb(home, "apollo", config, "plan")
     spec = home.board_dir("apollo") / "apollo.yaml"
     spec.parent.mkdir(parents=True)
-    spec.write_text("")  # a pull without --base: --force would drop edits
+    spec.write_text("")  # a pull over an existing file: --force would drop edits
     with pytest.raises(
         WorkspaceError, match="--force without a .base discards unpushed edits"
     ):

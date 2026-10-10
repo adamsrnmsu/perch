@@ -54,7 +54,8 @@ board rules with that reason. Stop.
 card labelled `followup` (its title says the decision; unassigned and undated
 unless the lead names an owner or a date), or a `notes:` entry on an existing
 card. A follow-up the lead calls done gets a note and a move into `Verify`;
-name it for the lead to close in GitLab (never close anything yourself). Run
+if the lead says to close it, stage `closed: true` on the issue and let the plan
+table show the close row (never run `sync` or `push` yourself). Run
 `perch gb plan -p $ARGUMENTS` (it diffs against the pull's `.base`) and show
 the table verbatim with one reason per row. Then hand back, three lines: the
 board file that holds the staged edits; `perch gb sync -p $ARGUMENTS` for the

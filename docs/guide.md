@@ -178,7 +178,7 @@ set a quarter beside the one before it.
 ### Layout and cross-repo work
 
     perch/                        this repo (the clone you ran make install in)
-      apps/budgie/                Budgie's repo (git@github.com:adamsrnmsu/budgie.git)
+      apps/budgie/                Budgie's repo (https://github.com/adamsrnmsu/budgie.git)
       apps/remote-gitboard/       gitboard's repo
 
 Suite-level docs and decisions live in perch's `docs/`. A change that spans
