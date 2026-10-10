@@ -1,36 +1,42 @@
-"""The perch workspace: a perch-home.yaml, and the projects beside it.
+"""The perch workspace: the perch checkout is home, and the projects live in it.
 
-    ~/work/pi/
-      perch-home.yaml     gitboard_dir: ~/Documents/git/perch/apps/remote-gitboard
-      projects/apollo/    perch.yaml, history.jsonl, dumps/, weekly/, watch/
-      budget/apollo/      the Budgie project (Budgie's own budget/ container)
+    perch/                      the checkout
+      config.yaml               optional, gitignored: lead: NAME and alerts:
+      apps/budgie/              clones (gitignored), put there by make install
+      apps/remote-gitboard/
+      projects/apollo/          perch.yaml, history.jsonl, watch/, monday.json
+        board/                  the pulled board, its .base, snapshots, stats, dump
+        budget/                 the Budgie project (budgie.yaml directly inside)
+        reports/                digests from gitboard digest
+        listen/                 meeting transcripts
 
 A project is one funded piece of work: one GitLab project, one Budgie project,
-one timesheet charge code. Found by walking up from the working directory,
-else $PERCH_HOME -- the same walk-up Budgie and gitboard use.
+one timesheet charge code. Home is where perch is installed from: no file to
+find, no environment variable.
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
+import perch
 from perch.core.config import CONFIG_NAME
 
-HOME_NAME = "perch-home.yaml"
-HOME_ENV = "PERCH_HOME"
+CONFIG_FILE = "config.yaml"
 PROJECTS_DIR = "projects"
-BUDGET_DIR = "budget"  # Budgie's container: `budgie init NAME` writes budget/NAME
-_HOME_KEYS = {"gitboard_dir", "alerts"}
+_HOME_KEYS = {"lead", "alerts"}
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
+NOT_A_CHECKOUT = (
+    "perch is not running from a checkout: run make install in your perch clone"
+)
 
 SCAFFOLD = """\
-budgie_project: ../../budget/{name}   # the directory holding budgie.yaml
-board_dump: dumps/board.json         # written by `perch fetch`
+budgie_project: budget               # the directory holding budgie.yaml
+board_dump: board/dump.json          # written by `perch fetch`
 gitlab_project:                      # the GitLab path, e.g. group/{name}
 # estimates: estimates.csv           # optional; key,hours,low,high
 people:                              # GitLab username -> name in people.csv
@@ -53,17 +59,21 @@ def check_name(name: str) -> str:
 
 @dataclass(frozen=True)
 class Home:
-    """A loaded perch-home.yaml. Both paths are absolute."""
+    """The perch checkout and what config.yaml says. ``root`` is absolute."""
 
     root: Path
-    gitboard_dir: Path
+    lead: str | None = None
     alerts_raw: object = field(default=None, compare=False)  # unvalidated `alerts:`
 
     def alerts(self):
         """The validated alert rules; ValueError naming the key when malformed."""
         from perch.core import alerts
 
-        return alerts.parse(self.alerts_raw, self.projects(), HOME_NAME)
+        return alerts.parse(self.alerts_raw, self.projects(), CONFIG_FILE)
+
+    @property
+    def gitboard_dir(self) -> Path:
+        return self.root / "apps" / "remote-gitboard"
 
     @property
     def projects_dir(self) -> Path:
@@ -88,10 +98,10 @@ class Home:
         return self.projects_dir / name / "watch" / f"{week}.md"
 
     def reports_dir(self, name: str) -> Path:
-        return self.gitboard_dir / "reports" / name
+        return self.projects_dir / name / "reports"
 
     def budget_dir(self, name: str) -> Path:
-        return self.root / BUDGET_DIR / name
+        return self.projects_dir / name / "budget"
 
     def select(self, name: str | None, here: Path | None = None) -> str:
         """The named project, else the one ``here`` is inside, else the only one.
@@ -122,7 +132,7 @@ class Home:
         return names[0]
 
     def scaffold(self, name: str) -> Path:
-        """Write projects/NAME/perch.yaml pointing at budget/NAME. Never overwrites."""
+        """Write projects/NAME/perch.yaml pointing at its budget/. Never overwrites."""
         path = self.config_path(check_name(name))
         if path.exists():
             raise FileExistsError(f"{path} exists; edit it instead.")
@@ -131,51 +141,26 @@ class Home:
         return path
 
 
-def load_home(path: Path) -> Home:
-    """Load and validate a perch-home.yaml; every error names the key."""
+def checkout_home(root: Path | None = None) -> Home:
+    """The perch checkout as a Home; ``root`` is injected by tests only."""
+    root = root or Path(perch.__file__).resolve().parents[1]
+    if not (root / "pyproject.toml").is_file() or not (root / "apps").is_dir():
+        raise WorkspaceError(NOT_A_CHECKOUT)
+    path = root / CONFIG_FILE
+    if not path.is_file():
+        return Home(root=root)
     try:
         data = yaml.safe_load(path.read_text()) or {}
     except yaml.YAMLError as exc:
-        raise WorkspaceError(f"{path.name}: not valid YAML: {exc}") from exc
+        raise WorkspaceError(f"{CONFIG_FILE}: not valid YAML: {exc}") from exc
     if not isinstance(data, dict):
-        raise WorkspaceError(f"{path.name} must be a mapping")
+        raise WorkspaceError(f"{CONFIG_FILE} must be a mapping")
     unknown = set(data) - _HOME_KEYS
     if unknown:
         raise WorkspaceError(
-            f"{path.name}: unknown keys {sorted(unknown)}; expected {sorted(_HOME_KEYS)}"
+            f"{CONFIG_FILE}: unknown keys {sorted(unknown)}; expected {sorted(_HOME_KEYS)}"
         )
-    if not data.get("gitboard_dir"):
-        raise WorkspaceError(f"{path.name}: `gitboard_dir` is required")
-    root = path.resolve().parent
-    gitboard = (root / Path(str(data["gitboard_dir"])).expanduser()).resolve()
-    return Home(root=root, gitboard_dir=gitboard, alerts_raw=data.get("alerts"))
-
-
-def find_home(start: Path, env: Mapping[str, str]) -> Home:
-    """The first perch-home.yaml at or above ``start``, else $PERCH_HOME's."""
-    here = start.resolve()
-    for directory in (here, *here.parents):
-        if (directory / HOME_NAME).is_file():
-            return load_home(directory / HOME_NAME)
-    if env.get(HOME_ENV):
-        path = Path(env[HOME_ENV]).expanduser() / HOME_NAME
-        if not path.is_file():
-            raise WorkspaceError(
-                f"${HOME_ENV} is {env[HOME_ENV]}, which has no {HOME_NAME}"
-            )
-        return load_home(path)
-    raise WorkspaceError(
-        f"no {HOME_NAME} here or above, and ${HOME_ENV} is not set. "
-        "Run: perch init <name> --home <dir> --gitboard-dir <remote-gitboard>"
-    )
-
-
-def create_home(root: Path, gitboard_dir: Path) -> Home:
-    """Make ``root`` a workspace. An existing perch-home.yaml is left alone."""
-    root.mkdir(parents=True, exist_ok=True)
-    path = root / HOME_NAME
-    if not path.exists():
-        path.write_text(yaml.safe_dump({"gitboard_dir": str(gitboard_dir)}))
-    for sub in (PROJECTS_DIR, BUDGET_DIR):
-        (root / sub).mkdir(exist_ok=True)
-    return load_home(path)
+    lead = data.get("lead")
+    if "lead" in data and (not isinstance(lead, str) or not lead.strip()):
+        raise WorkspaceError(f"{CONFIG_FILE}: `lead` must be a name (text)")
+    return Home(root=root, lead=lead, alerts_raw=data.get("alerts"))
