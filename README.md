@@ -43,11 +43,11 @@ hangs, or tmux was upgraded while it ran), `tmux -L pi kill-server` resets it;
 ## One entry point for every pi app
 
 `perch` is the single place you run things from. It drives gitboard and Budgie
-as separate commands; each app still lives in its own repo. Run it from
-anywhere inside a workspace, or set `PERCH_HOME`.
+as separate commands; each app still lives in its own repo. The perch clone
+is home: there is no workspace file to find and no environment variable to set.
 
 ```bash
-perch init apollo --home ~/work/pi --gitboard-dir ~/Documents/git/perch/apps/remote-gitboard
+perch init apollo               # scaffold projects/apollo/ and its Budgie project
 perch projects                 # every project, its GitLab project, how fresh its data is
 perch doctor                   # tools, config, people names, freshness; FIX lines say what to run
 perch status                   # each project's Monday steps: ok, stale, todo or FAIL, and the next command
@@ -62,7 +62,7 @@ perch monday -p apollo --from weekly  # resume at a step after a failure
 perch watch -p apollo          # private: anyone out of line with their own last 8 weeks
 perch review -p apollo         # Claude's /board on the pulled board, told the budget picture
 perch brief -p apollo          # everything /walk reads: freshness, team, people, forecast, watch, follow-ups
-perch gb plan -p apollo        # gitboard for the project, from its checkout (show, plan, ...; push/pull need GitLab)
+perch gb plan -p apollo        # gitboard for the project, its files under projects/apollo/board (push/pull need GitLab)
 perch bg monthly -p apollo     # Budgie's monthly, hours, plan, scenario, assumptions, calibrate, doctor (args pass through)
 perch walk -p apollo           # Claude walks you through money, board and watch (/walk)
 perch detail -p apollo         # burn, plan and forecast by month (labor only)
@@ -82,12 +82,29 @@ one timesheet charge code. Rates are per project (the same person can cost a
 different amount on different work), so each Budgie project has its own
 `people.csv`.
 
+The perch checkout is home. Everything about a project sits under
+`projects/NAME/` (gitignored, like `apps/`):
+
 ```
-~/work/pi/
-  perch-home.yaml      gitboard_dir: /path/to/remote-gitboard
-  projects/apollo/     perch.yaml (gitlab_project: group/apollo), history.jsonl, dumps/, weekly/, watch/
-  budget/apollo/       the Budgie project: people.csv, plan.csv, weekly.csv, budget.csv
+perch/                     the clone you ran make install in
+  config.yaml              optional, gitignored: lead: Your Name, and alerts:
+  apps/budgie/             clones, put there by make install
+  apps/remote-gitboard/
+  projects/apollo/
+    perch.yaml             gitlab_project: group/apollo, people:, estimates:
+    board/                 apollo.yaml (the pulled board), its .base, snapshots, stats, dump.json
+    budget/                the Budgie project: budgie.yaml, people.csv, plan.csv, weekly.csv
+    reports/               gitboard's digests
+    history.jsonl, weekly/, watch/
 ```
+
+perch hands gitboard explicit paths (`--out`, `--db`, `--log`, `--spec`,
+`--boards-dir`), so it writes nothing inside gitboard's checkout.
+
+Coming from the old workspace (a `perch-home.yaml` beside `projects/` and
+`budget/`)? Run `perch doctor` from inside it: it prints the exact `mv` and `cp`
+commands for each project, and leaves anything that already exists alone.
+Nothing is moved for you.
 
 In `perch tui`, `:` opens a command line: `apollo CUT 700k`, `ALL MON`, `MON weekly`
 (the project defaults to the cursor's; `c` opens it with `CUT `). Mnemonics:
@@ -115,7 +132,7 @@ Five more things in the TUI, all team level and all read from files:
 - **Tape** (`t`): a strip, newest first, of flips, budget and staffing moves,
   the latest hours reading, fetches and failures.
 - **Alerts**: your own thresholds toast once when they are crossed. In
-  `perch-home.yaml`:
+  `config.yaml` in the perch checkout:
 
 ```yaml
 alerts:
@@ -127,43 +144,43 @@ alerts:
   `ALRT` lists every rule and whether it is true now; `perch doctor` checks
   them. Nothing is sent.
 
-Board edits (pull, plan, push, tui) are `gitboard` commands, run from the
-gitboard checkout with the project's `gitlab_project`.
+Board edits (pull, plan, push, tui) are `perch gb` commands: it runs gitboard
+from its checkout with the project's `gitlab_project` and files filled in.
 
-`perch review` is the review after a pull: it opens Claude in the gitboard
-checkout on `/board <gitlab_project>` (label, prioritise, flag; stage the edits,
+`perch review` is the review after a pull: it opens Claude in the
+perch checkout on `/board <gitlab_project> <board file>` (label, prioritise, flag; stage the edits,
 show `plan`, push only on your yes) and appends perch's team line from
 history.jsonl (stoplight, budget, headroom, hours left, cost to clear, headroom
 by week) so the priority calls weigh the money, plus the latest week's person
 rows in name order (open cards, hours to clear, hours left, gap; no rate, cost
 or accuracy) so it can say who has room for a stuck or unowned card. Claude is
 told never to rank, compare or judge people; nothing from the watch goes in.
-It refuses until `boards/<name>.yaml` is pulled and names the
-`gitboard pull` to run; run `perch board` first or Claude is told there is no
+It installs the `/board` command into `.claude/commands/` first (your own copy is
+kept). It refuses until `projects/<name>/board/<name>.yaml` is pulled and names
+the `perch gb pull` to run; run `perch board` first or Claude is told there is no
 week recorded.
 
-`perch walk` (or `/walk apollo` in a Claude session opened in the workspace)
+`perch walk` (or `/walk apollo` in a Claude session opened in the perch checkout)
 is the Monday walk-through. Claude reads `perch brief`, then goes money →
 board → watch, stopping after each for your call, and ends by staging your
 calls as `followup` cards and notes in the pulled board file, with gitboard's
 plan table. The session needs no GitLab: it works from what `perch monday`
 and `perch gb pull` already wrote. Push later where GitLab is reachable:
-`perch gb push -p apollo`. Next week's brief lists the follow-ups still open;
+`perch gb sync -p apollo`. Next week's brief lists the follow-ups still open;
 close one in GitLab and the next pull drops it. Money calls end as the file
 and row for you to edit (perch never writes Budgie's files), and the watch is
-talked through, never written anywhere. `perch init` and `perch walk` install
-`.claude/commands/walk.md` into the workspace and add the gitboard checkout to
-`.claude/settings.json` so Claude can edit the board file; an installed
-`walk.md` is yours and is never overwritten (`perch doctor` says when it
-differs from perch's copy). `perch` must be on the session's PATH.
+talked through, never written anywhere. `perch walk` installs
+`.claude/commands/walk.md` into the checkout (gitignored; `.claude/settings.json`
+is not touched, and `apps/` is already inside Claude's working directory); an
+installed `walk.md` is yours and is never overwritten (`perch doctor` says when
+it differs from perch's copy). `perch` must be on the session's PATH.
 
 ### Moving a single-team setup in
 
-1. Create `perch-home.yaml` (one line: `gitboard_dir: /path/to/remote-gitboard`).
-2. Make `projects/team/`, then move `perch.yaml`, `history.jsonl` and `dumps/`
-   into it.
-3. In `perch.yaml`, fix `budgie_project` and `board_dump` (they're relative to
-   the file) and add `gitlab_project`.
+1. Make `projects/team/` in the perch checkout, then move `perch.yaml` and
+   `history.jsonl` into it, and your Budgie project to `projects/team/budget/`.
+2. In `perch.yaml`, set `budgie_project: budget` and `board_dump: board/dump.json`
+   (they're relative to the file) and add `gitlab_project`.
 
 `perch doctor` names what is still wrong; `perch fetch` rewrites the board dump.
 It asks gitboard for about nine months of history (`gitboard stats
@@ -172,7 +189,7 @@ set a quarter beside the one before it.
 
 ### Layout and cross-repo work
 
-    ~/Documents/git/perch/        this repo
+    perch/                        this repo (the clone you ran make install in)
       apps/budgie/                Budgie's repo (git@github.com:adamsrnmsu/budgie.git)
       apps/remote-gitboard/       gitboard's repo
 
@@ -216,8 +233,8 @@ Team level only; nothing is sent.
 `perch.yaml`:
 
 ```yaml
-budgie_project: ../budgets/budget/fy26   # the directory holding budgie.yaml
-board_dump: dumps/team.json
+budgie_project: budget                   # the directory holding budgie.yaml
+board_dump: board/dump.json
 gitlab_project: group/project            # what perch fetch reads
 estimates: estimates.csv                 # optional
 people:                                  # GitLab username -> Budgie name

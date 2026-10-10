@@ -152,21 +152,41 @@ def world(tmp_path):
     return build_world(tmp_path)
 
 
+_LAST_HOME = []  # the root of the tmp checkout the test last built
+
+
 @pytest.fixture(autouse=True)
-def _no_perch_home(monkeypatch):
-    """A PERCH_HOME in the developer's shell must not find a real workspace."""
-    monkeypatch.delenv("PERCH_HOME", raising=False)
+def _checkout_is_the_tmp_home(monkeypatch):
+    """The CLI's home is the tmp checkout a test built, never the real clone."""
+    from perch import cli
+    from perch.core.workspace import checkout_home
+
+    _LAST_HOME.clear()
+    real = cli._find_home
+    monkeypatch.setattr(
+        cli, "_find_home", lambda: checkout_home(_LAST_HOME[0]) if _LAST_HOME else real()
+    )
+
+
+def make_checkout(root):
+    """An empty perch checkout: pyproject.toml, apps/remote-gitboard/, projects/."""
+    from perch.core.workspace import checkout_home
+
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "pyproject.toml").write_text("")
+    (root / "apps" / "remote-gitboard").mkdir(parents=True, exist_ok=True)
+    (root / "projects").mkdir(exist_ok=True)
+    _LAST_HOME[:] = [root]
+    return checkout_home(root)
 
 
 def build_home(tmp_path, *names, gitlab=True):
-    """A workspace whose projects are each the hand-checkable world above.
+    """A checkout whose projects are each the hand-checkable world above.
 
     Each project's Budgie project is its own `fy26/` (perch.yaml points there),
     so every number the world's docstring works out holds per project.
     """
-    from perch.core.workspace import create_home
-
-    home = create_home(tmp_path / "ws", tmp_path / "gb")
+    home = make_checkout(tmp_path / "ws")
     for name in names:
         folder = home.projects_dir / name
         folder.mkdir(parents=True)

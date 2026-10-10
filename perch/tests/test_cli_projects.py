@@ -59,68 +59,41 @@ def test_projects_lists_each_with_its_gitlab_project(tmp_path, monkeypatch):
     assert "gemini" in result.output and "not set" in result.output
 
 
-def fake_budgie_init(monkeypatch, root):
+def fake_budgie_init(monkeypatch):
     ran = []
 
     def fake(step):
-        ran.append(step.argv[1:])
-        name = step.argv[-1]
-        (root / "budget" / name).mkdir(parents=True, exist_ok=True)
-        (root / "budget" / name / "budgie.yaml").write_text("year: 2026\n")
+        ran.append((step.argv[1:], step.cwd))
+        step.cwd.mkdir(parents=True, exist_ok=True)
+        (step.cwd / "budgie.yaml").write_text("year: 2026\n")
 
     monkeypatch.setattr("perch.cli._run", fake)
     return ran
 
 
-def test_init_makes_the_workspace_runs_budgie_init_and_writes_perch_yaml(
-    tmp_path, monkeypatch
-):
-    monkeypatch.chdir(tmp_path)
-    ran = fake_budgie_init(monkeypatch, tmp_path / "ws")
-    result = run(
-        "init", "apollo", "--home", "ws", "--gitboard-dir", str(tmp_path / "gb")
-    )
+def test_init_runs_budgie_init_here_and_writes_perch_yaml(tmp_path, monkeypatch):
+    home = build_home(tmp_path)
+    monkeypatch.chdir(home.root)
+    ran = fake_budgie_init(monkeypatch)
+    result = run("init", "apollo")
     assert result.exit_code == 0, result.output
-    assert ran == [("init", "apollo")]
-    assert (tmp_path / "ws" / "perch-home.yaml").is_file()
-    config = load_config(tmp_path / "ws/projects/apollo/perch.yaml", require_dump=False)
-    assert config.budgie_project == (tmp_path / "ws/budget/apollo").resolve()
+    assert ran == [(("init", "--here"), home.budget_dir("apollo"))]
+    config = load_config(home.config_path("apollo"), require_dump=False)
+    assert config.budgie_project == home.budget_dir("apollo").resolve()
+    assert config.board_dump == home.projects_dir.resolve() / "apollo/board/dump.json"
     assert (
         "gitlab_project" in result.output and "perch doctor -p apollo" in result.output
     )
-    assert (tmp_path / "ws" / ".claude" / "commands" / "walk.md").is_file()
-
-
-def test_init_survives_a_walk_install_oserror_and_still_guides(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "ws").mkdir()
-    (tmp_path / "ws" / ".claude").write_text("a file")
-    fake_budgie_init(monkeypatch, tmp_path / "ws")
-    result = run(
-        "init", "apollo", "--home", "ws", "--gitboard-dir", str(tmp_path / "gb")
-    )
-    assert result.exit_code == 0, result.output
-    assert "could not install /walk" in result.output
-    assert "Fill in:" in result.output
+    assert not (home.root / ".claude").exists()
 
 
 def test_init_passes_year_and_year_start_to_budgie(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    ran = fake_budgie_init(monkeypatch, tmp_path / "ws")
-    result = run(
-        "init",
-        "fed",
-        "--year",
-        "2027",
-        "--year-start",
-        "10-01",
-        "--home",
-        "ws",
-        "--gitboard-dir",
-        str(tmp_path / "gb"),
-    )
+    home = build_home(tmp_path)
+    monkeypatch.chdir(home.root)
+    ran = fake_budgie_init(monkeypatch)
+    result = run("init", "fed", "--year", "2027", "--year-start", "10-01")
     assert result.exit_code == 0, result.output
-    assert ran == [("init", "--year", "2027", "--year-start", "10-01", "fed")]
+    assert ran[0][0] == ("init", "--here", "--year", "2027", "--year-start", "10-01")
 
 
 def test_init_skips_budgie_init_when_the_budgie_project_exists(tmp_path, monkeypatch):
@@ -141,22 +114,16 @@ def test_init_refuses_to_overwrite_and_runs_nothing(tmp_path, monkeypatch):
     assert result.exit_code != 0 and "exists" in result.output
 
 
-def test_init_home_needs_gitboard_dir_the_first_time(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    result = run("init", "apollo", "--home", "ws")
-    assert result.exit_code != 0 and "--gitboard-dir" in result.output
-
-
 def test_init_rejects_a_name_that_escapes(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    result = run("init", "../x", "--home", "ws", "--gitboard-dir", "gb")
+    home = build_home(tmp_path)
+    monkeypatch.chdir(home.root)
+    result = run("init", "../x")
     assert result.exit_code != 0 and "not a project name" in result.output
-    assert not (tmp_path / "x").exists()
+    assert not (home.root.parent / "x").exists()
 
 
-def test_a_local_perch_yaml_beats_perch_home(world, tmp_path, monkeypatch):
-    home = build_home(tmp_path / "other", "apollo", "gemini")
-    monkeypatch.setenv("PERCH_HOME", str(home.root))
+def test_a_local_perch_yaml_beats_the_checkouts_projects(world, tmp_path, monkeypatch):
+    build_home(tmp_path / "other", "apollo", "gemini")
     monkeypatch.chdir(world.parent)
     result = run("board", "--no-history")
     assert result.exit_code == 0, result.output  # not "several projects"
@@ -169,3 +136,23 @@ def test_inside_a_project_folder_that_project_is_used(tmp_path, monkeypatch):
     monkeypatch.chdir(deep)
     result = run("weekly")
     assert result.exit_code == 0, result.output
+
+
+def test_review_installs_board_into_the_checkout_then_runs_claude(
+    tmp_path, monkeypatch
+):
+    from perch.core import steps
+    from perch.tests.test_walk import gitboard_board_md
+
+    home = build_home(tmp_path, "apollo")
+    gitboard_board_md(home)
+    spec = steps.spec_path(home, "apollo", load_config(home.config_path("apollo"), require_dump=False))
+    spec.parent.mkdir(parents=True)
+    spec.write_text("")
+    ran = []
+    monkeypatch.setattr("perch.cli._run", ran.append)
+    monkeypatch.chdir(home.root)
+    result = run("review", "-p", "apollo")
+    assert result.exit_code == 0, result.output
+    assert (home.root / ".claude/commands/board.md").is_file()
+    assert ran[0].cwd == home.root and ran[0].argv[0] == "claude"

@@ -22,9 +22,11 @@ def test_monday_is_five_steps_in_order_each_in_its_tool(tmp_path):
     assert [s.name for s in run] == ["fetch", "board", "weekly", "digest", "emails"]
     fetch, board, weekly, digest, emails = run
     gb = home.gitboard_dir
+    board_dir = home.board_dir("apollo")
     assert fetch.argv == (
         str(gb / ".venv/bin/python"), "-m", "gitboard.cli",
         "stats", "grp/apollo", "--history-days", "276", "--dump", str(config.board_dump),
+        "--log", str(board_dir / "stats.jsonl"),
     )  # fmt: skip
     assert fetch.cwd == gb and fetch.env == {"PYTHONPATH": str(gb / "src")}
     assert fetch.makes == (config.board_dump.parent,)
@@ -37,11 +39,15 @@ def test_monday_is_five_steps_in_order_each_in_its_tool(tmp_path):
     weekly_md = home.projects_dir / "apollo" / "weekly" / "2026-W40.md"
     assert weekly.argv[-2:] == ("--out", str(weekly_md))
     assert weekly.makes == (weekly_md.parent,)
-    assert digest.argv[-4:] == (
+    assert digest.argv[-8:] == (
         "--from",
         str(config.board_dump),
         "--out",
-        str(gb / "reports" / "apollo"),
+        str(home.projects_dir / "apollo" / "reports"),
+        "--log",
+        str(board_dir / "stats.jsonl"),
+        "--boards-dir",
+        str(board_dir),
     )
     assert emails.argv == (
         "/venv/bin/budgie",
@@ -82,29 +88,19 @@ def test_hours_opens_weekly_csv_with_an_editor_that_has_flags(tmp_path):
     assert step.argv == ("code", "-w", str(config.budgie_project / "weekly.csv"))
 
 
-def test_budgie_init_runs_from_the_workspace_root(tmp_path):
-    home, _ = apollo(tmp_path)
-    step = steps.budgie_init(BIN, home, "gemini")
-    assert step.argv == ("/venv/bin/budgie", "init", "gemini") and step.cwd == home.root
-
-
 def test_budgie_init_passes_year_flags_only_when_given(tmp_path):
     home, _ = apollo(tmp_path)
     step = steps.budgie_init(BIN, home, "gemini", year="2027", year_start="10-01")
     assert step.argv == (
         "/venv/bin/budgie",
         "init",
+        "--here",
         "--year",
         "2027",
         "--year-start",
         "10-01",
-        "gemini",
     )
-    assert steps.budgie_init(BIN, home, "g", year="2027").argv[2:] == (
-        "--year",
-        "2027",
-        "g",
-    )
+    assert steps.budgie_init(BIN, home, "g").argv == ("/venv/bin/budgie", "init", "--here")
 
 
 def test_iso_week_matches_date_G_W_V():
@@ -141,12 +137,12 @@ def _person(week, name, gap, **extra):
             "hours": 10.0, "left": 10.0 + gap, "gap": gap, **extra}  # fmt: skip
 
 
-def test_review_opens_claudes_board_command_in_gitboard_with_team_and_people(
+def test_review_opens_board_in_the_checkout_with_the_spec_team_and_people(
     tmp_path,
 ):
     home, config = apollo(tmp_path)
-    (home.gitboard_dir / "boards").mkdir(parents=True)
-    (home.gitboard_dir / "boards" / "apollo.yaml").write_text("")
+    (home.board_dir("apollo")).mkdir(parents=True)
+    (home.board_dir("apollo") / "apollo.yaml").write_text("")
     rows = [
         _person("2026-W39", "Alice", 99.0),  # an older week: dropped
         {"week": "2026-W40", "kind": "team", "name": "team", "headroom": 1.0},
@@ -156,10 +152,11 @@ def test_review_opens_claudes_board_command_in_gitboard_with_team_and_people(
     ]
     step = steps.review(home, "apollo", config, rows)
     claude, flag, context, prompt = step.argv
+    spec = home.board_dir("apollo") / "apollo.yaml"
     assert (claude, flag, prompt) == (
         "claude",
         "--append-system-prompt",
-        "/board grp/apollo",
+        f"/board grp/apollo {spec}",
     )
     lines = context.split("\n")
     assert lines[1].startswith("— · over — · budget — · spent — · headroom $1")
@@ -169,7 +166,16 @@ def test_review_opens_claudes_board_command_in_gitboard_with_team_and_people(
         "Zed · open 2 · to clear 10h · left 10h · gap +0h",
     ]
     assert "150" not in context and "1,500" not in context  # load, not pay
-    assert "Never rank" in context and step.cwd == home.gitboard_dir
+    assert "Never rank" in context and step.cwd == home.root
+
+
+def test_review_prompt_carries_the_absolute_spec_path(tmp_path):
+    home, config = apollo(tmp_path)
+    spec = steps.spec_path(home, "apollo", config)
+    spec.parent.mkdir(parents=True)
+    spec.write_text("")
+    step = steps.review(home, "apollo", config, [])
+    assert step.argv[-1] == f"/board grp/apollo {spec}" and step.cwd == home.root
 
 
 def test_people_lines_is_empty_before_any_person_row():
@@ -178,7 +184,7 @@ def test_people_lines_is_empty_before_any_person_row():
 
 def test_review_without_a_pulled_board_says_how_to_pull_it(tmp_path):
     home, config = apollo(tmp_path)
-    with pytest.raises(WorkspaceError, match="gitboard pull grp/apollo --base"):
+    with pytest.raises(WorkspaceError, match="perch gb pull -p apollo"):
         steps.review(home, "apollo", config, [])
     _, bare = apollo(tmp_path / "bare", gitlab=False)
     with pytest.raises(WorkspaceError, match="gitlab_project"):
@@ -188,25 +194,32 @@ def test_review_without_a_pulled_board_says_how_to_pull_it(tmp_path):
 @pytest.mark.parametrize(
     ("sub", "tail"),
     [
-        ("show", ("show", "--from", "SPEC", "--markdown")),
+        ("show", ("show", "--from", "SPEC", "--markdown", "--db", "DB", "--boards-dir", "BOARD")),
         ("graph", ("graph", "--from", "SPEC")),
         ("plan", ("plan", "SPEC", "--against", "BASE")),
         ("estimate", ("estimate", "SPEC", "--history", "DUMP")),
-        ("stats", ("stats", "--from", "DUMP")),
-        ("report", ("report", "--since", "SPEC")),
-        ("status", ("status",)),
-        ("push", ("push", "SPEC")),
-        ("pull", ("pull", "grp/apollo", "--base")),
+        ("stats", ("stats", "--from", "DUMP", "--log", "LOG")),
+        ("report", ("report", "--since", "SPEC", "--db", "DB")),
+        ("status", ("status", "--db", "DB", "--boards-dir", "BOARD")),
+        ("push", ("push", "SPEC", "--db", "DB")),
+        ("pull", ("pull", "grp/apollo", "--out", "SPEC", "--db", "DB")),
     ],
-)
+)  # fmt: skip
 def test_gb_fills_in_the_projects_target(tmp_path, sub, tail):
     home, config = apollo(tmp_path)
-    spec = str(home.gitboard_dir / "boards" / "apollo.yaml")
-    base = home.gitboard_dir / "boards" / "apollo.yaml.base"
+    spec = str(home.board_dir("apollo") / "apollo.yaml")
+    base = home.board_dir("apollo") / "apollo.yaml.base"
     base.parent.mkdir(parents=True)
     base.write_text("")
     want = tuple(
-        {"SPEC": spec, "BASE": str(base), "DUMP": str(config.board_dump)}.get(t, t)
+        {
+            "SPEC": spec,
+            "BASE": str(base),
+            "DUMP": str(config.board_dump),
+            "DB": str(base.parent / "snapshots.jsonl"),
+            "LOG": str(base.parent / "stats.jsonl"),
+            "BOARD": str(base.parent),
+        }.get(t, t)
         for t in tail
     )
     step = steps.gb(home, "apollo", config, sub)
@@ -267,7 +280,7 @@ def test_gb_plan_without_a_base_says_where_to_pull(tmp_path):
     home, config = apollo(tmp_path)
     with pytest.raises(WorkspaceError, match="where GitLab is reachable"):
         steps.gb(home, "apollo", config, "plan")
-    spec = home.gitboard_dir / "boards" / "apollo.yaml"
+    spec = home.board_dir("apollo") / "apollo.yaml"
     spec.parent.mkdir(parents=True)
     spec.write_text("")  # a pull without --base: --force would drop edits
     with pytest.raises(
@@ -303,3 +316,36 @@ def test_bg_refuses_an_unknown_sub(tmp_path):
     _, config = apollo(tmp_path)
     with pytest.raises(ValueError, match="init"):
         steps.bg(BIN, config, "init")
+
+
+def test_spec_path_uses_project_folder_not_gitlab_segment(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    config_path = home.config_path("apollo")
+    config_path.write_text(config_path.read_text() + "gitlab_project: g/sub/apollo-api\n")
+    config = load_config(config_path, require_dump=False)
+    assert steps.spec_path(home, "apollo", config).name == "apollo.yaml"
+
+
+def test_fetch_and_digest_pass_spec_once_the_board_is_pulled(tmp_path):
+    home, config = apollo(tmp_path)
+    spec = steps.spec_path(home, "apollo", config)
+    assert "--spec" not in steps.fetch(home, "apollo", config).argv
+    spec.parent.mkdir(parents=True)
+    spec.write_text("")
+    assert steps.fetch(home, "apollo", config).argv[-2:] == ("--spec", str(spec))
+    assert "--spec" in steps.digest(home, "apollo", config).argv
+
+
+def test_gb_offline_subs_refuse_gitboard_path_flags(tmp_path):
+    home, config = apollo(tmp_path)
+    for flag in ("--out", "--db", "--log", "--spec", "--boards-dir"):
+        with pytest.raises(ValueError, match="perch fills in"):
+            steps.gb(home, "apollo", config, "status", (flag, "x"))
+
+
+def test_budgie_init_runs_here_in_the_budget_dir(tmp_path):
+    home, _ = apollo(tmp_path)
+    step = steps.budgie_init(BIN, home, "apollo", year="2027")
+    assert step.cwd == home.budget_dir("apollo")
+    assert step.argv == ("/venv/bin/budgie", "init", "--here", "--year", "2027")
+    assert step.makes == (home.budget_dir("apollo"),)

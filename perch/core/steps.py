@@ -61,6 +61,7 @@ def fetch(home: Home, project: str, config: Config) -> Step:
             f"{project}: perch.yaml has no gitlab_project; "
             f"add e.g. `gitlab_project: group/{project}`"
         )
+    spec = spec_path(home, project, config)
     return gitboard(
         home,
         "fetch",
@@ -73,6 +74,9 @@ def fetch(home: Home, project: str, config: Config) -> Step:
         "276",
         "--dump",
         str(config.board_dump),
+        "--log",
+        str(stats_log(home, project)),
+        *_spec_flag(spec),
         makes=(config.board_dump.parent,),
     )
 
@@ -118,14 +122,26 @@ def people_lines(rows: list[dict], people: Mapping[str, str]) -> list[str]:
 
 
 def spec_path(home: Home, project: str, config: Config) -> Path:
-    """gitboard's pulled board for this project: boards/<last path segment>.yaml."""
+    """The project's pulled board: projects/NAME/board/NAME.yaml (NAME is the folder)."""
     if not config.gitlab_project:
         raise WorkspaceError(
             f"{project}: perch.yaml has no gitlab_project; "
             f"add e.g. `gitlab_project: group/{project}`"
         )
-    name = config.gitlab_project.rsplit("/", 1)[-1]
-    return home.gitboard_dir / "boards" / f"{name}.yaml"
+    return home.board_dir(project) / f"{project}.yaml"
+
+
+def snapshots(home: Home, project: str) -> Path:
+    return home.board_dir(project) / "snapshots.jsonl"
+
+
+def stats_log(home: Home, project: str) -> Path:
+    return home.board_dir(project) / "stats.jsonl"
+
+
+def _spec_flag(spec: Path) -> tuple[str, ...]:
+    """--spec only once the board is pulled: gitboard reads it and fails if absent."""
+    return ("--spec", str(spec)) if spec.is_file() else ()
 
 
 def pull_fix(project: str, spec: Path) -> str:
@@ -148,7 +164,18 @@ GB_OFFLINE = ("show", "report", "stats", "graph", "estimate", "plan", "status")
 # push and pull need GitLab: the lead runs them on a connected machine.
 GB_SUBS = (*GB_OFFLINE, "push", "pull")
 # Flags that move an offline sub's input: --from "" would read GitLab.
-GB_TARGET_FLAGS = ("--from", "--against", "--base", "--history", "--since", "--all")
+GB_TARGET_FLAGS = (
+    "--from",
+    "--against",
+    "--history",
+    "--since",
+    "--all",
+    "--out",
+    "--db",
+    "--log",
+    "--spec",
+    "--boards-dir",
+)
 
 
 def gb(
@@ -174,16 +201,18 @@ def gb(
     if sub == "plan" and not base.is_file():
         raise WorkspaceError(f"{project}: no {base}; {pull_fix(project, path)}")
     dump = str(config.board_dump)
+    db = ("--db", str(snapshots(home, project)))
+    boards = ("--boards-dir", str(home.board_dir(project)))
     target = {
-        "show": ("--from", spec, "--markdown"),
+        "show": ("--from", spec, "--markdown", *db, *boards),
         "graph": ("--from", spec),
         "plan": (spec, "--against", str(base)),
         "estimate": (spec, "--history", dump),
-        "stats": ("--from", dump),
-        "report": ("--since", spec),
-        "status": (),
-        "push": (spec,),
-        "pull": (config.gitlab_project, "--base"),
+        "stats": ("--from", dump, "--log", str(stats_log(home, project)), *_spec_flag(path)),
+        "report": ("--since", spec, *db),
+        "status": (*db, *boards),
+        "push": (spec, *db),
+        "pull": (config.gitlab_project, "--out", spec, *db),
     }[sub]
     return gitboard(home, f"gb {sub}", sub, *target, *args)
 
@@ -191,8 +220,10 @@ def gb(
 def review(home: Home, project: str, config: Config, rows: list[dict]) -> Step:
     """Claude's /board on the pulled board, told what perch knows about the money.
 
+    Runs in the perch checkout, where `walk.install(home, "board")` put /board.
+
     `rows` is history.jsonl: the team lines and the latest week's person
-    lines, never the watch. /board stages edits in boards/<name>.yaml, so no
+    lines, never the watch. /board stages edits in the project's board file, so no
     pull, no review.
     """
     from perch.core.trend import team_lines
@@ -200,8 +231,7 @@ def review(home: Home, project: str, config: Config, rows: list[dict]) -> Step:
     spec = spec_path(home, project, config)
     if not spec.is_file():
         raise WorkspaceError(
-            f"{project}: no {spec}; pull it first: (cd {shlex.quote(str(home.gitboard_dir))}"
-            f" && gitboard pull {config.gitlab_project} --base)"
+            f"{project}: no {spec}; pull it first: perch gb pull -p {project}"
         )
     people = people_lines(rows, config.people)
     context = "\n".join((REVIEW_RULES, *team_lines(rows), *people))
@@ -211,9 +241,9 @@ def review(home: Home, project: str, config: Config, rows: list[dict]) -> Step:
             "claude",
             "--append-system-prompt",
             context,
-            f"/board {config.gitlab_project}",
+            f"/board {config.gitlab_project} {shlex.quote(str(spec))}",
         ),
-        home.gitboard_dir,
+        home.root,
     )
 
 
@@ -242,8 +272,11 @@ def weekly(bin_dir: Path, home: Home, project: str, week: str) -> Step:
 
 def digest(home: Home, project: str, config: Config) -> Step:
     out = home.reports_dir(project)
+    spec = spec_path(home, project, config)
     return gitboard(
         home, "digest", "digest", "--from", str(config.board_dump), "--out", str(out),
+        "--log", str(stats_log(home, project)), *_spec_flag(spec),
+        "--boards-dir", str(home.board_dir(project)),
         makes=(out,),
     )  # fmt: skip
 
@@ -293,15 +326,15 @@ def budgie_init(
     year: str | None = None,
     year_start: str | None = None,
 ) -> Step:
-    """`budgie init NAME` from the workspace root writes budget/NAME.
+    """`budgie init --here` inside projects/NAME/budget writes the Budgie project.
 
     `year` / `year_start` pass straight through; Budgie validates them."""
-    argv = [str(bin_dir / "budgie"), "init"]
+    argv = [str(bin_dir / "budgie"), "init", "--here"]
     if year:
         argv += ["--year", year]
     if year_start:
         argv += ["--year-start", year_start]
-    return Step("budgie init", (*argv, name), home.root)
+    return Step("budgie init", tuple(argv), home.budget_dir(name), makes=(home.budget_dir(name),))
 
 
 MONDAY_STEPS = ("fetch", "board", "weekly", "digest", "emails")

@@ -12,7 +12,7 @@ TODAY = datetime.now().date()  # noqa: DTZ005
 
 
 def run(home, *args):
-    return CliRunner().invoke(cli, [*args], env={"PERCH_HOME": str(home.root)})
+    return CliRunner().invoke(cli, [*args])
 
 
 def test_detail_prints_the_burn_table(tmp_path):
@@ -63,8 +63,7 @@ def test_alerts_with_no_rules_is_quiet(tmp_path):
 
 def test_alerts_lists_a_rule_and_its_state(tmp_path):
     home = build_home(tmp_path, "apollo")
-    path = home.root / "perch-home.yaml"
-    path.write_text(path.read_text() + "alerts:\n  - when: headroom < 50k\n")
+    (home.root / "config.yaml").write_text("alerts:\n  - when: headroom < 50k\n")
     record(
         home.projects_dir / "apollo" / "history.jsonl",
         TODAY,
@@ -77,8 +76,7 @@ def test_alerts_lists_a_rule_and_its_state(tmp_path):
 
 def test_a_bad_alert_rule_names_its_key(tmp_path):
     home = build_home(tmp_path, "apollo")
-    path = home.root / "perch-home.yaml"
-    path.write_text(path.read_text() + "alerts:\n  - when: pace < 80\n")
+    (home.root / "config.yaml").write_text("alerts:\n  - when: pace < 80\n")
     result = run(home, "alerts")
     assert result.exit_code == 1 and "alerts[0].when" in result.output
     doc = run(home, "doctor", "-p", "apollo")

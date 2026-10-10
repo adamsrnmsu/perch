@@ -1,7 +1,7 @@
 ---
 description: Walk one project's Monday picture (money, board, watch) and stage the follow-ups.
 argument-hint: <project>
-allowed-tools: Bash(perch brief:*), Bash(perch cut:*), Bash(perch gb show:*), Bash(perch gb report:*), Bash(perch gb stats:*), Bash(perch gb graph:*), Bash(perch gb estimate:*), Bash(perch gb plan:*), Bash(perch gb status:*), Read, Edit(/@GITBOARD_DIR@/boards/*.yaml)
+allowed-tools: Bash(perch brief:*), Bash(perch cut:*), Bash(perch gb show:*), Bash(perch gb report:*), Bash(perch gb stats:*), Bash(perch gb graph:*), Bash(perch gb estimate:*), Bash(perch gb plan:*), Bash(perch gb status:*), Read, Edit(/@PERCH_DIR@/projects/*/board/*.yaml)
 ---
 
 You are walking the lead through project `$ARGUMENTS`: money, then board, then
@@ -34,8 +34,8 @@ row for the lead to change, and offer a `followup` card naming the decision
 (no figures beyond what the team already sees on the board). Stop with the one
 decision you need and your suggested default.
 
-**3. Board.** Read the gitboard checkout's `.claude/commands/board.md` (in
-`@GITBOARD_DIR@`) and follow its **Offline** rules: the pulled file is the
+**3. Board.** Read gitboard's `.claude/commands/board.md` (in
+`@PERCH_DIR@/apps/remote-gitboard`) and follow its **Offline** rules: the pulled file is the
 board. Two changes: run gitboard as `perch gb <sub> -p $ARGUMENTS` (it fills
 in the spec, its `.base` and the dump) instead of `PYTHONPATH=src
 .venv/bin/python -m gitboard.cli`, and do not run `plan` yet. The board
@@ -57,7 +57,7 @@ card. A follow-up the lead calls done gets a note and a move into `Verify`;
 name it for the lead to close in GitLab (never close anything yourself). Run
 `perch gb plan -p $ARGUMENTS` (it diffs against the pull's `.base`) and show
 the table verbatim with one reason per row. Then hand back, three lines: the
-board file that holds the staged edits; `perch gb push -p $ARGUMENTS` for the
+board file that holds the staged edits; `perch gb sync -p $ARGUMENTS` for the
 lead to run where GitLab is reachable (gitboard shows the plan again and asks
 y/n); and any `migrate-comments` lines from the board rules.
 

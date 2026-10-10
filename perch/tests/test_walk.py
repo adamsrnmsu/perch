@@ -1,4 +1,3 @@
-import json
 import re
 
 import yaml
@@ -18,13 +17,13 @@ def settings_path(home):
     return home.root / ".claude" / "settings.json"
 
 
-def test_install_writes_the_command_with_the_gitboard_path(tmp_path):
+def test_install_writes_the_command_with_the_checkout_path(tmp_path):
     home = build_home(tmp_path, "apollo")
     walk.install(home)
     text = walk.command_path(home).read_text()
     head, _ = frontmatter(text)
-    assert f"Edit(/{home.gitboard_dir}/boards/*.yaml)" in head["allowed-tools"]
-    assert "@GITBOARD_DIR@" not in text
+    assert f"Edit(/{home.root}/projects/*/board/*.yaml)" in head["allowed-tools"]
+    assert "@PERCH_DIR@" not in text
 
 
 def test_install_never_overwrites_the_leads_copy(tmp_path):
@@ -58,52 +57,38 @@ def test_the_body_says_what_to_do_without_perch_on_path(tmp_path):
     assert "There is no GitLab here" in body
 
 
-def test_settings_created_with_the_gitboard_dir(tmp_path):
+def test_walk_leaves_settings_json_alone(tmp_path):
     home = build_home(tmp_path, "apollo")
+    sp = settings_path(home)
+    sp.parent.mkdir(parents=True)
+    sp.write_text('{"a": 1}')
     walk.install(home)
-    settings = json.loads(settings_path(home).read_text())
-    assert settings["permissions"]["additionalDirectories"] == [str(home.gitboard_dir)]
+    assert sp.read_text() == '{"a": 1}'
+    assert not any(c.what.startswith("walk: gitboard") for c in walk.checks(home))
 
 
-def test_settings_merge_keeps_other_keys_and_adds_once(tmp_path):
+def test_walk_allow_glob_is_absolute(tmp_path):
     home = build_home(tmp_path, "apollo")
-    path = settings_path(home)
-    path.parent.mkdir(parents=True)
-    path.write_text(json.dumps({"model": "x", "permissions": {"allow": ["Read"]}}))
-    walk.install(home)
-    walk.install(home)
-    settings = json.loads(path.read_text())
-    assert settings["model"] == "x"
-    assert settings["permissions"]["allow"] == ["Read"]
-    assert settings["permissions"]["additionalDirectories"] == [str(home.gitboard_dir)]
+    text = walk.render(home, "walk")
+    head, _ = frontmatter(text)
+    # the template's leading "/" plus an absolute root is Claude's absolute-path form
+    assert f"Edit(/{home.root}/projects/*/board/*.yaml)" in head["allowed-tools"]
+    assert "@PERCH_DIR@" not in text
 
 
-def test_settings_that_are_not_valid_json_are_left_alone(tmp_path):
+def test_install_reports_wrote_then_kept(tmp_path):
     home = build_home(tmp_path, "apollo")
-    path = settings_path(home)
-    path.parent.mkdir(parents=True)
-    path.write_text("{oops")
-    lines = walk.install(home)
-    assert path.read_text() == "{oops"
-    assert any("by hand" in line and str(home.gitboard_dir) in line for line in lines)
-
-
-def test_settings_with_a_non_list_additional_directories_are_left_alone(tmp_path):
-    home = build_home(tmp_path, "apollo")
-    path = settings_path(home)
-    path.parent.mkdir(parents=True)
-    path.write_text(json.dumps({"permissions": {"additionalDirectories": "x"}}))
-    walk.install(home)
-    assert json.loads(path.read_text())["permissions"]["additionalDirectories"] == "x"
+    assert walk.install(home)[0].startswith("wrote")
+    assert walk.install(home)[0].startswith("kept")
 
 
 def test_checks_missing_differing_and_ok(tmp_path):
     home = build_home(tmp_path, "apollo")
-    assert [c.ok for c in walk.checks(home)] == [False, False]
+    assert [c.ok for c in walk.checks(home)] == [False]
     walk.install(home)
-    assert [c.ok for c in walk.checks(home)] == [True, True]
+    assert [c.ok for c in walk.checks(home)] == [True]
     walk.command_path(home).write_text("edited")
-    command, _ = walk.checks(home)
+    (command,) = walk.checks(home)
     assert not command.ok and "differs" in command.what
 
 
@@ -116,9 +101,39 @@ def test_doctor_names_the_walk_fix(tmp_path, monkeypatch):
     assert "walk: no .claude/commands/walk.md" in result.output
 
 
-def test_checks_unparseable_settings_say_fix_by_hand_not_perch_walk(tmp_path):
+RUNNER = "PYTHONPATH=src .venv/bin/python -m gitboard.cli"
+
+
+def gitboard_board_md(home):
+    tools = ", ".join(
+        f"Bash({RUNNER} {sub}:*)" for sub in ("show", "plan", "push", "ingest", "stats")
+    )
+    src = home.gitboard_dir / ".claude" / "commands" / "board.md"
+    src.parent.mkdir(parents=True)
+    src.write_text(
+        f"---\nallowed-tools: {tools}, Edit(boards/*.yaml)\n---\n\n"
+        f"`gitboard` is `{RUNNER}`.\n"
+    )
+    return src
+
+
+def test_board_install_rewrites_edit_pattern_and_runner(tmp_path):
     home = build_home(tmp_path, "apollo")
-    walk.install(home)
-    settings_path(home).write_text("{oops")
-    _, board = walk.checks(home)
-    assert not board.ok and "by hand" in board.fix and "perch walk," not in board.fix
+    src = gitboard_board_md(home)
+    before = src.read_text()
+    assert walk.install(home, "board")[0].startswith("wrote")
+    text = walk.command_path(home, "board").read_text()
+    head, _ = frontmatter(text)
+    assert f"Edit(/{home.root}/projects/*/board/*.yaml)" in head["allowed-tools"]
+    assert "Bash(perch gb plan:*)" in head["allowed-tools"]
+    assert "Edit(boards/*.yaml)" not in text and "gitboard.cli" not in text
+    assert "push" not in head["allowed-tools"] and "ingest" not in head["allowed-tools"]
+    assert src.read_text() == before  # gitboard's own copy keeps its standalone form
+
+
+def test_checks_cover_board_only_when_gitboard_has_the_file(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    assert [c.what for c in walk.checks(home)] == ["walk: no .claude/commands/walk.md"]
+    gitboard_board_md(home)
+    walk.install(home, "board")
+    assert [c.ok for c in walk.checks(home)] == [False, True]

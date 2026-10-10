@@ -106,13 +106,17 @@ def test_from_a_later_step_keeps_an_earlier_failure(tmp_path, monkeypatch):
     assert json.loads(failure_path(home, "apollo").read_text())["step"] == "fetch"
 
 
-def test_status_outside_a_workspace_or_for_no_such_project_is_a_clean_error(
-    tmp_path, monkeypatch
-):
-    monkeypatch.delenv("PERCH_HOME", raising=False)
+def test_not_running_from_a_checkout_names_make_install(tmp_path, monkeypatch):
+    import perch
+
+    monkeypatch.setattr(perch, "__file__", str(tmp_path / "site" / "perch" / "__init__.py"))
     monkeypatch.chdir(tmp_path)
     result = run("status")
     assert result.exit_code == 1 and isinstance(result.exception, SystemExit)
+    assert "run make install in your perch clone" in result.output
+
+
+def test_status_for_no_such_project_is_a_clean_error(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo")
     monkeypatch.chdir(home.root)
     result = run("status", "-p", "zzz")

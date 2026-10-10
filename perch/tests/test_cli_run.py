@@ -126,7 +126,6 @@ def test_monday_all_with_no_projects_says_init(tmp_path, monkeypatch):
 def quiet_tools(monkeypatch, home):
     from perch.core import walk
 
-    home.gitboard_dir.mkdir()
     walk.install(home)  # an installed /walk is part of a healthy workspace
     monkeypatch.setattr("perch.cli._runs", lambda argv, cwd, env: True)
     monkeypatch.setattr("perch.cli._show_gitboard_config", lambda home: True)
@@ -320,3 +319,14 @@ def test_bg_refuses_init(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo")
     monkeypatch.chdir(home.root)
     assert run("bg", "init", "-p", "apollo").exit_code == 2
+
+
+def test_doctor_names_an_old_workspace_above_the_cwd(tmp_path, monkeypatch):
+    from perch.tests.test_doctor import old_workspace
+
+    home = build_home(tmp_path, "apollo")
+    quiet_tools(monkeypatch, home)
+    old = old_workspace(tmp_path)
+    monkeypatch.chdir(old / "projects")
+    result = run("doctor")
+    assert "old workspace at" in result.output and "mkdir -p" in result.output

@@ -266,7 +266,19 @@ def suite_map(home: Home, name: str) -> dict[str, dict]:
         },
         "gitboard": {
             "cwd": str(home.gitboard_dir),
-            "argv": ["gitboard", "tui", *gitlab],
+            "argv": [
+                "env",
+                f"PYTHONPATH={home.gitboard_dir / 'src'}",
+                str(home.gitboard_dir / ".venv/bin/python"),
+                "-m",
+                "gitboard.cli",
+                "tui",
+                *gitlab,
+                "--db",
+                str(home.board_dir(name) / "snapshots.jsonl"),
+                "--boards-dir",
+                str(home.board_dir(name)),
+            ],
             "project": name,
         },
     }
