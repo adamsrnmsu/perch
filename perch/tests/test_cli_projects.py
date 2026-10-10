@@ -136,3 +136,23 @@ def test_inside_a_project_folder_that_project_is_used(tmp_path, monkeypatch):
     monkeypatch.chdir(deep)
     result = run("weekly")
     assert result.exit_code == 0, result.output
+
+
+def test_review_installs_board_into_the_checkout_then_runs_claude(
+    tmp_path, monkeypatch
+):
+    from perch.core import steps
+    from perch.tests.test_walk import gitboard_board_md
+
+    home = build_home(tmp_path, "apollo")
+    gitboard_board_md(home)
+    spec = steps.spec_path(home, "apollo", load_config(home.config_path("apollo"), require_dump=False))
+    spec.parent.mkdir(parents=True)
+    spec.write_text("")
+    ran = []
+    monkeypatch.setattr("perch.cli._run", ran.append)
+    monkeypatch.chdir(home.root)
+    result = run("review", "-p", "apollo")
+    assert result.exit_code == 0, result.output
+    assert (home.root / ".claude/commands/board.md").is_file()
+    assert ran[0].cwd == home.root and ran[0].argv[0] == "claude"
