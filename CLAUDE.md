@@ -24,6 +24,7 @@ perch --help  # running the apps: init [--year Y --year-start MM-01],
               # projects, doctor; status, hours, fetch,
               # board, weekly, digest, emails, monday [--all | --from STEP];
               # accuracy, budget, forecast, cut, review, brief, gb, bg, walk,
+              # listen MEETING.vtt,
               # watch, quarterly, detail, page, events [--days N], tape [--days N],
               # alerts (the last three: -p NAME or --all)
               # [--all], tui, suite
@@ -67,8 +68,14 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   assumptions, calibrate or doctor inside the project (args pass through,
   `--project` refused; TUI: `BG MONTHLY`). `gb` runs gitboard from its checkout with the project's target and its
   `--out/--db/--log/--spec/--boards-dir` paths (under `projects/NAME/board`) filled in;
-  `GB_OFFLINE` (read only pulled files) is all `/walk` may run, `push` and
-  `pull` need GitLab. `walk` opens `claude "/walk NAME"` in the checkout.
+  `GB_OFFLINE` (read only pulled files) is all `/walk` may run, `push`,
+  `pull` and `sync` (pull-first, plan, y/n, push, snapshot) need GitLab. `walk`
+  opens `claude "/walk NAME"` in the checkout; `listen` opens `"/listen NAME"`.
+- `core/listen.py` -- `perch listen MEETING.vtt`: `parse` keeps the lead's cues
+  (`<v Name>` or `Name:`, whole name, case aside; `lead:` in `config.yaml`) and
+  `write` saves them to `projects/NAME/listen/DATE[-N].txt`, never overwriting.
+  `/listen` (`commands/listen.md`) stages board edits only; it never runs
+  push, pull, sync or snapshot, and the lead applies them with `perch gb sync`.
 - `core/brief.py` -- `perch brief`: what `/walk` reads, team level only
   (Budgie's forecast in-process, never its per-person table), local files only.
 - `core/walk.py` -- `install(home, name)` writes `perch/commands/NAME.md` (and
