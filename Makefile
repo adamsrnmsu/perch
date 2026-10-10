@@ -2,15 +2,8 @@
 #   perch projects | init | doctor | hours | monday [--all] | forecast | ...
 # (`perch --help`). This file only builds, tests and links.
 #
-# Budgie and gitboard live in apps/ (scripts/bootstrap.sh clones them there).
-# Anywhere else:
-#   make BUDGIE_DIR=/path/to/budgie GB_DIR=/path/to/remote-gitboard <target>
+# Budgie and gitboard live in apps/ (`make install` clones them there).
 PERCH_DIR  := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-BUDGIE_DIR ?= $(PERCH_DIR)/apps/budgie
-GB_DIR     ?= $(PERCH_DIR)/apps/remote-gitboard
-# A relative override would break after the first cd.
-override BUDGIE_DIR := $(abspath $(BUDGIE_DIR))
-override GB_DIR     := $(abspath $(GB_DIR))
 
 # The venvs live OUTSIDE the repos (see Budgie's CLAUDE.md for the macOS
 # hidden-.pth trap that makes an in-tree venv a bad idea).
@@ -20,7 +13,7 @@ BIN         := $(PERCH_VENV)/bin
 PERCH       ?= $(BIN)/perch
 
 .DEFAULT_GOAL := help
-.PHONY: help install link venv lint format test test-all docs clean
+.PHONY: help bootstrap install link lint format test test-all docs clean
 
 help: ## This menu. Running the apps: perch --help
 	@awk 'BEGIN {FS = ":.*## "} \
@@ -31,28 +24,25 @@ help: ## This menu. Running the apps: perch --help
 
 ##@ Setup (once, or after moving the folders)
 
-install: ## (Re)install all three tools. Fixes "No module named perch/budgie"
-	test -x $(BUDGIE_VENV)/bin/pip || $(MAKE) -C $(BUDGIE_DIR) venv VENV=$(BUDGIE_VENV)
-	$(MAKE) -C $(BUDGIE_DIR) install VENV=$(BUDGIE_VENV)
+bootstrap: ## Clone Budgie and gitboard into apps/ (clone only)
+	sh $(PERCH_DIR)/scripts/bootstrap.sh
+
+install: bootstrap ## Clone, install all three tools and link them. Fixes "No module named perch/budgie"
+	test -x $(BUDGIE_VENV)/bin/pip || $(MAKE) -C $(PERCH_DIR)/apps/budgie venv VENV=$(BUDGIE_VENV)
+	$(MAKE) -C $(PERCH_DIR)/apps/budgie install VENV=$(BUDGIE_VENV)
 	test -x $(BIN)/pip || python3 -m venv $(PERCH_VENV)
-	$(BIN)/pip install -q -e '$(PERCH_DIR)[dev]'
-	$(BIN)/pip install -q -e $(BUDGIE_DIR)
-	$(MAKE) -C $(GB_DIR) install
-	@echo "installed. 'make link' puts perch and gitboard on your PATH."
+	$(BIN)/pip install -q -e '$(PERCH_DIR)[dev,docs]'
+	$(BIN)/pip install -q -e $(PERCH_DIR)/apps/budgie
+	$(MAKE) -C $(PERCH_DIR)/apps/remote-gitboard install
+	$(MAKE) link
+	@echo "installed."
 
 link: ## Put `perch` and `gitboard` in ~/.local/bin
 	@mkdir -p $(HOME)/.local/bin
 	ln -sf $(PERCH) $(HOME)/.local/bin/perch
-	$(MAKE) -C $(GB_DIR) link
+	$(MAKE) -C $(PERCH_DIR)/apps/remote-gitboard link
 
 ##@ Development (perch itself, except test-all)
-
-# perch pulls Budgie from GitHub; the editable checkout goes on after so it wins.
-venv: ## Create perch's venv: perch with dev + docs, then Budgie from its checkout
-	python3 -m venv $(PERCH_VENV)
-	$(BIN)/pip install --upgrade pip
-	$(BIN)/pip install -e '$(PERCH_DIR)[dev,docs]'
-	$(BIN)/pip install -e $(BUDGIE_DIR)
 
 lint: ## Lint with ruff
 	cd $(PERCH_DIR) && $(BIN)/ruff check .
@@ -64,9 +54,9 @@ test: ## Run perch's test suite
 	cd $(PERCH_DIR) && $(BIN)/pytest
 
 test-all: ## Run all three test suites: Budgie, perch, gitboard
-	$(MAKE) -C $(BUDGIE_DIR) test VENV=$(BUDGIE_VENV)
+	$(MAKE) -C $(PERCH_DIR)/apps/budgie test VENV=$(BUDGIE_VENV)
 	cd $(PERCH_DIR) && $(BIN)/pytest -q
-	$(MAKE) -C $(GB_DIR) test
+	$(MAKE) -C $(PERCH_DIR)/apps/remote-gitboard test
 
 docs: ## Build the HTML docs into docs/_build
 	cd $(PERCH_DIR) && PYTHONPATH=. $(BIN)/sphinx-build -W -b html docs docs/_build/html

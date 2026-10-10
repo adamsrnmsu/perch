@@ -14,20 +14,17 @@ board logic stays in gitboard. perch never calls GitLab and never sends mail.
 ## Install
 
 ```bash
-git clone https://github.com/adamsrnmsu/perch.git ~/Documents/git/perch
-~/Documents/git/perch/scripts/bootstrap.sh
+git clone https://github.com/adamsrnmsu/perch.git && cd perch && make install
 ```
 
-perch is the one repo you clone. `scripts/bootstrap.sh` clones Budgie and
-gitboard into `apps/` (ignored by perch's git; each stays its own repo with its
-own remote and beads), installs all three and puts `perch` and `gitboard` on
-your PATH. It leaves an app already in `apps/` alone, so it is safe to re-run.
-It ends by printing the `gitboard_dir:` line for your `perch-home.yaml`.
+perch is the one repo you clone. `make install` clones Budgie and gitboard into
+`apps/` (ignored by perch's git; each stays its own repo with its own remote
+and beads), installs all three and puts `perch` and `gitboard` on your PATH. It
+leaves an app already in `apps/` alone, so it is safe to re-run.
 
 `pyproject.toml` pins Budgie to its GitHub repo by URL (never PyPI, where the
-name is not ours), so `pip install` of perch works anywhere your SSH key can
-reach the private repo. `make venv` then installs `apps/budgie` editable on top
-(`BUDGIE_DIR=` to override), so local Budgie edits show up in perch at once.
+name is not ours); `make install` then installs `apps/budgie` editable on top,
+so local Budgie edits show up in perch at once.
 
 ## The suite
 
