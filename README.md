@@ -65,6 +65,7 @@ perch brief -p apollo          # everything /walk reads: freshness, team, people
 perch gb plan -p apollo        # gitboard for the project, its files under projects/apollo/board (push/pull need GitLab)
 perch bg monthly -p apollo     # Budgie's monthly, hours, plan, scenario, assumptions, calibrate, doctor (args pass through)
 perch walk -p apollo           # Claude walks you through money, board and watch (/walk)
+perch listen mtg.vtt -p apollo # Claude stages board edits from your lines in a transcript (/listen)
 perch detail -p apollo         # burn, plan and forecast by month (labor only)
 perch page -p apollo           # all of it as one HTML file: projects/apollo/page.html
 perch events --all             # next 30 days: budget, staffing, milestones, quarter ends, holidays
@@ -174,6 +175,19 @@ talked through, never written anywhere. `perch walk` installs
 is not touched, and `apps/` is already inside Claude's working directory); an
 installed `walk.md` is yours and is never overwritten (`perch doctor` says when
 it differs from perch's copy). `perch` must be on the session's PATH.
+
+### Listen to a meeting
+
+`perch listen MEETING.vtt -p apollo` takes a WebVTT transcript (Teams, Zoom,
+Meet) and keeps only your lines: set `lead: Your Name` in `config.yaml`, spelled
+as the transcript spells it (`Ryan` does not match `Ryan Adams`). They are saved
+to `projects/apollo/listen/DATE.txt` (a second run the same day writes
+`DATE-2.txt`), then `/listen` turns them into staged edits in the pulled board
+file: moves, epics, milestones, new tasks in the issue template, `closed: true`,
+a dropped column. It ends with `perch gb plan -p apollo`, an offline table
+against the pull's `.base`. Read it, then apply where GitLab is reachable:
+`perch gb sync -p apollo` (plans again live and asks y/n). Needs a pulled board
+(`perch gb pull -p apollo`).
 
 ### Moving a single-team setup in
 

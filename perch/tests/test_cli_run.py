@@ -126,7 +126,8 @@ def test_monday_all_with_no_projects_says_init(tmp_path, monkeypatch):
 def quiet_tools(monkeypatch, home):
     from perch.core import walk
 
-    walk.install(home)  # an installed /walk is part of a healthy workspace
+    walk.install(home)  # installed commands are part of a healthy workspace
+    walk.install(home, "listen")
     monkeypatch.setattr("perch.cli._runs", lambda argv, cwd, env: True)
     monkeypatch.setattr("perch.cli._show_gitboard_config", lambda home: True)
 
@@ -289,10 +290,10 @@ def test_walk_installs_the_command_then_runs_claude(tmp_path, monkeypatch):
     assert (home.root / ".claude" / "commands" / "walk.md").is_file()
 
 
-def test_gb_refuses_sync(tmp_path, monkeypatch):
+def test_gb_refuses_migrate(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo")
     monkeypatch.chdir(home.root)
-    result = run("gb", "sync", "-p", "apollo")
+    result = run("gb", "migrate", "-p", "apollo")
     assert result.exit_code == 2
 
 

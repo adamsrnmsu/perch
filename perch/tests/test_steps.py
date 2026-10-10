@@ -100,7 +100,11 @@ def test_budgie_init_passes_year_flags_only_when_given(tmp_path):
         "--year-start",
         "10-01",
     )
-    assert steps.budgie_init(BIN, home, "g").argv == ("/venv/bin/budgie", "init", "--here")
+    assert steps.budgie_init(BIN, home, "g").argv == (
+        "/venv/bin/budgie",
+        "init",
+        "--here",
+    )
 
 
 def test_iso_week_matches_date_G_W_V():
@@ -273,7 +277,7 @@ def test_offline_subs_are_the_ones_walk_may_run():
         "plan",
         "status",
     )
-    assert set(steps.GB_SUBS) == {*steps.GB_OFFLINE, "push", "pull"}
+    assert set(steps.GB_SUBS) == {*steps.GB_OFFLINE, "push", "pull", "sync"}
 
 
 def test_gb_plan_without_a_base_says_where_to_pull(tmp_path):
@@ -291,8 +295,8 @@ def test_gb_plan_without_a_base_says_where_to_pull(tmp_path):
 
 def test_gb_refuses_an_unknown_sub_and_a_missing_gitlab_project(tmp_path):
     home, config = apollo(tmp_path)
-    with pytest.raises(ValueError, match="sync"):
-        steps.gb(home, "apollo", config, "sync")
+    with pytest.raises(ValueError, match="migrate"):
+        steps.gb(home, "apollo", config, "migrate")
     _, bare = apollo(tmp_path / "bare", gitlab=False)
     with pytest.raises(WorkspaceError, match="gitlab_project"):
         steps.gb(home, "apollo", bare, "show")
@@ -321,7 +325,9 @@ def test_bg_refuses_an_unknown_sub(tmp_path):
 def test_spec_path_uses_project_folder_not_gitlab_segment(tmp_path):
     home = build_home(tmp_path, "apollo")
     config_path = home.config_path("apollo")
-    config_path.write_text(config_path.read_text() + "gitlab_project: g/sub/apollo-api\n")
+    config_path.write_text(
+        config_path.read_text() + "gitlab_project: g/sub/apollo-api\n"
+    )
     config = load_config(config_path, require_dump=False)
     assert steps.spec_path(home, "apollo", config).name == "apollo.yaml"
 
@@ -349,3 +355,31 @@ def test_budgie_init_runs_here_in_the_budget_dir(tmp_path):
     assert step.cwd == home.budget_dir("apollo")
     assert step.argv == ("/venv/bin/budgie", "init", "--here", "--year", "2027")
     assert step.makes == (home.budget_dir("apollo"),)
+
+
+def test_gb_sync_is_not_offline():
+    assert "sync" in steps.GB_SUBS and "sync" not in steps.GB_OFFLINE
+
+
+def test_gb_sync_adds_project_when_spec_missing(tmp_path):
+    home, config = apollo(tmp_path)
+    spec = home.board_dir("apollo") / "apollo.yaml"
+    argv = steps.gb(home, "apollo", config, "sync").argv
+    db = str(spec.with_name("snapshots.jsonl"))
+    assert argv[-6:-2] == ("sync", str(spec), "--db", db)
+    assert argv[-2:] == ("--project", "grp/apollo")
+
+
+def test_gb_sync_omits_project_when_spec_exists(tmp_path):
+    home, config = apollo(tmp_path)
+    spec = home.board_dir("apollo") / "apollo.yaml"
+    spec.parent.mkdir(parents=True)
+    spec.write_text("")
+    argv = steps.gb(home, "apollo", config, "sync").argv
+    assert "--project" not in argv and argv[-4:-1] == ("sync", str(spec), "--db")
+
+
+def test_listen_step_runs_slash_listen_in_the_checkout(tmp_path):
+    home, _ = apollo(tmp_path)
+    step = steps.listen(home, "apollo")
+    assert step.argv == ("claude", "/listen apollo") and step.cwd == home.root

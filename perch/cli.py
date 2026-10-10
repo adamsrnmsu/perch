@@ -189,6 +189,7 @@ _SECTIONS = {
         "gb",
         "bg",
         "walk",
+        "listen",
         "watch",
         "quarterly",
         "detail",
@@ -683,6 +684,41 @@ def walk(project):
         for line in command.install(home):
             _show([bk.text(line, "dim")])
         return steps.walk(home, name)
+
+    _one(project, build)
+
+
+@cli.command()
+@click.argument("meeting", metavar="MEETING.vtt")
+@_project_option
+def listen(meeting, project):
+    """Claude stages board edits from the lead's lines in a WebVTT transcript (/listen)."""
+    from perch.core import listen as lines
+    from perch.core import steps
+    from perch.core import walk as command
+    from perch.core.workspace import CONFIG_FILE
+
+    path = Path(meeting)
+
+    def build(home, name, config):
+        if not home.lead:
+            raise ValueError(
+                f'no lead set: add "lead: NAME" to {home.root / CONFIG_FILE}'
+            )
+        try:
+            text = path.read_bytes().decode("utf-8", errors="replace")
+        except OSError as exc:
+            raise ValueError(f"cannot read {path.name}") from exc
+        found = lines.parse(text, home.lead)
+        if not found:
+            raise ValueError(
+                f'no lines from "{home.lead}" in {path.name}: '
+                "check the speaker name matches the transcript"
+            )
+        _show([bk.text(f"wrote {lines.write(home, name, found, date.today())}", "dim")])  # noqa: DTZ011
+        for line in command.install(home, "listen"):
+            _show([bk.text(line, "dim")])
+        return steps.listen(home, name)
 
     _one(project, build)
 
