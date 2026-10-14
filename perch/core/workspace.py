@@ -60,11 +60,24 @@ class WorkspaceError(ValueError):
     """No workspace, no such project, or several projects and none named."""
 
 
+NAME_MAX = 255  # a path segment, and GitLab's own limit for names
+NAME_SHORT = 100
+
+
+def name_too_long(name: str) -> bool:
+    """Legal, but long enough that every command line and table suffers."""
+    return len(name) > NAME_SHORT
+
+
 def check_name(name: str) -> str:
     """A project name is one plain path segment, so it can't leave projects/."""
     if not _NAME.fullmatch(name):
         raise WorkspaceError(
             f"{name!r} is not a project name: letters, digits, - and _ only"
+        )
+    if len(name) > NAME_MAX:
+        raise WorkspaceError(
+            f"a project name is at most {NAME_MAX} characters; this one is {len(name)}"
         )
     return name
 

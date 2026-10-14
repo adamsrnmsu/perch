@@ -154,3 +154,14 @@ def test_scaffold_writes_a_project_env_once_and_fills_gitlab(tmp_path):
     home.config_path("apollo").unlink()
     home.scaffold("apollo")
     assert env.read_text() == "GITLAB_READ_TOKEN=real\n"  # never overwritten
+
+
+def test_a_name_over_255_is_refused(tmp_path):
+    with pytest.raises(WorkspaceError, match="255"):
+        make_home(tmp_path).scaffold("a" * 256)
+
+
+def test_name_too_long_is_over_100():
+    from perch.core.workspace import name_too_long
+
+    assert not name_too_long("a" * 100) and name_too_long("a" * 101)

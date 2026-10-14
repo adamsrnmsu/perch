@@ -167,3 +167,12 @@ def test_init_gitlab_fills_the_project_path(tmp_path, monkeypatch):
     config = load_config(home.config_path("apollo"), require_dump=False)
     assert config.gitlab_project == "grp/apollo"
     assert home.env_path("apollo").is_file() and ".env" in result.output
+
+
+def test_init_warns_about_a_long_name(tmp_path, monkeypatch):
+    home = build_home(tmp_path)
+    monkeypatch.chdir(home.root)
+    fake_budgie_init(monkeypatch)
+    result = run("init", "a" * 101)
+    assert result.exit_code == 0, result.output
+    assert "101 characters" in result.output and "under 100" in result.output

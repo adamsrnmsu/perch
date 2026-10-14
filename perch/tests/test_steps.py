@@ -276,7 +276,7 @@ def test_offline_subs_are_the_ones_walk_may_run():
         "plan",
         "status",
     )
-    assert set(steps.GB_SUBS) == {*steps.GB_OFFLINE, "push", "pull", "sync"}
+    assert set(steps.GB_SUBS) == {*steps.GB_OFFLINE, "push", "pull", "sync", "members"}
 
 
 def test_gb_plan_without_a_base_says_where_to_pull(tmp_path):
@@ -388,3 +388,19 @@ def test_gitboard_with_no_project_runs_from_home_not_its_checkout(tmp_path):
     home, _ = apollo(tmp_path)
     step = steps.gitboard(home, "gitboard", "--help")
     assert step.cwd == home.root  # the checkout's dev gitboard.toml never applies
+
+
+def test_gb_members_updates_the_pulled_board(tmp_path):
+    home, config = apollo(tmp_path)
+    spec = steps.spec_path(home, "apollo", config)
+    spec.parent.mkdir(parents=True, exist_ok=True)
+    spec.write_text("project: grp/apollo\nboard: B\n")
+    step = steps.gb(home, "apollo", config, "members")
+    assert step.argv == (str(home.venv_bin / "gitboard"), "members", str(spec))
+    assert step.cwd == home.projects_dir / "apollo"
+
+
+def test_gb_members_needs_a_pulled_board(tmp_path):
+    home, config = apollo(tmp_path)
+    with pytest.raises(WorkspaceError, match="perch gb pull -p apollo"):
+        steps.gb(home, "apollo", config, "members")

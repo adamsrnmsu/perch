@@ -94,6 +94,15 @@ def project_checks(home: Home, name: str) -> list[Check]:
             f"add gitlab_project: to {path}",
         )
     )
+    if config.unmatched:
+        checks.append(
+            Check(
+                True,
+                f"{name}: {len(config.unmatched)} GitLab member(s) not in people.csv, "
+                f"left unmapped: {', '.join(config.unmatched)} (rename them in the "
+                "board YAML's people: to match, or map them in perch.yaml)",
+            )
+        )
     if not config.people:
         checks.append(
             Check(
