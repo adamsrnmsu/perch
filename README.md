@@ -35,6 +35,12 @@ Offline: `PIP_NO_INDEX=1 PIP_FIND_LINKS=/path/to/wheels make install`. The old
 `~/Documents/tools/perch` and `~/Documents/tools/budgie` can be deleted once
 `perch doctor` is clean; doctor names them.
 
+`perch init NAME --gitlab group/NAME` scaffolds a project with its own
+`projects/NAME/.env` for that GitLab's URL and tokens (replace the
+`<key-from-gitlab>` placeholders); `perch/.env` is the fallback for a project
+without one. `perch gb pull -p NAME` then fills the board file's `people:`
+from the GitLab project's members.
+
 ## Docs
 
 The full guide (the suite, every command, the workspace, listen, the watch) is in

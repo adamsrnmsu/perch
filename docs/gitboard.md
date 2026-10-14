@@ -15,8 +15,23 @@ perch gb sync -p apollo     # plan, y/n, push, snapshot, rotate the base
 ```
 
 `pull` always writes the `.base`. `sync` plans again against live GitLab and
-asks y/n; if the board file does not exist yet it pulls first. `pull`, `push`
-and `sync` need GitLab; `plan` and `status` do not.
+asks y/n; if the board file does not exist yet it pulls first. `pull`, `push`,
+`sync` and `members` need GitLab; `plan` and `status` do not. gitboard reads
+the URL and tokens from `projects/NAME/.env` (or `perch/.env`).
+
+## People
+
+`perch gb members -p apollo` adds the GitLab project's members to the board
+file's `people:` (display name -> username), and every `pull` and `sync` keeps
+that map, `emails:` and `estimates:` and adds new members. It never renames
+or drops an entry, so changing a display name to match Budgie's `people.csv`
+sticks. perch maps every member whose name Budgie knows.
+
+## Titles
+
+Keep issue and milestone titles under 100 characters and put the detail in
+the description: `plan`, `push` and `sync` flag longer ones. Over 255
+characters (GitLab's limit) the board file does not load at all.
 
 ## Closing an issue
 

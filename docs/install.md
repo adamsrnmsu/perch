@@ -10,7 +10,7 @@ for all three and puts `perch`, `budgie` and `gitboard` on your PATH. It leaves 
 `apps/` alone, so it is safe to re-run. Then:
 
 ```bash
-perch init apollo      # scaffold projects/apollo/ and its Budgie project
+perch init apollo --gitlab group/apollo   # scaffold projects/apollo/, its .env and its Budgie project
 perch doctor           # tools, config, names, freshness; FIX lines say what to run
 ```
 

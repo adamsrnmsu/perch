@@ -21,7 +21,7 @@ as separate commands; each app still lives in its own repo. The perch clone
 is home: there is no workspace file to find and no environment variable to set.
 
 ```bash
-perch init apollo               # scaffold projects/apollo/ and its Budgie project
+perch init apollo --gitlab group/apollo  # scaffold projects/apollo/, its .env and its Budgie project
 perch projects                 # every project, its GitLab project, how fresh its data is
 perch doctor                   # tools, config, people names, freshness; FIX lines say what to run
 perch status                   # each project's Monday steps: ok, stale, todo or FAIL, and the next command
@@ -37,6 +37,7 @@ perch watch -p apollo          # private: anyone out of line with their own last
 perch review -p apollo         # Claude's /board on the pulled board, told the budget picture
 perch brief -p apollo          # everything /walk reads: freshness, team, people, forecast, watch, follow-ups
 perch gb plan -p apollo        # gitboard for the project, its files under projects/apollo/board (push/pull need GitLab)
+perch gb members -p apollo     # add the GitLab project's members to the board file's people:
 perch bg monthly -p apollo     # Budgie's monthly, hours, plan, scenario, assumptions, calibrate, doctor (args pass through)
 perch walk -p apollo           # Claude walks you through money, board and watch (/walk)
 perch listen mtg.vtt -p apollo # Claude stages board edits from your lines in a transcript (/listen)
@@ -229,6 +230,16 @@ people:                                  # GitLab username -> Budgie name
   asmith: Alice
   bjones: Bob
 ```
+
+You rarely need to fill `people:` by hand. `perch gb pull` (and
+`perch gb members`) put the GitLab project's members in the board file's
+`people:` map, and perch adds each member whose GitLab display name is a name
+in Budgie's `people.csv`. Lines in `perch.yaml` always win. Members whose name
+Budgie does not know are listed on one `perch doctor` line: rename them in the
+board file's `people:` to the `people.csv` name, or map the username here.
+
+Project names are letters, digits, `-` and `_`, at most 255 characters;
+`perch init` suggests staying under 100.
 
 `estimates.csv` is one flat shape you massage business exports into. A key
 starting with `#` is one issue; anything else is a label covering every issue
