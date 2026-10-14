@@ -141,3 +141,16 @@ def test_a_bad_alerts_value_loads_but_alerts_raises(tmp_path):
     (tmp_path / "config.yaml").write_text("alerts:\n  - when: bogus\n")
     with pytest.raises(ValueError, match=r"alerts\[0\]\.when"):
         checkout_home(tmp_path).alerts()
+
+
+def test_scaffold_writes_a_project_env_once_and_fills_gitlab(tmp_path):
+    home = make_checkout(tmp_path)
+    home.scaffold("apollo", gitlab="grp/apollo")
+    env = home.env_path("apollo")
+    assert env == home.projects_dir / "apollo" / ".env"
+    assert "GITLAB_READ_TOKEN=<key-from-gitlab>" in env.read_text()
+    assert "gitlab_project: grp/apollo" in home.config_path("apollo").read_text()
+    env.write_text("GITLAB_READ_TOKEN=real\n")
+    home.config_path("apollo").unlink()
+    home.scaffold("apollo")
+    assert env.read_text() == "GITLAB_READ_TOKEN=real\n"  # never overwritten

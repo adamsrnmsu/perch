@@ -11,10 +11,11 @@ from pathlib import Path
 import yaml
 
 from perch.core.config import load_config
-from perch.core.workspace import CONFIG_FILE, Home
+from perch.core.workspace import CONFIG_FILE, PLACEHOLDER, Home
 
 # (argv, cwd, extra env) -> did it exit 0
 Runs = Callable[[Sequence[str], Path, Mapping[str, str]], bool]
+READ_TOKEN = "GITLAB_READ_TOKEN"
 _INSTALL = "make install (in the perch checkout)"
 _CONFIG_ERRORS = (OSError, TypeError, ValueError, KeyError)
 
@@ -217,3 +218,54 @@ def old_layout_checks(start: Path, home: Home) -> list[Check]:
     names = sorted(p.name for p in projects.iterdir() if p.is_dir()) if projects.is_dir() else []
     lines = [line for name in names for line in _old_project(old, gitboard, name, home)]
     return [Check(False, what, "\n".join(lines) or f"nothing under {projects} to move")]
+
+
+def read_env(path: Path) -> dict[str, str]:
+    """KEY=value lines the way python-dotenv reads them; {} for no file.
+
+    Enough of dotenv for doctor to see whether a key is set: comments,
+    `export `, quotes and a trailing ` # note`. Values are never printed.
+    """
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return {}
+    out = {}
+    for line in lines:
+        line = line.strip().removeprefix("export ").strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = (part.strip() for part in line.split("=", 1))
+        if value[:1] in ("'", '"') and value[0] in value[1:]:
+            value = value[1 : value.index(value[0], 1)]
+        else:
+            value = value.split(" #", 1)[0].strip()
+        if value:
+            out[key] = value
+    return out
+
+
+def env_checks(home: Home, name: str, environ: Mapping[str, str]) -> list[Check]:
+    """Where this project's read token comes from; never what it is.
+
+    gitboard's order: an exported variable, then the nearest .env walking up
+    from projects/NAME (the project's, then the checkout's).
+    """
+    own = home.env_path(name)
+    rel = own.relative_to(home.root)
+    if environ.get(READ_TOKEN):
+        return [Check(True, f"{name}: read token from the environment")]
+    for path, label in ((own, str(rel)), (home.root / ".env", "checkout .env")):
+        if path.exists():  # gitboard reads only the first .env it finds
+            value = read_env(path).get(READ_TOKEN)
+            if value and value != PLACEHOLDER:
+                return [Check(True, f"{name}: read token in {label}")]
+            break
+    return [
+        Check(
+            False,
+            f"{name}: no GitLab read token",
+            f"set GITLAB_READ_TOKEN (read_api) in {own} "
+            "(or export it, or use the gitlab-read-token keychain item)",
+        )
+    ]

@@ -21,14 +21,13 @@ def test_monday_is_five_steps_in_order_each_in_its_tool(tmp_path):
     run = steps.monday(BIN, home, "apollo", config, "2026-W40")
     assert [s.name for s in run] == ["fetch", "board", "weekly", "digest", "emails"]
     fetch, board, weekly, digest, emails = run
-    gb = home.gitboard_dir
     board_dir = home.board_dir("apollo")
     assert fetch.argv == (
         str(home.venv_bin / "gitboard"),
         "stats", "grp/apollo", "--history-days", "276", "--dump", str(config.board_dump),
         "--log", str(board_dir / "stats.jsonl"),
     )  # fmt: skip
-    assert fetch.cwd == gb and fetch.env == {}
+    assert fetch.cwd == home.projects_dir / "apollo" and fetch.env == {}
     assert fetch.makes == (config.board_dump.parent,)
     assert board.argv == (
         "/venv/bin/perch",
@@ -57,6 +56,7 @@ def test_monday_is_five_steps_in_order_each_in_its_tool(tmp_path):
         "--no-preview",
     )
     assert emails.cwd == config.budgie_project
+    assert digest.cwd == home.projects_dir / "apollo"
 
 
 def test_monday_from_a_step_runs_it_and_the_rest(tmp_path):
@@ -227,9 +227,8 @@ def test_gb_fills_in_the_projects_target(tmp_path, sub, tail):
         for t in tail
     )
     step = steps.gb(home, "apollo", config, sub)
-    gb = home.gitboard_dir
     assert step.argv == (str(home.venv_bin / "gitboard"), *want)
-    assert step.cwd == gb and step.env == {}
+    assert step.cwd == home.projects_dir / "apollo" and step.env == {}
 
 
 def test_walk_opens_claude_on_the_slash_command_in_the_workspace(tmp_path):
@@ -383,3 +382,9 @@ def test_listen_step_runs_slash_listen_in_the_checkout(tmp_path):
     home, _ = apollo(tmp_path)
     step = steps.listen(home, "apollo")
     assert step.argv == ("claude", "/listen apollo") and step.cwd == home.root
+
+
+def test_gitboard_with_no_project_runs_from_home_not_its_checkout(tmp_path):
+    home, _ = apollo(tmp_path)
+    step = steps.gitboard(home, "gitboard", "--help")
+    assert step.cwd == home.root  # the checkout's dev gitboard.toml never applies

@@ -14,6 +14,12 @@ perch init apollo      # scaffold projects/apollo/ and its Budgie project
 perch doctor           # tools, config, names, freshness; FIX lines say what to run
 ```
 
+Each project has its own GitLab URL and tokens in `projects/NAME/.env`, written
+by `perch init` (add `--gitlab group/NAME` to fill `gitlab_project:`) with
+`<key-from-gitlab>` placeholders to replace. `perch/.env` is the shared fallback
+for a project with no `.env` of its own; `perch doctor` says which one each
+project uses and never prints a token.
+
 `pyproject.toml` pins Budgie to its GitHub repo by URL (never PyPI, where the
 name is not ours); `make install` never installs it, so local Budgie edits show
 up in perch at once.

@@ -44,9 +44,22 @@ def iso_week(day: date) -> str:
     return f"{year}-W{week:02d}"
 
 
-def gitboard(home: Home, name: str, *args: str, makes: tuple[Path, ...] = ()) -> Step:
-    """gitboard runs from its checkout: it finds .env and gitboard.toml from there."""
-    return Step(name, (str(home.venv_bin / "gitboard"), *args), home.gitboard_dir, {}, makes)
+def gitboard(
+    home: Home,
+    name: str,
+    *args: str,
+    makes: tuple[Path, ...] = (),
+    project: str | None = None,
+) -> Step:
+    """gitboard runs from the project's folder, where it finds the project's .env.
+
+    gitboard walks up from its cwd for .env (and gitboard.toml), so
+    projects/NAME/.env wins and the checkout's .env is the shared fallback.
+    With no project (doctor's --help) it runs from home, never from gitboard's
+    own checkout, whose development gitboard.toml must not reach real runs.
+    """
+    cwd = home.projects_dir / project if project else home.root
+    return Step(name, (str(home.venv_bin / "gitboard"), *args), cwd, {}, makes)
 
 
 def fetch(home: Home, project: str, config: Config) -> Step:
@@ -72,6 +85,7 @@ def fetch(home: Home, project: str, config: Config) -> Step:
         str(stats_log(home, project)),
         *_spec_flag(spec),
         makes=(config.board_dump.parent,),
+        project=project,
     )
 
 
@@ -219,7 +233,7 @@ def gb(
             *(() if path.is_file() else ("--project", config.gitlab_project)),
         ),
     }[sub]
-    return gitboard(home, f"gb {sub}", sub, *target, *args)
+    return gitboard(home, f"gb {sub}", sub, *target, *args, project=project)
 
 
 def review(home: Home, project: str, config: Config, rows: list[dict]) -> Step:
@@ -287,7 +301,7 @@ def digest(home: Home, project: str, config: Config) -> Step:
         home, "digest", "digest", "--from", str(config.board_dump), "--out", str(out),
         "--log", str(stats_log(home, project)), *_spec_flag(spec),
         "--boards-dir", str(home.board_dir(project)),
-        makes=(out,),
+        makes=(out,), project=project,
     )  # fmt: skip
 
 

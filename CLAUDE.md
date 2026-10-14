@@ -65,7 +65,7 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   week, name order, hours only: no rate, cost or accuracy) appended. Never
   the watch. `bg SUB` runs Budgie's monthly, hours, plan, scenario,
   assumptions, calibrate or doctor inside the project (args pass through,
-  `--project` refused; TUI: `BG MONTHLY`). `gb` runs gitboard from its checkout with the project's target and its
+  `--project` refused; TUI: `BG MONTHLY`). `gb` runs gitboard from `projects/NAME` (so its `.env` is that project's) with the project's target and its
   `--out/--db/--log/--spec/--boards-dir` paths (under `projects/NAME/board`) filled in;
   `GB_OFFLINE` (read only pulled files) is all `/walk` may run, `push`,
   `pull` and `sync` (pull-first, plan, y/n, push, snapshot) need GitLab. `walk`
