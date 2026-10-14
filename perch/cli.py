@@ -500,7 +500,12 @@ def projects():
     help="First month of the year as MM-01; federal fiscal is 10-01 "
     "(Budgie checks it).",
 )
-def init(name, year, year_start):
+@click.option(
+    "--gitlab",
+    default=None,
+    help="The GitLab path, e.g. group/NAME (fills gitlab_project:).",
+)
+def init(name, year, year_start, gitlab):
     """Scaffold projects/NAME/perch.yaml and its Budgie project projects/NAME/budget.
 
     --year and --year-start go to `budgie init`, so a fiscal-year project
@@ -517,15 +522,21 @@ def init(name, year, year_start):
             )
         if not (home.budget_dir(name) / "budgie.yaml").is_file():
             _run(budgie_init(_bin_dir(), home, name, year, year_start))
-        path = home.scaffold(name)
+        path = home.scaffold(name, gitlab)
     except StepFailed as exc:
         raise click.ClickException(f"{name}: {exc}") from exc
     except (OSError, ValueError) as exc:
         raise click.ClickException(str(exc)) from exc
     budget = os.path.relpath(home.budget_dir(name), home.root)
     console.print(f"Wrote {path}. Fill in:", markup=False, highlight=False)
+    if not gitlab:
+        console.print(
+            f"  gitlab_project:  the GitLab path, e.g. group/{name}", markup=False
+        )
     console.print(
-        f"  gitlab_project:  the GitLab path, e.g. group/{name}", markup=False
+        f"  {os.path.relpath(home.env_path(name), home.root)}"
+        "  the GitLab URL and tokens (one .env per project)",
+        markup=False,
     )
     console.print(
         f"  people:          GitLab username -> name in {budget}/people.csv",
@@ -894,6 +905,7 @@ def doctor(project):
     from perch.core.doctor import (
         Check,
         alert_checks,
+        env_checks,
         freshness,
         old_layout_checks,
         old_venv_checks,
@@ -931,6 +943,7 @@ def doctor(project):
         show([Check(False, "no projects yet", "perch init <name>")])
     for name in names:
         show(project_checks(home, name))
+        show(env_checks(home, name, os.environ))
     from perch.core import walk
 
     _show([bk.heading("Walk")])

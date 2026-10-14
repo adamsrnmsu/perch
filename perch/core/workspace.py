@@ -34,10 +34,22 @@ NOT_A_CHECKOUT = (
     "perch is not running from a checkout: run make install in your perch clone"
 )
 
+PLACEHOLDER = "<key-from-gitlab>"
+ENV_FILE = ".env"
+ENV_TEMPLATE = f"""\
+# This project's GitLab, read by gitboard (perch runs it from this folder).
+# Gitignored with the rest of projects/. A real exported variable still wins.
+GITLAB_URL=https://gitlab.com
+# read_api scope: fetch, pull, members, the read-only /board pass
+GITLAB_READ_TOKEN={PLACEHOLDER}
+# api scope: push and sync only
+GITLAB_WRITE_TOKEN={PLACEHOLDER}
+"""
+
 SCAFFOLD = """\
 budgie_project: budget               # the directory holding budgie.yaml
 board_dump: board/dump.json          # written by `perch fetch`
-gitlab_project:                      # the GitLab path, e.g. group/{name}
+gitlab_project: {gitlab}                      # the GitLab path, e.g. group/{name}
 # estimates: estimates.csv           # optional; key,hours,low,high
 people:                              # GitLab username -> name in people.csv
   # asmith: Alice
@@ -139,13 +151,20 @@ class Home:
             )
         return names[0]
 
-    def scaffold(self, name: str) -> Path:
-        """Write projects/NAME/perch.yaml pointing at its budget/. Never overwrites."""
+    def env_path(self, name: str) -> Path:
+        """This project's tokens; the checkout's .env is the shared fallback."""
+        return self.projects_dir / name / ENV_FILE
+
+    def scaffold(self, name: str, gitlab: str | None = None) -> Path:
+        """Write projects/NAME/perch.yaml pointing at its budget/, and a .env
+        template. Never overwrites either."""
         path = self.config_path(check_name(name))
         if path.exists():
             raise FileExistsError(f"{path} exists; edit it instead.")
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(SCAFFOLD.format(name=name))
+        path.write_text(SCAFFOLD.format(name=name, gitlab=gitlab or ""))
+        if not self.env_path(name).exists():
+            self.env_path(name).write_text(ENV_TEMPLATE)
         return path
 
 

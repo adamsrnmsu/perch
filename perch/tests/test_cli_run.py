@@ -131,6 +131,7 @@ def quiet_tools(monkeypatch, home):
     monkeypatch.setattr("perch.cli._runs", lambda argv, cwd, env: True)
     monkeypatch.setattr("perch.cli._show_gitboard_config", lambda home: True)
     monkeypatch.setattr("pathlib.Path.home", lambda: home.root)  # no real old venvs
+    monkeypatch.setenv("GITLAB_READ_TOKEN", "t")  # a healthy workspace has a token
 
 
 def test_doctor_all_well_exits_0_with_no_fix(tmp_path, monkeypatch):

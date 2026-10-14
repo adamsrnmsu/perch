@@ -403,10 +403,9 @@ def test_suite_map_points_each_app_at_the_selected_project(tmp_path):
         "argv": [str(BIN / "budgie"), "tui"],
         "project": "apollo",
     }
-    gb = home.gitboard_dir
     board = home.board_dir("apollo")
     assert m["gitboard"] == {
-        "cwd": str(gb),
+        "cwd": str(home.projects_dir / "apollo"),
         "argv": [
             str(home.venv_bin / "gitboard"),
             "tui",

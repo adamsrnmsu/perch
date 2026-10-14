@@ -265,7 +265,7 @@ def suite_map(home: Home, name: str) -> dict[str, dict]:
             "project": name,  # in the window's @entry: another project respawns
         },
         "gitboard": {
-            "cwd": str(home.gitboard_dir),
+            "cwd": str(home.projects_dir / name),
             "argv": [
                 str(home.venv_bin / "gitboard"),
                 "tui",

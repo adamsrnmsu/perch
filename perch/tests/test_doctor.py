@@ -3,7 +3,14 @@ from datetime import datetime, timezone
 
 import pytest
 
-from perch.core.doctor import age, freshness, project_checks, tool_checks
+from perch.core.doctor import (
+    age,
+    env_checks,
+    freshness,
+    project_checks,
+    read_env,
+    tool_checks,
+)
 from perch.tests.conftest import build_home
 
 
@@ -164,3 +171,33 @@ def test_old_venvs_are_named_never_deleted(tmp_path):
     assert not check.ok and str(old) in check.what
     assert check.fix == f"rm -rf {old}"
     assert old.is_dir()
+
+
+def test_read_env_parses_like_dotenv(tmp_path):
+    path = tmp_path / ".env"
+    path.write_text(
+        "# comment\nexport A=1\nB = 'two words'\nC=\"x\" # note\nD=plain # note\n\nE\n"
+    )
+    assert read_env(path) == {"A": "1", "B": "two words", "C": "x", "D": "plain"}
+    assert read_env(tmp_path / "missing") == {}
+
+
+def test_read_token_placeholder_is_not_a_token(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    home.env_path("apollo").write_text("GITLAB_READ_TOKEN=<key-from-gitlab>\n")
+    [check] = env_checks(home, "apollo", {})
+    assert not check.ok and str(home.env_path("apollo")) in check.fix
+
+
+def test_read_token_project_then_home_then_environment(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    secret = "s3cret-value"
+    (home.root / ".env").write_text(f"GITLAB_READ_TOKEN={secret}\n")
+    [check] = env_checks(home, "apollo", {})
+    assert check.ok and "checkout .env" in check.what and secret not in check.what
+    (home.root / ".env").unlink()
+    [check] = env_checks(home, "apollo", {"GITLAB_READ_TOKEN": secret})
+    assert check.ok and "environment" in check.what and secret not in check.what
+    home.env_path("apollo").write_text(f"GITLAB_READ_TOKEN={secret}\n")
+    [check] = env_checks(home, "apollo", {})
+    assert check.ok and "projects/apollo/.env" in check.what

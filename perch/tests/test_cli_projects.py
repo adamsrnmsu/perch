@@ -156,3 +156,14 @@ def test_review_installs_board_into_the_checkout_then_runs_claude(
     assert result.exit_code == 0, result.output
     assert (home.root / ".claude/commands/board.md").is_file()
     assert ran[0].cwd == home.root and ran[0].argv[0] == "claude"
+
+
+def test_init_gitlab_fills_the_project_path(tmp_path, monkeypatch):
+    home = build_home(tmp_path)
+    monkeypatch.chdir(home.root)
+    fake_budgie_init(monkeypatch)
+    result = run("init", "apollo", "--gitlab", "grp/apollo")
+    assert result.exit_code == 0, result.output
+    config = load_config(home.config_path("apollo"), require_dump=False)
+    assert config.gitlab_project == "grp/apollo"
+    assert home.env_path("apollo").is_file() and ".env" in result.output
