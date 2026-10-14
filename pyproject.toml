@@ -25,7 +25,8 @@ docs = ["sphinx", "myst-parser", "shibuya", "sphinx-click"]
 perch = "perch.cli:cli"
 
 [build-system]
-requires = ["setuptools>=42"]
+# 61 is the first that reads [project]; make install never builds perch, so this only matters to a hand-run pip install.
+requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

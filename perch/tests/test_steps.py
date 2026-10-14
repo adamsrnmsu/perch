@@ -24,11 +24,11 @@ def test_monday_is_five_steps_in_order_each_in_its_tool(tmp_path):
     gb = home.gitboard_dir
     board_dir = home.board_dir("apollo")
     assert fetch.argv == (
-        str(gb / ".venv/bin/python"), "-m", "gitboard.cli",
+        str(home.venv_bin / "gitboard"),
         "stats", "grp/apollo", "--history-days", "276", "--dump", str(config.board_dump),
         "--log", str(board_dir / "stats.jsonl"),
     )  # fmt: skip
-    assert fetch.cwd == gb and fetch.env == {"PYTHONPATH": str(gb / "src")}
+    assert fetch.cwd == gb and fetch.env == {}
     assert fetch.makes == (config.board_dump.parent,)
     assert board.argv == (
         "/venv/bin/perch",
@@ -228,8 +228,8 @@ def test_gb_fills_in_the_projects_target(tmp_path, sub, tail):
     )
     step = steps.gb(home, "apollo", config, sub)
     gb = home.gitboard_dir
-    assert step.argv == (str(gb / ".venv/bin/python"), "-m", "gitboard.cli", *want)
-    assert step.cwd == gb and step.env == {"PYTHONPATH": str(gb / "src")}
+    assert step.argv == (str(home.venv_bin / "gitboard"), *want)
+    assert step.cwd == gb and step.env == {}
 
 
 def test_walk_opens_claude_on_the_slash_command_in_the_workspace(tmp_path):

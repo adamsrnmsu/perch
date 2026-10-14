@@ -76,6 +76,11 @@ class Home:
         return self.root / "apps" / "remote-gitboard"
 
     @property
+    def venv_bin(self) -> Path:
+        """Where make install writes the perch, budgie and gitboard commands."""
+        return self.root / ".venv" / "bin"
+
+    @property
     def projects_dir(self) -> Path:
         return self.root / PROJECTS_DIR
 

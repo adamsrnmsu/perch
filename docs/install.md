@@ -5,8 +5,8 @@ git clone https://github.com/adamsrnmsu/perch.git && cd perch && make install
 ```
 
 perch is the one repo you clone. `make install` clones Budgie and gitboard into
-`apps/` (ignored by perch's git; each stays its own repo), installs all three
-and puts `perch` and `gitboard` on your PATH. It leaves an app already in
+`apps/` (ignored by perch's git; each stays its own repo), sets up one `.venv`
+for all three and puts `perch`, `budgie` and `gitboard` on your PATH. It leaves an app already in
 `apps/` alone, so it is safe to re-run. Then:
 
 ```bash
@@ -15,8 +15,17 @@ perch doctor           # tools, config, names, freshness; FIX lines say what to 
 ```
 
 `pyproject.toml` pins Budgie to its GitHub repo by URL (never PyPI, where the
-name is not ours); `make install` installs `apps/budgie` editable on top, so
-local Budgie edits show up in perch at once.
+name is not ours); `make install` never installs it, so local Budgie edits show
+up in perch at once.
+
+`make install` puts one `.venv` in the checkout that holds only the
+dependencies of perch, Budgie and gitboard (nothing of ours is built or
+installed), writes `perch`, `budgie` and `gitboard` into `.venv/bin` as small
+scripts that run each app from its checkout, and links them into
+`~/.local/bin`. It needs Python 3.11 or newer (`make install PYTHON=python3.12`).
+Offline: `PIP_NO_INDEX=1 PIP_FIND_LINKS=/path/to/wheels make install`. The old
+`~/Documents/tools/perch` and `~/Documents/tools/budgie` can be deleted once
+`perch doctor` is clean; doctor names them.
 
 ## Migrating an old workspace
 

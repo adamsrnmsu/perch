@@ -36,6 +36,18 @@ def age(path: Path) -> str:
     )
 
 
+OLD_VENVS = ("Documents/tools/perch", "Documents/tools/budgie")
+
+
+def old_venv_checks(user_home: Path) -> list[Check]:
+    """The venvs make install used before perch/.venv: named, never deleted."""
+    return [
+        Check(False, f"old install at {old} (perch/.venv replaces it)", f"rm -rf {old}")
+        for old in (user_home / rel for rel in OLD_VENVS)
+        if old.is_dir()
+    ]
+
+
 def tool_checks(bin_dir: Path, home: Home, runs: Runs) -> list[Check]:
     from perch.core.steps import gitboard
 

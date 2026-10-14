@@ -46,13 +46,7 @@ def iso_week(day: date) -> str:
 
 def gitboard(home: Home, name: str, *args: str, makes: tuple[Path, ...] = ()) -> Step:
     """gitboard runs from its checkout: it finds .env and gitboard.toml from there."""
-    return Step(
-        name,
-        (str(home.gitboard_dir / ".venv/bin/python"), "-m", "gitboard.cli", *args),
-        home.gitboard_dir,
-        {"PYTHONPATH": str(home.gitboard_dir / "src")},
-        makes,
-    )
+    return Step(name, (str(home.venv_bin / "gitboard"), *args), home.gitboard_dir, {}, makes)
 
 
 def fetch(home: Home, project: str, config: Config) -> Step:

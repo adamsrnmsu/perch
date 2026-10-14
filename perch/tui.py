@@ -267,11 +267,7 @@ def suite_map(home: Home, name: str) -> dict[str, dict]:
         "gitboard": {
             "cwd": str(home.gitboard_dir),
             "argv": [
-                "env",
-                f"PYTHONPATH={home.gitboard_dir / 'src'}",
-                str(home.gitboard_dir / ".venv/bin/python"),
-                "-m",
-                "gitboard.cli",
+                str(home.venv_bin / "gitboard"),
                 "tui",
                 *gitlab,
                 "--db",
