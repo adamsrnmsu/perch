@@ -57,3 +57,34 @@ def test_broken_yaml_is_a_clean_value_error(tmp_path):
     bad.write_text("budgie_project: [unclosed\n")
     with pytest.raises(ValueError, match="not valid YAML"):
         load_config(bad)
+
+
+def _board(project_dir, people):
+    import yaml
+
+    board = project_dir / "board"
+    board.mkdir(exist_ok=True)
+    (board / f"{project_dir.name}.yaml").write_text(
+        yaml.safe_dump({"project": "grp/x", "board": "B", "people": people})
+    )
+
+
+def test_board_members_fill_people_only_when_budgie_knows_the_name(tmp_path):
+    from perch.tests.conftest import build_home
+
+    home = build_home(tmp_path, "apollo")
+    project = home.projects_dir / "apollo"
+    _board(project, {"Bob": "bnew", "Manager Person": "boss", "Somebody": "asmith"})
+    config = load_config(home.config_path("apollo"), require_dump=False)
+    assert config.people["bnew"] == "Bob"
+    assert "boss" not in config.people
+    assert config.people["asmith"] == "Alice"  # perch.yaml wins
+    assert config.unmatched == ("Manager Person",)
+
+
+def test_no_board_yaml_means_no_members(tmp_path):
+    from perch.tests.conftest import build_home
+
+    home = build_home(tmp_path, "apollo")
+    config = load_config(home.config_path("apollo"), require_dump=False)
+    assert config.unmatched == ()

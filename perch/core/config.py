@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -10,8 +11,50 @@ import yaml
 CONFIG_NAME = "perch.yaml"
 BUDGIE_CONFIG = "budgie.yaml"
 HISTORY_NAME = "history.jsonl"
+BOARD_DIR = "board"
+PEOPLE_CSV = "people.csv"
 
 _KEYS = {"budgie_project", "board_dump", "estimates", "gitlab_project", "people"}
+
+
+@lru_cache(maxsize=64)
+def _yaml_people(path: Path, mtime: float) -> tuple[tuple[str, str], ...]:
+    """(display name, username) pairs from a board YAML's people:, cached on mtime.
+
+    ponytail: parses the whole board file once per change; read only the
+    people: block if boards grow large enough for that to show.
+    """
+    try:
+        data = yaml.safe_load(path.read_text())
+    except (OSError, yaml.YAMLError):
+        return ()
+    people = data.get("people") if isinstance(data, dict) else None
+    if not isinstance(people, dict):
+        return ()
+    return tuple((str(name), str(user)) for name, user in people.items())
+
+
+def _board_people(root: Path) -> tuple[tuple[str, str], ...]:
+    """The pulled board's people: (projects/NAME/board/NAME.yaml), or ()."""
+    path = root / BOARD_DIR / f"{root.name}.yaml"
+    try:
+        return _yaml_people(path, path.stat().st_mtime)
+    except OSError:
+        return ()
+
+
+def _budgie_names(project: Path) -> set[str]:
+    """The names in the Budgie project's people.csv, read with Budgie's own reader."""
+    import csv
+
+    from budgie.core.csvio import read_rows
+
+    try:
+        return {
+            row["name"] for row in read_rows(project / PEOPLE_CSV, required={"name"})
+        }
+    except (OSError, ValueError, csv.Error):
+        return set()
 
 
 @dataclass(frozen=True)
@@ -24,6 +67,7 @@ class Config:
     estimates: Path | None = None
     people: dict[str, str] = field(default_factory=dict)  # GitLab username -> name
     gitlab_project: str | None = None  # e.g. group/apollo; only `fetch` needs it
+    unmatched: tuple[str, ...] = ()  # board-YAML members not in people.csv
 
     @property
     def history(self) -> Path:
@@ -77,11 +121,17 @@ def load_config(path: str | Path, require_dump: bool = True) -> Config:
     if not isinstance(people, dict):
         raise TypeError(f"{path.name}: `people` must map GitLab usernames to names")
     gitlab = data.get("gitlab_project")
+    explicit = {str(user): str(name) for user, name in people.items()}
+    members = [(n, u) for n, u in _board_people(root) if u not in explicit]
+    known = _budgie_names(project) if members else set()
+    matched = {u: n for n, u in members if n in known}
+    unmatched = tuple(sorted(n for n, u in members if n not in known))
     return Config(
         root=root,
         budgie_project=project,
         board_dump=dump,
         estimates=estimates,
-        people={str(user): str(name) for user, name in people.items()},
+        people={**matched, **explicit},
         gitlab_project=str(gitlab) if gitlab else None,
+        unmatched=unmatched,
     )

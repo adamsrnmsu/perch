@@ -169,8 +169,8 @@ def pull_fix(project: str, spec: Path) -> str:
 
 # Read only pulled files: what /walk may run, with no GitLab in reach.
 GB_OFFLINE = ("show", "report", "stats", "graph", "estimate", "plan", "status")
-# push, pull and sync need GitLab: the lead runs them on a connected machine.
-GB_SUBS = (*GB_OFFLINE, "push", "pull", "sync")
+# push, pull, sync and members need GitLab: the lead runs them on a connected machine.
+GB_SUBS = (*GB_OFFLINE, "push", "pull", "sync", "members")
 # Flags that move an offline sub's input: --from "" would read GitLab.
 GB_TARGET_FLAGS = (
     "--from",
@@ -208,6 +208,8 @@ def gb(
     spec, base = str(path), path.with_name(path.name + ".base")
     if sub == "plan" and not base.is_file():
         raise WorkspaceError(f"{project}: no {base}; {pull_fix(project, path)}")
+    if sub == "members" and not path.is_file():
+        raise WorkspaceError(f"{project}: no {path}; {pull_fix(project, path)}")
     dump = str(config.board_dump)
     db = ("--db", str(snapshots(home, project)))
     boards = ("--boards-dir", str(home.board_dir(project)))
@@ -225,6 +227,7 @@ def gb(
         ),
         "report": ("--since", spec, *db),
         "status": (*db, *boards),
+        "members": (spec,),
         "push": (spec, *db),
         "pull": (config.gitlab_project, "--out", spec, *db),
         "sync": (

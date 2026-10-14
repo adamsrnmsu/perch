@@ -33,6 +33,7 @@ sync -p $ARGUMENTS`.
 may stage from the lead's lines:
 
 - Move a card to another column.
+- Keep issue and milestone titles under 100 characters (GitLab refuses over 255); put the detail in the description.
 - Add or change an epic or a milestone.
 - Create a task. A new card's `description:` is one page, these fields in this
   order, bullets and one-line fields only, never paragraphs:

@@ -201,3 +201,15 @@ def test_read_token_project_then_home_then_environment(tmp_path):
     home.env_path("apollo").write_text(f"GITLAB_READ_TOKEN={secret}\n")
     [check] = env_checks(home, "apollo", {})
     assert check.ok and "projects/apollo/.env" in check.what
+
+
+def test_unmatched_members_are_one_informational_line(tmp_path):
+    home = build_home(tmp_path, "apollo")
+    board = home.projects_dir / "apollo" / "board"
+    board.mkdir(exist_ok=True)
+    (board / "apollo.yaml").write_text(
+        "project: grp/apollo\nboard: B\npeople:\n  Manager Person: boss\n"
+    )
+    checks = project_checks(home, "apollo")
+    [line] = [c for c in checks if "GitLab member" in c.what]
+    assert line.ok and "Manager Person" in line.what

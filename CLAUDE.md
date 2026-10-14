@@ -54,10 +54,11 @@ Same rule as Budgie: everything under `perch/core/` is UI-free (no click, no
 rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
 
 - `core/config.py` -- perch.yaml to a frozen `Config`; every error names the key.
+  `people:` is perch.yaml's map plus each board-YAML member (`projects/NAME/board/NAME.yaml`, filled by `gitboard members`/pull) whose display name is in people.csv; perch.yaml wins; the rest are `Config.unmatched`, one informational doctor line.
 - `core/workspace.py` -- `checkout_home()`: home is the perch checkout
   (`Path(perch.__file__).parents[1]`, which must hold `pyproject.toml` and
   `apps/`), `config.yaml` (optional: `lead`, `alerts`), the projects under
-  projects/, `-p` selection, and scaffolding a project.
+  projects/, `-p` selection, and scaffolding a project; names are at most 255 characters, `init` nudges under 100.
 - `core/steps.py` -- every Budgie/gitboard/perch/claude call as a `Step(argv, cwd,
   env)`; nothing here executes. `run_projects` is `monday --all`'s
   carry-on-past-a-failure loop. `review` opens `claude "/board GROUP/PROJ
@@ -68,7 +69,7 @@ rich); `perch/cli.py` is a thin adapter with engine imports inside commands.
   `--project` refused; TUI: `BG MONTHLY`). `gb` runs gitboard from `projects/NAME` (so its `.env` is that project's) with the project's target and its
   `--out/--db/--log/--spec/--boards-dir` paths (under `projects/NAME/board`) filled in;
   `GB_OFFLINE` (read only pulled files) is all `/walk` may run, `push`,
-  `pull` and `sync` (pull-first, plan, y/n, push, snapshot) need GitLab. `walk`
+  `pull`, `sync` and `members` (pull-first, plan, y/n, push, snapshot) need GitLab. `walk`
   opens `claude "/walk NAME"` in the checkout; `listen` opens `"/listen NAME"`.
 - `core/listen.py` -- `perch listen MEETING.vtt`: `parse` keeps the lead's cues
   (`<v Name>` or `Name:`, whole name, case aside; `lead:` in `config.yaml`) and

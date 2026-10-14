@@ -511,10 +511,16 @@ def init(name, year, year_start, gitlab):
     --year and --year-start go to `budgie init`, so a fiscal-year project
     needs no hand edit of budgie.yaml."""
     from perch.core.steps import StepFailed, budgie_init
-    from perch.core.workspace import check_name
+    from perch.core.workspace import NAME_SHORT, check_name, name_too_long
 
     try:
         check_name(name)
+        if name_too_long(name):
+            console.print(
+                f"{len(name)} characters: keep project names under {NAME_SHORT}; "
+                "it shows in every command and table.",
+                markup=False,
+            )
         home = _find_home()
         if home.config_path(name).exists():
             raise click.ClickException(
