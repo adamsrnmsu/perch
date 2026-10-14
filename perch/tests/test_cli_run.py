@@ -75,7 +75,7 @@ def test_monday_runs_the_five_steps_and_says_where_to_look(tmp_path, monkeypatch
     assert [s.name for s in ran] == ["fetch", "board", "weekly", "digest", "emails"]
     assert "Review, then send yourself" in result.output
     # the private watch: a file under the project, and one line
-    week = steps.iso_week(date.today())  # noqa: DTZ011 -- as monday names it
+    week = steps.iso_week(date.today())
     page = home.projects_dir / "apollo" / "watch" / f"{week}.md"
     assert page.read_text().startswith("# Watch, grp/proj Dev, 2026-W17")
     assert result.output.rstrip().endswith("watch: nothing out of line")

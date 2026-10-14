@@ -4,7 +4,7 @@ The world's last weekly.csv reading is week 16, dated Sunday 2026-04-19, so
 hours is done on 04-20 and todo a week later.
 """
 
-# ruff: noqa: DTZ001  (naive local datetimes: the cutoff is local, like mtimes)
+
 import json
 import os
 from datetime import date, datetime

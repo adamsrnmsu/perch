@@ -655,7 +655,7 @@ def brief(project):
 
     try:
         home, name, config = _project(project)
-        click.echo("\n".join(build(home, name, config, date.today())))  # noqa: DTZ011
+        click.echo("\n".join(build(home, name, config, date.today())))
     except (OSError, TypeError, ValueError) as exc:
         raise click.ClickException(str(exc)) from exc
 
@@ -732,7 +732,7 @@ def listen(meeting, project):
                 f'no lines from "{home.lead}" in {path.name}: '
                 "check the speaker name matches the transcript"
             )
-        _show([bk.text(f"wrote {lines.write(home, name, found, date.today())}", "dim")])  # noqa: DTZ011
+        _show([bk.text(f"wrote {lines.write(home, name, found, date.today())}", "dim")])
         for line in command.install(home, "listen"):
             _show([bk.text(line, "dim")])
         return steps.listen(home, name)
@@ -769,7 +769,7 @@ def monday(project, all_projects, start):
         raise click.UsageError("give -p or --all, not both")
     if start and all_projects:
         raise click.UsageError("--from resumes one project: give -p, not --all")
-    week = steps.iso_week(date.today())  # noqa: DTZ011 -- the lead's local Monday
+    week = steps.iso_week(date.today())
 
     def run_one(home, name):
         config = load_config(home.config_path(name), require_dump=False)
@@ -785,7 +785,7 @@ def monday(project, all_projects, start):
             # step as surely as a non-zero exit. Local naive time: status.py
             # reads `at` back with fromisoformat().
             code = exc.code if isinstance(exc, steps.StepFailed) else 1
-            at = datetime.now()  # noqa: DTZ005
+            at = datetime.now()
             record_failure(home, name, week, current, code, at)
             raise
         clear_failure(home, name, ran)
@@ -854,7 +854,7 @@ def status(project):
         raise click.ClickException(str(exc)) from exc
     if not names:
         raise click.ClickException("no projects yet. Run: perch init <name>")
-    today = date.today()  # noqa: DTZ011 -- the lead's local Monday
+    today = date.today()
     grid = {n: st.status(home, n, today) for n in names}
     out = [
         bk.table(
@@ -1217,7 +1217,7 @@ def watch(config_path, project, all_projects):
                 from perch.core.steps import iso_week
 
                 home = _find_home()
-                path = home.watch_path(home.select(project), iso_week(date.today()))  # noqa: DTZ011
+                path = home.watch_path(home.select(project), iso_week(date.today()))
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(render(page))
         except (OSError, TypeError, ValueError) as exc:
@@ -1257,7 +1257,7 @@ def _write_quarterly(config_path: Path, quarter: str | None, out: Path | None):
     rates = (
         calibrate(money.readings, board, config.people, money.span) if board else None
     )
-    today = date.today()  # noqa: DTZ011 -- the lead's local date
+    today = date.today()
     report = build(
         board,
         money,
@@ -1379,7 +1379,7 @@ def page(project, out_path):
     src = sources.load(home, name)
     made = [
         bk.heading(f"perch · {name}", 1),
-        bk.text(f"Made {date.today()} from local files.", "dim"),  # noqa: DTZ011 -- the lead's local date
+        bk.text(f"Made {date.today()} from local files.", "dim"),
     ]
     if src.board is not None:
         try:
@@ -1419,7 +1419,7 @@ def events(project, all_projects, days):
 
     home = _home()
     names = _names(home, project, all_projects)
-    today = date.today()  # noqa: DTZ011 -- the lead's local date
+    today = date.today()
     cal = events_mod.build_all(home, today, days, names)
     _show(events_mod.blocks(cal, today, days))
 
@@ -1440,7 +1440,7 @@ def tape(project, all_projects, days):
 
     home = _home()
     names = _names(home, project, all_projects)
-    _show(tape_mod.blocks(tape_mod.tape(home, date.today(), days, names), days))  # noqa: DTZ011 -- the lead's local date
+    _show(tape_mod.blocks(tape_mod.tape(home, date.today(), days, names), days))
 
 
 @cli.command()
@@ -1460,7 +1460,7 @@ def alerts(project, all_projects):
     states = []
     for name in names:
         rows = sources.load(home, name).rows
-        states += alerts_mod.evaluate(rules, name, rows, date.today())  # noqa: DTZ011 -- the lead's local date
+        states += alerts_mod.evaluate(rules, name, rows, date.today())
     _show(alerts_mod.blocks(states))
 
 

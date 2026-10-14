@@ -131,7 +131,7 @@ def test_watch_for_a_project_writes_the_weeks_copy(tmp_path, monkeypatch):
     home = build_home(tmp_path, "apollo")
     monkeypatch.chdir(home.root)
     assert run("watch", "-p", "apollo").exit_code == 0
-    assert home.watch_path("apollo", iso_week(date.today())).is_file()  # noqa: DTZ011
+    assert home.watch_path("apollo", iso_week(date.today())).is_file()
 
 
 def test_status_as_blocks(tmp_path, monkeypatch):

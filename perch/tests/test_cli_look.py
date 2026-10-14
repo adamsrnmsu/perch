@@ -8,7 +8,7 @@ from perch.cli import cli
 from perch.core.history import record
 from perch.tests.conftest import build_home
 
-TODAY = datetime.now().date()  # noqa: DTZ005
+TODAY = datetime.now().date()
 
 
 def run(home, *args):

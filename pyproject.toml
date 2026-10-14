@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=6.2.4", "ruff"]
+dev = ["pytest>=6.2.4", "ruff>=0.17"]
 docs = ["sphinx", "myst-parser", "shibuya", "sphinx-click"]
 
 [project.scripts]

@@ -692,7 +692,7 @@ def _fail(home, name, step="board"):
     from perch.core.status import record_failure
     from perch.core.steps import iso_week
 
-    now = datetime.now()  # noqa: DTZ005
+    now = datetime.now()
     record_failure(home, name, iso_week(now.date()), step, 2, now)
 
 
@@ -959,7 +959,7 @@ def _weeks(home, name, *figs):
     """Team rows from W36, one per (headroom, signal[, budget]), plus a person row."""
     rows = []
     for i, (headroom, signal, *budget) in enumerate(figs):
-        week = {"week": f"2026-W{36 + i}", "date": date.today().isoformat()}  # noqa: DTZ011
+        week = {"week": f"2026-W{36 + i}", "date": date.today().isoformat()}
         team = {**week, "kind": "team", "name": "team", "headroom": headroom}
         team["signal"] = signal
         if budget:
@@ -1173,7 +1173,7 @@ def test_the_tape_lists_each_projects_changes_in_order(tmp_path):
         await settle(app, pilot)
         assert app.query_one("#tape").display
         lines = str(app.query_one("#tape-body").render()).splitlines()
-        today = f"{date.today():%m-%d}"  # noqa: DTZ011
+        today = f"{date.today():%m-%d}"
         flip = f"{today}  apollo  flip  W36→W37: GREEN→RED, headroom −$150"
         move = f"{today}  gamma  figures  W36→W37: headroom +$100"
         assert lines.index(flip) < lines.index(move)
@@ -1189,7 +1189,7 @@ def test_the_tape_is_hidden_when_empty_and_t_toggles_it(tmp_path):
     async def script(app, pilot):
         await settle(app, pilot)
         assert not app.tape_rows and not app.query_one("#tape").display
-        app.tape_by["apollo"] = [tape.TapeEntry(date.today(), "apollo", "board", "x")]  # noqa: DTZ011
+        app.tape_by["apollo"] = [tape.TapeEntry(date.today(), "apollo", "board", "x")]
         await pilot.press("t")
         assert not app.tape_on and not app.query_one("#tape").display
         await pilot.press("t")
@@ -2048,7 +2048,7 @@ def _alert_home(tmp_path, names=("apollo",), rules="  - when: headroom < 50k\n")
     home = build_home(tmp_path, *names)
     (home.root / "config.yaml").write_text("alerts:\n" + rules)
     home = checkout_home(home.root)
-    today = date.today()  # noqa: DTZ011
+    today = date.today()
     for name in names:
         rows = [
             {"week": week_key(today - timedelta(days=7 * i)), "date": "2026-01-01"}

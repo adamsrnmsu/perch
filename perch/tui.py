@@ -191,7 +191,7 @@ def snapshot(
     if asof:
         steps = tuple(Text(NA, style="dim") for _ in STEPS)
     else:
-        steps = _step_cells(status(home, name, date.today()))  # noqa: DTZ011 -- never raises
+        steps = _step_cells(status(home, name, date.today()))
     try:
         config = load_config(home.config_path(name), require_dump=False)
         rows = history.load(config.history)
@@ -240,7 +240,7 @@ def alert_hits(home: Home, name: str, rules) -> list[_alerts.State]:
         rows = history.load(
             load_config(home.config_path(name), require_dump=False).history
         )
-        states = _alerts.evaluate(rules, name, rows, date.today())  # noqa: DTZ011
+        states = _alerts.evaluate(rules, name, rows, date.today())
     except _ERRORS:
         return []
     return [s for s in states if s.fresh]
@@ -607,7 +607,7 @@ class PerchTUI(App):
                     continue
                 src = sources.load(self.home, name)
                 built = detail.build(name, src)
-                entries = tape.project_tape(src, name, date.today())  # noqa: DTZ011
+                entries = tape.project_tape(src, name, date.today())
                 if worker.is_cancelled:
                     return
                 self.call_from_thread(self._warmed, name, stamp, src, built, entries)
@@ -624,7 +624,7 @@ class PerchTUI(App):
             entries = tape.project_tape(
                 src,
                 name,
-                date.today(),  # noqa: DTZ011
+                date.today(),
                 asof=self.asof_week,
             )
         self.tape_by[name] = entries
@@ -811,7 +811,7 @@ class PerchTUI(App):
         tapes = {}
         for n, s in dict(self.src).items():
             try:
-                tapes[n] = tape.project_tape(s, n, date.today(), asof=week)  # noqa: DTZ011
+                tapes[n] = tape.project_tape(s, n, date.today(), asof=week)
             except _ERRORS:
                 tapes[n] = []
         if worker.is_cancelled:
@@ -910,7 +910,7 @@ class PerchTUI(App):
         step = (
             column
             if column in STEPS
-            else next_step(status(self.home, name, date.today()))  # noqa: DTZ011
+            else next_step(status(self.home, name, date.today()))
         )
         if step is None:
             self.notify(f"{name}: Monday done")
@@ -1072,7 +1072,7 @@ class PerchTUI(App):
                     f"✓ {c.what}" if c.ok else f"✗ {c.what} → {c.fix}" for c in checks
                 ]
             elif column in STEPS:
-                cell = status(self.home, name, date.today())[column]  # noqa: DTZ011
+                cell = status(self.home, name, date.today())[column]
                 lines = [
                     f"{cell.state} · {cell.when}",
                     *([cell.why] if cell.why else []),
