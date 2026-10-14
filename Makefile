@@ -37,9 +37,10 @@ install: bootstrap ## Clone, put every app's dependencies in .venv, write the co
 	$(PYTHON) -c '$(NEEDS_311)'
 	test -x $(BIN)/python || $(PYTHON) -m venv $(VENV)
 	$(BIN)/python -c '$(NEEDS_311)'
-	-$(BIN)/pip uninstall -q -y perch budgie gitboard 2>/dev/null
+	$(BIN)/python -m pip --version >/dev/null 2>&1 || $(BIN)/python -m ensurepip --upgrade >/dev/null
+	-$(BIN)/python -m pip uninstall -q -y perch budgie gitboard
 	$(BIN)/python $(PERCH_DIR)/scripts/install_env.py requirements $(PERCH_DIR) > $(VENV)/requirements.txt
-	$(BIN)/pip install -q -r $(VENV)/requirements.txt
+	$(BIN)/python -m pip install -q -r $(VENV)/requirements.txt
 	$(BIN)/python $(PERCH_DIR)/scripts/install_env.py wrappers $(PERCH_DIR) $(BIN)
 	$(MAKE) link
 	@echo "installed into $(VENV)."
