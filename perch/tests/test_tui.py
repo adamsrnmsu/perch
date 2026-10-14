@@ -408,11 +408,7 @@ def test_suite_map_points_each_app_at_the_selected_project(tmp_path):
     assert m["gitboard"] == {
         "cwd": str(gb),
         "argv": [
-            "env",
-            f"PYTHONPATH={gb / 'src'}",
-            str(gb / ".venv/bin/python"),
-            "-m",
-            "gitboard.cli",
+            str(home.venv_bin / "gitboard"),
             "tui",
             "grp/apollo",
             "--db",

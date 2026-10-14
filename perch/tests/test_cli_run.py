@@ -130,6 +130,7 @@ def quiet_tools(monkeypatch, home):
     walk.install(home, "listen")
     monkeypatch.setattr("perch.cli._runs", lambda argv, cwd, env: True)
     monkeypatch.setattr("perch.cli._show_gitboard_config", lambda home: True)
+    monkeypatch.setattr("pathlib.Path.home", lambda: home.root)  # no real old venvs
 
 
 def test_doctor_all_well_exits_0_with_no_fix(tmp_path, monkeypatch):

@@ -28,7 +28,7 @@ jobs:
         run: |
           python -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/pip" install -q -e '.[docs]'
-      - run: make docs PERCH_VENV="$RUNNER_TEMP/venv"
+      - run: make docs VENV="$RUNNER_TEMP/venv"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs/_build/html

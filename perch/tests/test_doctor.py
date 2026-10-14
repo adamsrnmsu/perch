@@ -152,3 +152,15 @@ def test_no_old_layout_no_check(tmp_path):
 
     home = build_home(tmp_path)
     assert old_layout_checks(tmp_path, home) == []
+
+
+def test_old_venvs_are_named_never_deleted(tmp_path):
+    from perch.core.doctor import old_venv_checks
+
+    assert old_venv_checks(tmp_path) == []
+    old = tmp_path / "Documents" / "tools" / "perch"
+    old.mkdir(parents=True)
+    [check] = old_venv_checks(tmp_path)
+    assert not check.ok and str(old) in check.what
+    assert check.fix == f"rm -rf {old}"
+    assert old.is_dir()

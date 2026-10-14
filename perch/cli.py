@@ -896,6 +896,7 @@ def doctor(project):
         alert_checks,
         freshness,
         old_layout_checks,
+        old_venv_checks,
         project_checks,
         tool_checks,
     )
@@ -920,6 +921,8 @@ def doctor(project):
 
     _show([bk.text(f"Workspace {home.root}"), bk.heading("Tools")])
     show(tool_checks(_bin_dir(), home, _runs))
+    if old := old_venv_checks(Path.home()):
+        show(old)
     if old := old_layout_checks(Path.cwd(), home):
         _show([bk.heading("Old workspace")])
         show(old)

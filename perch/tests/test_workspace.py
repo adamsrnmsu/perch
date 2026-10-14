@@ -77,6 +77,7 @@ def test_project_paths_live_under_projects(tmp_path):
     assert home.reports_dir("apollo") == p / "reports"
     assert home.budget_dir("apollo") == p / "budget"
     assert home.gitboard_dir == tmp_path / "apps" / "remote-gitboard"
+    assert home.venv_bin == tmp_path / ".venv" / "bin"
 
 
 def test_one_project_needs_no_name(tmp_path):

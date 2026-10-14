@@ -30,7 +30,7 @@ perch --help  # running the apps: init [--year Y --year-start MM-01],
               # [--all], tui, suite
 perch tui     # starts perch suite (hidden tmux, P/B/G hop instantly) when
               # tmux is installed; inside the suite or --no-suite: the TUI alone
-make install  # clone apps/, venvs in ~/Documents/tools, link; re-run to repair
+make install  # deps into .venv (nothing built), wrappers in .venv/bin, link; re-run to repair
 make test     # perch only, in the install venv
 make test-all # Budgie, perch and gitboard suites
 make docs     # sphinx -W into docs/_build/html
@@ -44,8 +44,7 @@ git ignores them).
 Budgie is a library dependency pinned in `pyproject.toml` by git URL
 (`budgie @ git+https://github.com/adamsrnmsu/budgie.git`), never by bare name: the PyPI name is not ours.
 All three repos are public, so the install needs no credentials.
-`make install` installs `apps/budgie` editable after perch, so the local checkout
-wins for dev.
+`make install` never installs Budgie (or perch, or gitboard): all three run from their checkouts on `PYTHONPATH` via the wrappers `scripts/install_env.py` writes.
 `perch/tests/test_contract.py` lists every `budgie.core` name perch imports;
 when Budgie changes, that test fails first.
 
